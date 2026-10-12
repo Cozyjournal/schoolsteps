@@ -1,0 +1,730 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>SchoolSteps — Phase 1 Pilot</title>
+  <link rel="icon" type="image/svg+xml" href="icon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="header-main">
+        <div class="branding">
+          <div class="brand-logo-wrap">
+            <img src="icon.svg" alt="SchoolSteps Logo" class="brand-logo">
+          </div>
+          <div>
+            <div class="brand-row">
+              <h1 class="brand-title">SchoolSteps</h1>
+              <span class="badge badge-pilot">Phase 1 Pilot</span>
+            </div>
+            <p class="school-name-subtitle" id="headerSchoolName">Beacon Oak Grammar School</p>
+          </div>
+        </div>
+        <div class="header-actions">
+          <button class="btn btn-subtle btn-sm" id="btnSchoolSettings" title="School Branding & Settings">
+            <span class="icon">🏫</span>
+            <span class="btn-label">School Profile</span>
+          </button>
+          <button class="btn btn-subtle btn-sm" id="btnDemoData" title="Reset or Reload Sample Data">
+            <span class="icon">🌱</span>
+            <span class="btn-label">Demo Data</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Navigation Tabs (Mobile-first) -->
+      <nav class="nav-tabs" role="tablist">
+        <button class="tab-btn active" data-tab="tab-students" role="tab" aria-selected="true">
+          <span class="tab-icon">👥</span>
+          <span class="tab-text">Students</span>
+          <span class="tab-count" id="studentCountBadge">0</span>
+        </button>
+        <button class="tab-btn" data-tab="tab-attendance" role="tab" aria-selected="false">
+          <span class="tab-icon">📋</span>
+          <span class="tab-text">Attendance</span>
+        </button>
+        <button class="tab-btn" data-tab="tab-tests" role="tab" aria-selected="false">
+          <span class="tab-icon">📊</span>
+          <span class="tab-text">Test Marks</span>
+        </button>
+        <button class="tab-btn" data-tab="tab-reports" role="tab" aria-selected="false">
+          <span class="tab-icon">📜</span>
+          <span class="tab-text">Report Cards</span>
+        </button>
+      </nav>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="main-content">
+      <!-- ==============================================
+           MODULE 1: Student & Parent Database
+           ============================================== -->
+      <section id="tab-students" class="tab-panel active">
+        <!-- Quick Stats -->
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-val" id="statTotalStudents">0</div>
+            <div class="stat-lbl">Total Students</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-val stat-val-green" id="statActiveStudents">0</div>
+            <div class="stat-lbl">Active Enrolled</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-val stat-val-peach" id="statTotalClasses">0</div>
+            <div class="stat-lbl">Active Classes</div>
+          </div>
+        </div>
+
+        <!-- Filter & Search Bar -->
+        <div class="card toolbar-card">
+          <div class="toolbar-row">
+            <div class="search-box">
+              <span class="search-icon">🔍</span>
+              <input type="text" id="studentSearchInput" placeholder="Search by student name, parent, or roll #..." autocomplete="off">
+              <button class="btn-clear hidden" id="btnClearSearch" title="Clear search">✕</button>
+            </div>
+            <div class="filter-group">
+              <select id="filterClassSelect" class="form-select">
+                <option value="ALL">All Classes</option>
+                <!-- Populated dynamically -->
+              </select>
+              <select id="filterSectionSelect" class="form-select">
+                <option value="ALL">All Sections</option>
+                <option value="A">Section A</option>
+                <option value="B">Section B</option>
+                <option value="C">Section C</option>
+              </select>
+              <button class="btn btn-primary" id="btnOpenAddStudent">
+                <span class="icon">➕</span>
+                <span>Add Student</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Student List Container -->
+        <div class="students-list-wrapper">
+          <div class="list-meta-bar">
+            <span id="studentsListSummary">Showing all students</span>
+          </div>
+          <div id="studentsContainer" class="students-grid">
+            <!-- Rendered by JS -->
+          </div>
+          <div id="noStudentsState" class="empty-state hidden">
+            <div class="empty-icon">🎒</div>
+            <h3>No Students Found</h3>
+            <p>No matching student records found. Add a new student or load sample pilot data.</p>
+            <button class="btn btn-secondary" id="btnLoadDemoFromEmpty">Load Sample Students</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==============================================
+           MODULE 2: Smart Attendance & Parent WhatsApp Alerts
+           ============================================== -->
+      <section id="tab-attendance" class="tab-panel">
+        <!-- Attendance Control Bar -->
+        <div class="card toolbar-card">
+          <div class="attendance-controls">
+            <div class="control-item">
+              <label for="attDatePicker" class="control-label">📅 Date</label>
+              <input type="date" id="attDatePicker" class="form-input">
+            </div>
+            <div class="control-item">
+              <label for="attClassSelect" class="control-label">🏫 Class</label>
+              <select id="attClassSelect" class="form-select">
+                <!-- Dynamically populated -->
+              </select>
+            </div>
+            <div class="control-item">
+              <label for="attSectionSelect" class="control-label">🏷️ Section</label>
+              <select id="attSectionSelect" class="form-select">
+                <option value="A">Section A</option>
+                <option value="B">Section B</option>
+                <option value="C">Section C</option>
+              </select>
+            </div>
+            <div class="control-actions">
+              <button class="btn btn-subtle" id="btnMarkAllPresent" title="Mark all enrolled students as Present">
+                <span>⚡ All Present</span>
+              </button>
+              <button class="btn btn-primary" id="btnSaveAttendance">
+                <span>💾 Save Record</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Live Daily Summary -->
+        <div class="attendance-summary-card card">
+          <div class="summary-header">
+            <div>
+              <h3 class="summary-title" id="attSummaryClassLabel">Class 3-A Attendance</h3>
+              <p class="summary-subtitle" id="attSummaryDateLabel">Today</p>
+            </div>
+            <div class="attendance-rate-badge" id="attRateBadge">
+              <span id="attRatePercent">0%</span>
+              <span class="rate-sub">Attendance</span>
+            </div>
+          </div>
+
+          <div class="summary-pill-grid">
+            <div class="summary-pill pill-present">
+              <span class="pill-dot"></span>
+              <span class="pill-label">Present</span>
+              <span class="pill-count" id="countPresent">0</span>
+            </div>
+            <div class="summary-pill pill-absent">
+              <span class="pill-dot"></span>
+              <span class="pill-label">Absent</span>
+              <span class="pill-count" id="countAbsent">0</span>
+            </div>
+            <div class="summary-pill pill-late">
+              <span class="pill-dot"></span>
+              <span class="pill-label">Late</span>
+              <span class="pill-count" id="countLate">0</span>
+            </div>
+            <div class="summary-pill pill-total">
+              <span class="pill-dot"></span>
+              <span class="pill-label">Total</span>
+              <span class="pill-count" id="countTotal">0</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Attendance Roster -->
+        <div class="attendance-roster-card card">
+          <div class="roster-header">
+            <h4>Daily Roster (<span id="rosterCount">0</span> students)</h4>
+            <span class="roster-hint">Tap status buttons to mark each child</span>
+          </div>
+          <div id="attendanceRosterList" class="roster-list">
+            <!-- Populated dynamically -->
+          </div>
+          <div id="noRosterState" class="empty-state hidden">
+            <div class="empty-icon">📝</div>
+            <h3>No Students in This Class</h3>
+            <p>Please select another class or add students to this class in the Students tab.</p>
+          </div>
+        </div>
+
+        <!-- Parent WhatsApp Notification Center -->
+        <div class="whatsapp-hub card" id="whatsappHubSection">
+          <div class="hub-header">
+            <div class="hub-title-row">
+              <div class="wa-icon-bubble">💬</div>
+              <div>
+                <h3 class="hub-title">Parent WhatsApp Notification Center</h3>
+                <p class="hub-subtitle">
+                  PRD M2: Live message preview with direct <span class="badge-code">wa.me</span> links. Review the exact message prepared for each parent and tap to send.
+                </p>
+              </div>
+            </div>
+            <div class="wa-filter-tabs">
+              <button class="wa-filter-btn active" data-filter="ALL">All (<span id="waCountAll">0</span>)</button>
+              <button class="wa-filter-btn" data-filter="ABSENT">Absent Only (<span id="waCountAbsent">0</span>)</button>
+              <button class="wa-filter-btn" data-filter="LATE">Late (<span id="waCountLate">0</span>)</button>
+              <button class="wa-filter-btn" data-filter="PRESENT">Present (<span id="waCountPresent">0</span>)</button>
+            </div>
+          </div>
+
+          <div id="whatsappMessagesList" class="wa-messages-grid">
+            <!-- Rendered by JS -->
+          </div>
+        </div>
+      </section>
+
+      <!-- ==============================================
+           MODULE 3: Test Marks Entry
+           ============================================== -->
+      <section id="tab-tests" class="tab-panel">
+        <!-- Test Selector & Creation Bar -->
+        <div class="card toolbar-card">
+          <div class="tests-controls">
+            <div class="control-item">
+              <label for="testSelect" class="control-label">📝 Select Test</label>
+              <select id="testSelect" class="form-select">
+                <!-- Dynamically populated -->
+              </select>
+            </div>
+            <div class="control-item">
+              <label for="testClassSelect" class="control-label">🏫 Class</label>
+              <select id="testClassSelect" class="form-select">
+                <!-- Dynamically populated -->
+              </select>
+            </div>
+            <div class="control-actions">
+              <button class="btn btn-secondary" id="btnOpenNewTestModal">
+                <span class="icon">➕</span>
+                <span>Create New Test</span>
+              </button>
+              <button class="btn btn-primary" id="btnSaveMarks">
+                <span class="icon">💾</span>
+                <span>Save All Marks</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Active Test Banner Info -->
+        <div class="card active-test-info" id="activeTestInfoCard">
+          <div class="test-info-header">
+            <div>
+              <div class="test-tag" id="testSubjectTag">Mathematics</div>
+              <h3 class="test-heading" id="testTitleHeading">October Monthly Assessment</h3>
+              <p class="test-meta-text" id="testMetaText">Class 3-A • Max Marks: 50 • Passing: 20 • Date: Oct 10, 2026</p>
+            </div>
+            <div class="test-stats-chips">
+              <span class="chip-info" id="testEnteredChip">Marks Entered: 0/0</span>
+              <span class="chip-info chip-green" id="testPassedChip">Passed: 0</span>
+              <span class="chip-info chip-peach" id="testAvgChip">Class Avg: 0%</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Marks Entry Roster -->
+        <div class="card marks-roster-card">
+          <div class="roster-header">
+            <h4>Student Marks Entry Sheet</h4>
+            <span class="roster-hint">Enter marks obtained (out of <span id="rosterMaxMarks">50</span>). Grade updates automatically.</span>
+          </div>
+          <div id="marksEntryList" class="marks-list">
+            <!-- Dynamically populated -->
+          </div>
+          <div id="noMarksStudentsState" class="empty-state hidden">
+            <div class="empty-icon">📊</div>
+            <h3>No Students for This Test</h3>
+            <p>Select another test or add students to this class in the Students tab.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==============================================
+           MODULE 3: Simple Report Card View (Printable A4)
+           ============================================== -->
+      <section id="tab-reports" class="tab-panel">
+        <!-- Report Card Selector Bar -->
+        <div class="card toolbar-card no-print">
+          <div class="report-controls">
+            <div class="control-item">
+              <label for="reportClassSelect" class="control-label">🏫 Class</label>
+              <select id="reportClassSelect" class="form-select">
+                <!-- Dynamically populated -->
+              </select>
+            </div>
+            <div class="control-item">
+              <label for="reportStudentSelect" class="control-label">👤 Student</label>
+              <select id="reportStudentSelect" class="form-select">
+                <!-- Dynamically populated -->
+              </select>
+            </div>
+            <div class="control-item">
+              <label for="reportTermSelect" class="control-label">📑 Assessment / Term</label>
+              <select id="reportTermSelect" class="form-select">
+                <option value="ALL">All Subjects Cumulative (Full Term)</option>
+                <option value="OCT">October Monthly Assessment</option>
+                <option value="MID">Mid-Year Examination</option>
+              </select>
+            </div>
+            <div class="control-actions">
+              <button class="btn btn-primary" id="btnPrintReportCard">
+                <span class="icon">🖨️</span>
+                <span>Print / Save PDF</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Printable School Report Card Container -->
+        <div class="report-card-wrapper">
+          <article class="report-card printable-sheet" id="printableReportCard">
+            <!-- School Header / Letterhead -->
+            <header class="report-school-header">
+              <div class="report-crest">
+                <img src="icon.svg" alt="School Crest" class="school-crest-img">
+              </div>
+              <div class="report-school-info">
+                <h2 class="report-school-name" id="repSchoolName">Beacon Oak Grammar School</h2>
+                <p class="report-school-motto" id="repSchoolMotto">Knowledge • Character • Excellence</p>
+                <p class="report-school-address" id="repSchoolAddress">Plot 14, Main Double Road, Sector F-10, Islamabad | Tel: +92 51 2345678</p>
+              </div>
+            </header>
+
+            <div class="report-divider"></div>
+
+            <div class="report-title-banner">
+              <h3>STUDENT PROGRESS REPORT CARD</h3>
+              <span class="session-pill" id="repSessionLabel">Academic Session 2026–2027</span>
+            </div>
+
+            <!-- Student Profile Information -->
+            <section class="report-profile-grid">
+              <div class="profile-box">
+                <div class="profile-field">
+                  <span class="field-lbl">Student Name:</span>
+                  <span class="field-val" id="repStudentName">Ahmed Raza</span>
+                </div>
+                <div class="profile-field">
+                  <span class="field-lbl">Father's Name:</span>
+                  <span class="field-val" id="repFatherName">Muhammad Raza Khan</span>
+                </div>
+                <div class="profile-field">
+                  <span class="field-lbl">Roll Number:</span>
+                  <span class="field-val" id="repRollNo">01</span>
+                </div>
+              </div>
+              <div class="profile-box">
+                <div class="profile-field">
+                  <span class="field-lbl">Class & Section:</span>
+                  <span class="field-val" id="repClassSection">Class 3 - A</span>
+                </div>
+                <div class="profile-field">
+                  <span class="field-lbl">Admission No:</span>
+                  <span class="field-val" id="repAdmissionNo">BOGS-2024-089</span>
+                </div>
+                <div class="profile-field">
+                  <span class="field-lbl">Attendance Rate:</span>
+                  <span class="field-val highlight-val" id="repAttendanceRate">96% (24 / 25 days)</span>
+                </div>
+              </div>
+            </section>
+
+            <!-- Marks Table -->
+            <section class="report-marks-section">
+              <table class="report-table">
+                <thead>
+                  <tr>
+                    <th>Subject</th>
+                    <th class="text-center">Max Marks</th>
+                    <th class="text-center">Pass Marks</th>
+                    <th class="text-center">Marks Obtained</th>
+                    <th class="text-center">Percentage</th>
+                    <th class="text-center">Grade</th>
+                    <th class="text-center">Status</th>
+                    <th>Remarks</th>
+                  </tr>
+                </thead>
+                <tbody id="repTableBody">
+                  <!-- Populated by JS -->
+                </tbody>
+                <tfoot>
+                  <tr class="total-row">
+                    <td>Grand Total</td>
+                    <td class="text-center" id="repTotalMax">300</td>
+                    <td class="text-center" id="repTotalPass">120</td>
+                    <td class="text-center highlight-score" id="repTotalObtained">268</td>
+                    <td class="text-center highlight-score" id="repTotalPercent">89.3%</td>
+                    <td class="text-center" id="repOverallGrade"><span class="grade-pill grade-a">A</span></td>
+                    <td class="text-center" id="repResultStatus"><span class="badge-pass">PASSED</span></td>
+                    <td id="repSummaryPosition">Class Position: <strong>2nd</strong></td>
+                  </tr>
+                </tfoot>
+              </table>
+            </section>
+
+            <!-- Grading Scale & Performance Summary -->
+            <section class="report-summary-grid">
+              <div class="summary-box">
+                <h4>Teacher's Remarks</h4>
+                <p class="teacher-remarks-text" id="repTeacherRemarks">
+                  "Ahmed is a sincere and hardworking student. He demonstrates an excellent grasp of mathematical concepts and participates actively in classroom discussions."
+                </p>
+              </div>
+              <div class="summary-box">
+                <h4>Grading Scale</h4>
+                <div class="grading-legend">
+                  <span class="legend-item"><strong class="g-tag">A+</strong> 90–100% (Outstanding)</span>
+                  <span class="legend-item"><strong class="g-tag">A</strong> 80–89% (Excellent)</span>
+                  <span class="legend-item"><strong class="g-tag">B</strong> 70–79% (Good)</span>
+                  <span class="legend-item"><strong class="g-tag">C</strong> 60–69% (Satisfactory)</span>
+                  <span class="legend-item"><strong class="g-tag">D</strong> 50–59% (Pass)</span>
+                  <span class="legend-item"><strong class="g-tag">F</strong> &lt;50% (Needs Help)</span>
+                </div>
+              </div>
+            </section>
+
+            <!-- Signatures Section -->
+            <footer class="report-signatures">
+              <div class="sig-block">
+                <div class="sig-line"></div>
+                <div class="sig-label">Class Teacher Signature</div>
+              </div>
+              <div class="sig-stamp-block">
+                <div class="stamp-circle">
+                  <span>OFFICIAL<br>SCHOOL<br>SEAL</span>
+                </div>
+              </div>
+              <div class="sig-block">
+                <div class="sig-line"></div>
+                <div class="sig-label" id="repPrincipalName">Principal Signature</div>
+              </div>
+            </footer>
+          </article>
+        </div>
+      </section>
+    </main>
+
+    <!-- Bottom Navigation Bar (Mobile) -->
+    <nav class="mobile-bottom-bar no-print">
+      <button class="mobile-tab-btn active" data-tab="tab-students">
+        <span class="icon">👥</span>
+        <span class="label">Students</span>
+      </button>
+      <button class="mobile-tab-btn" data-tab="tab-attendance">
+        <span class="icon">📋</span>
+        <span class="label">Attendance</span>
+      </button>
+      <button class="mobile-tab-btn" data-tab="tab-tests">
+        <span class="icon">📊</span>
+        <span class="label">Marks</span>
+      </button>
+      <button class="mobile-tab-btn" data-tab="tab-reports">
+        <span class="icon">📜</span>
+        <span class="label">Report</span>
+      </button>
+    </nav>
+  </div>
+
+  <!-- ==============================================
+       MODALS & DIALOGS
+       ============================================== -->
+
+  <!-- Add / Edit Student Modal -->
+  <div class="modal-overlay hidden" id="studentModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 class="modal-title" id="studentModalTitle">Add New Student</h3>
+        <button class="btn-close" id="btnCloseStudentModal">✕</button>
+      </div>
+      <form id="studentForm" class="modal-body" novalidate>
+        <input type="hidden" id="studentIdField">
+
+        <h4 class="form-section-heading">Student Information</h4>
+        <div class="form-row">
+          <div class="form-col">
+            <label for="studName" class="form-label required">Student Full Name</label>
+            <input type="text" id="studName" class="form-input" placeholder="e.g. Fatima Noor" required>
+          </div>
+          <div class="form-col">
+            <label for="studRollNo" class="form-label required">Roll Number</label>
+            <input type="text" id="studRollNo" class="form-input" placeholder="e.g. 05" required>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-col">
+            <label for="studClass" class="form-label required">Class</label>
+            <select id="studClass" class="form-select" required>
+              <option value="Class 1">Class 1</option>
+              <option value="Class 2">Class 2</option>
+              <option value="Class 3" selected>Class 3</option>
+              <option value="Class 4">Class 4</option>
+              <option value="Class 5">Class 5</option>
+              <option value="Nursery">Nursery</option>
+              <option value="KG">KG</option>
+              <option value="Prep">Prep</option>
+            </select>
+          </div>
+          <div class="form-col">
+            <label for="studSection" class="form-label required">Section</label>
+            <select id="studSection" class="form-select" required>
+              <option value="A" selected>Section A</option>
+              <option value="B">Section B</option>
+              <option value="C">Section C</option>
+            </select>
+          </div>
+          <div class="form-col">
+            <label for="studGender" class="form-label">Gender</label>
+            <select id="studGender" class="form-select">
+              <option value="Female">Female</option>
+              <option value="Male">Male</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-col">
+            <label for="studDob" class="form-label">Date of Birth</label>
+            <input type="date" id="studDob" class="form-input">
+          </div>
+          <div class="form-col">
+            <label for="studAdmissionNo" class="form-label">Admission Number</label>
+            <input type="text" id="studAdmissionNo" class="form-input" placeholder="e.g. BOGS-2025-102">
+          </div>
+          <div class="form-col">
+            <label for="studStatus" class="form-label">Status</label>
+            <select id="studStatus" class="form-select">
+              <option value="Active" selected>Active</option>
+              <option value="Inactive">Inactive</option>
+              <option value="Graduated">Graduated</option>
+              <option value="Left">Left</option>
+            </select>
+          </div>
+        </div>
+
+        <h4 class="form-section-heading">Parent & Emergency Contact</h4>
+        <div class="form-row">
+          <div class="form-col">
+            <label for="parentFather" class="form-label required">Father's Name</label>
+            <input type="text" id="parentFather" class="form-input" placeholder="e.g. Tariq Mehmood" required>
+          </div>
+          <div class="form-col">
+            <label for="parentMother" class="form-label">Mother's Name</label>
+            <input type="text" id="parentMother" class="form-input" placeholder="e.g. Sadia Tariq">
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-col">
+            <label for="parentWhatsApp" class="form-label required">WhatsApp Number</label>
+            <input type="tel" id="parentWhatsApp" class="form-input" placeholder="e.g. 03001234567 or +923001234567" required>
+            <span class="field-hint">Used for 1-tap WhatsApp attendance & report delivery</span>
+          </div>
+          <div class="form-col">
+            <label for="parentEmergency" class="form-label">Emergency Phone</label>
+            <input type="tel" id="parentEmergency" class="form-input" placeholder="e.g. 03219876543">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="parentAddress" class="form-label">Home Address</label>
+          <input type="text" id="parentAddress" class="form-input" placeholder="e.g. House 42, St 5, F-10/2, Islamabad">
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-subtle" id="btnCancelStudentModal">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="btnSubmitStudent">Save Student</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Create New Test Modal -->
+  <div class="modal-overlay hidden" id="newTestModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 class="modal-title">Create New Subject Test</h3>
+        <button class="btn-close" id="btnCloseTestModal">✕</button>
+      </div>
+      <form id="newTestForm" class="modal-body" novalidate>
+        <div class="form-group">
+          <label for="newTestTitle" class="form-label required">Assessment / Exam Title</label>
+          <input type="text" id="newTestTitle" class="form-input" placeholder="e.g. October Monthly Assessment" required>
+        </div>
+
+        <div class="form-row">
+          <div class="form-col">
+            <label for="newTestClass" class="form-label required">Class</label>
+            <select id="newTestClass" class="form-select" required>
+              <option value="Class 1">Class 1</option>
+              <option value="Class 2">Class 2</option>
+              <option value="Class 3" selected>Class 3</option>
+              <option value="Class 4">Class 4</option>
+              <option value="Class 5">Class 5</option>
+            </select>
+          </div>
+          <div class="form-col">
+            <label for="newTestSection" class="form-label required">Section</label>
+            <select id="newTestSection" class="form-select" required>
+              <option value="A" selected>Section A</option>
+              <option value="B">Section B</option>
+              <option value="C">Section C</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-col">
+            <label for="newTestSubject" class="form-label required">Subject</label>
+            <select id="newTestSubject" class="form-select" required>
+              <option value="English">English</option>
+              <option value="Urdu">Urdu</option>
+              <option value="Mathematics" selected>Mathematics</option>
+              <option value="General Science">General Science</option>
+              <option value="Islamiat">Islamiat</option>
+              <option value="Social Studies">Social Studies</option>
+              <option value="Computer">Computer</option>
+            </select>
+          </div>
+          <div class="form-col">
+            <label for="newTestDate" class="form-label required">Test Date</label>
+            <input type="date" id="newTestDate" class="form-input" required>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-col">
+            <label for="newTestMaxMarks" class="form-label required">Total / Max Marks</label>
+            <input type="number" id="newTestMaxMarks" class="form-input" value="50" min="1" max="1000" required>
+          </div>
+          <div class="form-col">
+            <label for="newTestPassMarks" class="form-label required">Passing Marks</label>
+            <input type="number" id="newTestPassMarks" class="form-input" value="20" min="1" max="1000" required>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-subtle" id="btnCancelTestModal">Cancel</button>
+          <button type="submit" class="btn btn-primary">Create Test</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- School Branding & Profile Modal -->
+  <div class="modal-overlay hidden" id="schoolSettingsModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 class="modal-title">🏫 School Profile & Branding</h3>
+        <button class="btn-close" id="btnCloseSchoolModal">✕</button>
+      </div>
+      <form id="schoolSettingsForm" class="modal-body" novalidate>
+        <p class="modal-intro">
+          PRD White-label principle: Every school sees its OWN brand across headers, WhatsApp messages, and Report Cards.
+        </p>
+        <div class="form-group">
+          <label for="settingSchoolName" class="form-label required">School Name</label>
+          <input type="text" id="settingSchoolName" class="form-input" value="Beacon Oak Grammar School" required>
+        </div>
+        <div class="form-group">
+          <label for="settingSchoolMotto" class="form-label">School Motto / Tagline</label>
+          <input type="text" id="settingSchoolMotto" class="form-input" value="Knowledge • Character • Excellence">
+        </div>
+        <div class="form-group">
+          <label for="settingSchoolAddress" class="form-label">Campus Address & Contact</label>
+          <input type="text" id="settingSchoolAddress" class="form-input" value="Plot 14, Main Double Road, Sector F-10, Islamabad | Tel: +92 51 2345678">
+        </div>
+        <div class="form-row">
+          <div class="form-col">
+            <label for="settingPrincipalName" class="form-label">Principal / Head Name</label>
+            <input type="text" id="settingPrincipalName" class="form-input" value="Mrs. Nasreen Akhtar">
+          </div>
+          <div class="form-col">
+            <label for="settingAcademicYear" class="form-label">Academic Session</label>
+            <input type="text" id="settingAcademicYear" class="form-input" value="2026–2027">
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-subtle" id="btnCancelSchoolModal">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Branding</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Toast / Notification banner -->
+  <div id="toastContainer" class="toast-container" aria-live="polite"></div>
+
+  <!-- Scripts -->
+  <script src="app.js"></script>
+</body>
+</html>

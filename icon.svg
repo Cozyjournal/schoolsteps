@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  <defs>
+    <linearGradient id="roofGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#D9744D" />
+      <stop offset="100%" stop-color="#B85630" />
+    </linearGradient>
+    <linearGradient id="wallGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFF2DF" />
+      <stop offset="100%" stop-color="#FCE1C2" />
+    </linearGradient>
+    <linearGradient id="doorGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#7FB069" />
+      <stop offset="100%" stop-color="#5E8F4A" />
+    </linearGradient>
+    <linearGradient id="windowGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#6EB4D6" />
+      <stop offset="100%" stop-color="#4B94B8" />
+    </linearGradient>
+  </defs>
+
+  <!-- Ground Steps / Foundation -->
+  <rect x="14" y="86" width="72" height="6" rx="3" fill="#D7BEA8" />
+  <rect x="20" y="81" width="60" height="6" rx="2" fill="#E8D5C4" />
+
+  <!-- Main School Building -->
+  <rect x="22" y="44" width="56" height="38" rx="4" fill="url(#wallGrad)" stroke="#8A6F5C" stroke-width="2.5" />
+
+  <!-- Clock Tower Base -->
+  <rect x="41" y="24" width="18" height="22" rx="2" fill="url(#wallGrad)" stroke="#8A6F5C" stroke-width="2.5" />
+
+  <!-- Main Roof Triangle -->
+  <polygon points="18,45 50,22 82,45" fill="url(#roofGrad)" stroke="#8A6F5C" stroke-width="2.5" stroke-linejoin="round" />
+
+  <!-- Clock Tower Roof -->
+  <polygon points="38,25 50,11 62,25" fill="url(#roofGrad)" stroke="#8A6F5C" stroke-width="2.5" stroke-linejoin="round" />
+
+  <!-- Clock Dial -->
+  <circle cx="50" cy="33" r="6.5" fill="#FFFFFF" stroke="#8A6F5C" stroke-width="2" />
+  <line x1="50" y1="33" x2="50" y2="29.5" stroke="#4A3728" stroke-width="1.8" stroke-linecap="round" />
+  <line x1="50" y1="33" x2="53.5" y2="33" stroke="#4A3728" stroke-width="1.8" stroke-linecap="round" />
+
+  <!-- School Windows Left -->
+  <rect x="27" y="52" width="12" height="13" rx="2" fill="url(#windowGrad)" stroke="#8A6F5C" stroke-width="1.8" />
+  <line x1="33" y1="52" x2="33" y2="65" stroke="#FFFFFF" stroke-width="1.5" />
+  <line x1="27" y1="58.5" x2="39" y2="58.5" stroke="#FFFFFF" stroke-width="1.5" />
+
+  <!-- School Windows Right -->
+  <rect x="61" y="52" width="12" height="13" rx="2" fill="url(#windowGrad)" stroke="#8A6F5C" stroke-width="1.8" />
+  <line x1="67" y1="52" x2="67" y2="65" stroke="#FFFFFF" stroke-width="1.5" />
+  <line x1="61" y1="58.5" x2="73" y2="58.5" stroke="#FFFFFF" stroke-width="1.5" />
+
+  <!-- Main Door (Arch) -->
+  <path d="M 44 82 L 44 63 A 6 6 0 0 1 56 63 L 56 82 Z" fill="url(#doorGrad)" stroke="#8A6F5C" stroke-width="2" />
+  <circle cx="47" cy="72" r="1" fill="#FFF2DF" />
+  <circle cx="53" cy="72" r="1" fill="#FFF2DF" />
+  <line x1="50" y1="63" x2="50" y2="82" stroke="#487236" stroke-width="1.2" />
+
+  <!-- Weather Vane / Flag on Top -->
+  <line x1="50" y1="11" x2="50" y2="6" stroke="#8A6F5C" stroke-width="1.8" stroke-linecap="round" />
+  <circle cx="50" cy="6" r="1.5" fill="#F4B942" />
+</svg>

@@ -47,7 +47,10 @@
     ATTENDANCE: 'schoolsteps_attendance_v1',
     TESTS: 'schoolsteps_tests_v1',
     MARKS: 'schoolsteps_marks_v1',
-    PROFILE: 'schoolsteps_profile_v1'
+    PROFILE: 'schoolsteps_profile_v1',
+    DISPATCH_LOG: 'schoolsteps_dispatch_log_v1',
+    PTM_EVENTS: 'schoolsteps_ptm_events_v1',
+    CALL_LOGS: 'schoolsteps_call_logs_v1'
   };
 
   function getUserRole(email) {
@@ -356,6 +359,64 @@
   };
 
   // ========================================================
+  // Phase 2 Sample Data & Templates (M4, M5, M6)
+  // ========================================================
+  const SAMPLE_PTM_EVENTS = [
+    {
+      id: 'ptm-001',
+      title: 'Term 1 Parent-Teacher Meeting (PTM)',
+      date: '2026-10-25',
+      startTime: '09:00',
+      endTime: '13:00',
+      classes: ['Class 3', 'Class 4'],
+      venue: 'Main Campus & Classrooms',
+      notes: 'Please bring student diary and arrive 5 minutes before your slot.',
+      rsvps: {
+        'stud-001': 'Yes',
+        'stud-002': 'Yes',
+        'stud-003': 'Maybe',
+        'stud-004': 'Pending',
+        'stud-005': 'No',
+        'stud-006': 'Yes'
+      }
+    }
+  ];
+
+  const SAMPLE_CALL_LOGS = [
+    {
+      id: 'call-001',
+      studentId: 'stud-002',
+      studentName: 'Fatima Noor',
+      className: 'Class 3',
+      parentName: 'Tariq Mehmood',
+      phone: '+923335551234',
+      date: '2026-10-12 11:30',
+      reason: 'Academic Performance',
+      outcome: 'Resolved',
+      notes: 'Discussed Fatima\'s exceptional test marks in Mathematics (48/50). Father was very pleased.'
+    },
+    {
+      id: 'call-002',
+      studentId: 'stud-003',
+      studentName: 'Muhammad Ali',
+      className: 'Class 3',
+      parentName: 'Ali Asghar',
+      phone: '+923458765432',
+      date: '2026-10-10 14:15',
+      reason: 'Attendance / Absences',
+      outcome: 'Follow-up Required',
+      notes: 'Informed father regarding 2 consecutive absences this week. Father explained seasonal flu; medical note expected.'
+    }
+  ];
+
+  const BROADCAST_TEMPLATES = {
+    fee_reminder: "Assalam-o-Alaikum {parent_name},\nThis is a gentle reminder from {school_name} regarding the monthly tuition fee voucher for {student_name} ({class}). Kindly submit the fee by the 10th of the month. Thank you for your cooperation!\n— {school_name}",
+    holiday_notice: "Assalam-o-Alaikum {parent_name},\nPlease note that {school_name} will remain closed tomorrow on account of a gazetted public holiday. Regular classes will resume on the next working day.\nWarm regards,\n— {school_name}",
+    urgent_alert: "URGENT NOTICE from {school_name}:\nDue to inclement weather conditions, school will dismiss early today at 11:30 AM. Kindly arrange timely pickup for {student_name} ({class}).\nStay safe!\n— {school_name}",
+    ptm_invite: "Assalam-o-Alaikum {parent_name},\nYou are cordially invited to attend the upcoming Parent-Teacher Meeting (PTM) for {student_name} ({class}) at {school_name}. Please check your scheduled time slot.\nWe look forward to seeing you.\n— {school_name}"
+  };
+
+  // ========================================================
   // Application State
   // ========================================================
   const state = {
@@ -367,7 +428,15 @@
     activeTab: 'tab-students',
     attendanceFilter: 'ALL', // for WhatsApp preview: ALL | ABSENT | LATE | PRESENT
     currentTestId: null,
-    editingStudentId: null
+    editingStudentId: null,
+    // Phase 2 state
+    dispatchLogs: {}, // { 'month_class_studentId': { status: 'Sent'|'Pending', sentAt: '...' } }
+    dispatchFilter: 'ALL', // ALL | PENDING | SENT
+    ptmEvents: [],
+    activePtmId: null,
+    ptmFilter: 'ALL', // ALL | YES | NO | MAYBE | PENDING
+    callLogs: [],
+    commsSubtab: 'broadcast' // broadcast | calllogs
   };
 
   // ========================================================
@@ -397,6 +466,9 @@
     state.tests = loadStorage(STORAGE_KEYS.TESTS, null);
     state.marks = loadStorage(STORAGE_KEYS.MARKS, null);
     state.attendance = loadStorage(STORAGE_KEYS.ATTENDANCE, {});
+    state.dispatchLogs = loadStorage(STORAGE_KEYS.DISPATCH_LOG, {});
+    state.ptmEvents = loadStorage(STORAGE_KEYS.PTM_EVENTS, null);
+    state.callLogs = loadStorage(STORAGE_KEYS.CALL_LOGS, null);
 
     // Seed defaults if empty
     if (!state.students || !Array.isArray(state.students) || state.students.length === 0) {
@@ -412,6 +484,19 @@
     if (!state.marks || Object.keys(state.marks).length === 0) {
       state.marks = { ...SAMPLE_MARKS };
       saveStorage(STORAGE_KEYS.MARKS, state.marks);
+    }
+
+    if (!state.ptmEvents || !Array.isArray(state.ptmEvents) || state.ptmEvents.length === 0) {
+      state.ptmEvents = JSON.parse(JSON.stringify(SAMPLE_PTM_EVENTS));
+      saveStorage(STORAGE_KEYS.PTM_EVENTS, state.ptmEvents);
+    }
+    if (state.ptmEvents.length > 0 && !state.activePtmId) {
+      state.activePtmId = state.ptmEvents[0].id;
+    }
+
+    if (!state.callLogs || !Array.isArray(state.callLogs) || state.callLogs.length === 0) {
+      state.callLogs = JSON.parse(JSON.stringify(SAMPLE_CALL_LOGS));
+      saveStorage(STORAGE_KEYS.CALL_LOGS, state.callLogs);
     }
 
     // Seed sample attendance for today for Class 3-A if none exists
@@ -437,6 +522,10 @@
     state.tests = JSON.parse(JSON.stringify(SAMPLE_TESTS));
     state.marks = JSON.parse(JSON.stringify(SAMPLE_MARKS));
     state.attendance = {};
+    state.dispatchLogs = {};
+    state.ptmEvents = JSON.parse(JSON.stringify(SAMPLE_PTM_EVENTS));
+    state.activePtmId = state.ptmEvents[0]?.id || null;
+    state.callLogs = JSON.parse(JSON.stringify(SAMPLE_CALL_LOGS));
 
     const todayStr = getTodayISO();
     const todayKey = `${todayStr}_Class 3_A`;
@@ -454,6 +543,9 @@
     saveStorage(STORAGE_KEYS.TESTS, state.tests);
     saveStorage(STORAGE_KEYS.MARKS, state.marks);
     saveStorage(STORAGE_KEYS.ATTENDANCE, state.attendance);
+    saveStorage(STORAGE_KEYS.DISPATCH_LOG, state.dispatchLogs);
+    saveStorage(STORAGE_KEYS.PTM_EVENTS, state.ptmEvents);
+    saveStorage(STORAGE_KEYS.CALL_LOGS, state.callLogs);
 
     showToast('Demo data reloaded successfully!', 'success');
     renderApp();
@@ -584,6 +676,12 @@
       renderMarksEntrySheet();
     } else if (tabId === 'tab-reports') {
       renderReportCard();
+    } else if (tabId === 'tab-dispatch') {
+      renderDispatchRoster();
+    } else if (tabId === 'tab-ptm') {
+      renderPtmModule();
+    } else if (tabId === 'tab-comms') {
+      renderCommsModule();
     }
   }
 
@@ -661,6 +759,37 @@
       if (!repClassSelect.value && sortedClasses.length > 0) {
         repClassSelect.value = sortedClasses[0];
       }
+    }
+
+    // Populate dispatch class select (M4)
+    const dispatchClassSelect = document.getElementById('dispatchClassSelect');
+    if (dispatchClassSelect) {
+      const currentVal = dispatchClassSelect.value || 'Class 3';
+      dispatchClassSelect.innerHTML = '';
+      sortedClasses.forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c;
+        opt.textContent = c;
+        if (c === currentVal) opt.selected = true;
+        dispatchClassSelect.appendChild(opt);
+      });
+      if (!dispatchClassSelect.value && sortedClasses.length > 0) {
+        dispatchClassSelect.value = sortedClasses[0];
+      }
+    }
+
+    // Populate broadcast class select (M6)
+    const broadcastClassSelect = document.getElementById('broadcastClassSelect');
+    if (broadcastClassSelect) {
+      const currentVal = broadcastClassSelect.value || 'ALL';
+      broadcastClassSelect.innerHTML = '<option value="ALL">All Classes (Whole School)</option>';
+      sortedClasses.forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c;
+        opt.textContent = c;
+        if (c === currentVal) opt.selected = true;
+        broadcastClassSelect.appendChild(opt);
+      });
     }
   }
 
@@ -1679,6 +1808,738 @@ ${student.name} (${classLabel}) is marked PRESENT today (${formattedDate}).
   }
 
   // ========================================================
+  // MODULE 4: Monthly Result Auto-Delivery (M4)
+  // ========================================================
+  function calculateStudentFullResults(student, monthTerm) {
+    const tests = state.tests.filter(t => t.className === student.className && (t.section === student.section || !t.section));
+    let totalMax = 0;
+    let totalPass = 0;
+    let totalObtained = 0;
+    let anyFailed = false;
+
+    tests.forEach(test => {
+      const key = `${test.id}_${student.id}`;
+      const rec = state.marks[key] || { marks: null, remarks: '' };
+      const obtained = rec.marks !== null && rec.marks !== undefined ? parseFloat(rec.marks) : 0;
+      const isTested = rec.marks !== null && rec.marks !== undefined;
+
+      totalMax += test.maxMarks;
+      totalPass += test.passMarks;
+      totalObtained += obtained;
+
+      const isPass = obtained >= test.passMarks;
+      if (!isPass && isTested) anyFailed = true;
+    });
+
+    const overallPct = totalMax > 0 ? ((totalObtained / totalMax) * 100).toFixed(1) : '0';
+    const overallGrade = calculateGrade(overallPct);
+    const ranks = calculateClassRankings(student.className, student.section);
+    const rankStr = ranks[student.id] || '1st';
+    const attRate = calculateStudentAttendanceRate(student.id, student.className, student.section);
+
+    return {
+      totalMax,
+      totalPass,
+      totalObtained,
+      overallPct,
+      overallGrade,
+      rankStr,
+      anyFailed,
+      attRate
+    };
+  }
+
+  function getDispatchLogKey(month, className, studentId) {
+    return `${month}_${className}_${studentId}`;
+  }
+
+  function renderDispatchRoster() {
+    const classSelect = document.getElementById('dispatchClassSelect');
+    const sectionSelect = document.getElementById('dispatchSectionSelect');
+    const monthSelect = document.getElementById('dispatchMonthSelect');
+    const tbody = document.getElementById('dispatchTableBody');
+
+    if (!tbody) return;
+
+    const selectedClass = classSelect?.value || 'Class 3';
+    const selectedSection = sectionSelect?.value || 'A';
+    const selectedMonth = monthSelect?.value || 'October 2026 Monthly Assessment';
+
+    const enrolled = state.students.filter(s => s.className === selectedClass && (s.section === selectedSection || !s.section) && s.status === 'Active');
+
+    let totalScoreSum = 0;
+    let testedCount = 0;
+    let sentCount = 0;
+    let pendingCount = 0;
+
+    const filter = state.dispatchFilter || 'ALL';
+
+    const rowsHtml = enrolled.map(student => {
+      const res = calculateStudentFullResults(student, selectedMonth);
+      if (res.totalMax > 0) {
+        totalScoreSum += parseFloat(res.overallPct);
+        testedCount++;
+      }
+
+      const logKey = getDispatchLogKey(selectedMonth, selectedClass, student.id);
+      const logRec = state.dispatchLogs[logKey] || { status: 'Pending', sentAt: null };
+      const isSent = logRec.status === 'Sent';
+
+      if (isSent) sentCount++;
+      else pendingCount++;
+
+      // Filter check
+      if (filter === 'SENT' && !isSent) return '';
+      if (filter === 'PENDING' && isSent) return '';
+
+      // Build pre-filled WhatsApp text
+      const cleanPhone = sanitizePhoneForWhatsApp(student.whatsapp);
+      const parentName = student.fatherName || student.motherName || 'Respected Parent';
+      const msgText = `Assalam-o-Alaikum ${parentName}!
+${student.name}'s ${selectedMonth} report card is ready.
+
+Term: ${selectedMonth}
+Score: ${res.totalObtained} / ${res.totalMax} (${res.overallPct}%)
+Grade: ${res.overallGrade.grade} | Class Rank: ${res.rankStr}
+Attendance: ${res.attRate.label}
+Status: ${res.anyFailed ? 'PROMOTED ON TRIAL' : 'PASSED'}
+
+— Principal, ${state.profile.name}`;
+
+      const waLink = cleanPhone
+        ? `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msgText)}`
+        : '#';
+
+      return `
+        <tr>
+          <td><strong>#${escapeHtml(student.rollNo)}</strong></td>
+          <td>
+            <div class="stud-name-cell">${escapeHtml(student.name)}</div>
+            <div class="stud-sub-cell">Father: ${escapeHtml(student.fatherName || 'Not recorded')}</div>
+          </td>
+          <td>
+            <div class="contact-num">${escapeHtml(student.whatsapp || '-')}</div>
+          </td>
+          <td class="text-center highlight-score">
+            ${res.totalObtained} / ${res.totalMax}
+            <div class="stud-sub-cell">${res.overallPct}%</div>
+          </td>
+          <td class="text-center">
+            <span class="grade-pill ${res.overallGrade.cls}">${res.overallGrade.grade}</span>
+          </td>
+          <td class="text-center">
+            ${isSent
+              ? `<span class="badge badge-pass" style="background: rgba(16, 185, 129, 0.15); color: #34D399; border: 1px solid #10B981;">✓ Sent</span>`
+              : `<span class="badge badge-fail" style="background: rgba(255, 214, 10, 0.15); color: var(--primary); border: 1px solid var(--primary);">⏳ Pending</span>`
+            }
+          </td>
+          <td class="text-center" style="font-size: 0.78rem; color: var(--text-muted);">
+            ${logRec.sentAt ? escapeHtml(logRec.sentAt) : '<span class="text-muted">Not sent</span>'}
+          </td>
+          <td class="text-right">
+            <div style="display: flex; gap: 4px; justify-content: flex-end; align-items: center; flex-wrap: wrap;">
+              <a href="${waLink}" target="_blank" class="btn btn-sm ${isSent ? 'btn-subtle' : 'btn-primary'} btn-dispatch-wa" data-student-id="${student.id}" title="Send via WhatsApp">
+                <span class="icon">${isSent ? '🔄' : '💬'}</span>
+                <span>${isSent ? 'Resend' : 'WhatsApp'}</span>
+              </a>
+              <button class="btn btn-sm btn-subtle btn-preview-rep" data-student-id="${student.id}" data-class="${student.className}" title="View Report Card">
+                <span class="icon">👁️</span>
+              </button>
+            </div>
+          </td>
+        </tr>
+      `;
+    }).join('');
+
+    tbody.innerHTML = rowsHtml || `<tr><td colspan="8" class="text-center" style="padding: 24px;">No students match the current filter.</td></tr>`;
+
+    // Summary stats
+    const avgScore = testedCount > 0 ? (totalScoreSum / testedCount).toFixed(1) : 0;
+    const statTotal = document.getElementById('statDispatchTotal');
+    const statSent = document.getElementById('statDispatchSent');
+    const statPending = document.getElementById('statDispatchPending');
+    const statAvg = document.getElementById('statDispatchAvg');
+
+    if (statTotal) statTotal.textContent = enrolled.length;
+    if (statSent) statSent.textContent = sentCount;
+    if (statPending) statPending.textContent = pendingCount;
+    if (statAvg) statAvg.textContent = `${avgScore}%`;
+
+    // Badge counts
+    const countAll = document.getElementById('dispatchCountAll');
+    const countPending = document.getElementById('dispatchCountPending');
+    const countSent = document.getElementById('dispatchCountSent');
+    if (countAll) countAll.textContent = enrolled.length;
+    if (countPending) countPending.textContent = pendingCount;
+    if (countSent) countSent.textContent = sentCount;
+  }
+
+  function handleTriggerDispatch() {
+    renderDispatchRoster();
+    showToast('Class results generated! Tap WhatsApp on each student to send to parents.', 'success');
+  }
+
+  function handleDispatchMarkSent(studentId) {
+    const classSelect = document.getElementById('dispatchClassSelect');
+    const monthSelect = document.getElementById('dispatchMonthSelect');
+    const selectedClass = classSelect?.value || 'Class 3';
+    const selectedMonth = monthSelect?.value || 'October 2026 Monthly Assessment';
+
+    const logKey = getDispatchLogKey(selectedMonth, selectedClass, studentId);
+    const nowStr = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) + ', ' + new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+
+    state.dispatchLogs[logKey] = {
+      status: 'Sent',
+      sentAt: nowStr
+    };
+    saveStorage(STORAGE_KEYS.DISPATCH_LOG, state.dispatchLogs);
+    renderDispatchRoster();
+  }
+
+  function handleDispatchMarkAllSent() {
+    const classSelect = document.getElementById('dispatchClassSelect');
+    const sectionSelect = document.getElementById('dispatchSectionSelect');
+    const monthSelect = document.getElementById('dispatchMonthSelect');
+    const selectedClass = classSelect?.value || 'Class 3';
+    const selectedSection = sectionSelect?.value || 'A';
+    const selectedMonth = monthSelect?.value || 'October 2026 Monthly Assessment';
+
+    const enrolled = state.students.filter(s => s.className === selectedClass && (s.section === selectedSection || !s.section) && s.status === 'Active');
+    const nowStr = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) + ', ' + new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+
+    enrolled.forEach(s => {
+      const logKey = getDispatchLogKey(selectedMonth, selectedClass, s.id);
+      state.dispatchLogs[logKey] = {
+        status: 'Sent',
+        sentAt: nowStr
+      };
+    });
+
+    saveStorage(STORAGE_KEYS.DISPATCH_LOG, state.dispatchLogs);
+    renderDispatchRoster();
+    showToast(`Marked all ${enrolled.length} students as Sent!`, 'success');
+  }
+
+  function handleDispatchResetLog() {
+    const classSelect = document.getElementById('dispatchClassSelect');
+    const sectionSelect = document.getElementById('dispatchSectionSelect');
+    const monthSelect = document.getElementById('dispatchMonthSelect');
+    const selectedClass = classSelect?.value || 'Class 3';
+    const selectedSection = sectionSelect?.value || 'A';
+    const selectedMonth = monthSelect?.value || 'October 2026 Monthly Assessment';
+
+    const enrolled = state.students.filter(s => s.className === selectedClass && (s.section === selectedSection || !s.section) && s.status === 'Active');
+    enrolled.forEach(s => {
+      const logKey = getDispatchLogKey(selectedMonth, selectedClass, s.id);
+      delete state.dispatchLogs[logKey];
+    });
+
+    saveStorage(STORAGE_KEYS.DISPATCH_LOG, state.dispatchLogs);
+    renderDispatchRoster();
+    showToast('Delivery log reset to Pending for this class.', 'info');
+  }
+
+  // ========================================================
+  // MODULE 5: PTM Scheduler (M5)
+  // ========================================================
+  function calculateSlotTime(startTime, index, durationMins = 15) {
+    if (!startTime || !startTime.includes(':')) return '09:00 AM – 09:15 AM';
+    const [h, m] = startTime.split(':').map(Number);
+    const totalStart = h * 60 + m + (index * durationMins);
+    const totalEnd = totalStart + durationMins;
+
+    const fmt = (t) => {
+      const hours = Math.floor(t / 60);
+      const mins = t % 60;
+      const ampm = hours >= 12 ? 'PM' : 'AM';
+      const dispH = hours % 12 || 12;
+      const dispM = mins < 10 ? '0' + mins : mins;
+      return `${dispH}:${dispM} ${ampm}`;
+    };
+
+    return `${fmt(totalStart)} – ${fmt(totalEnd)}`;
+  }
+
+  function renderPtmModule() {
+    const select = document.getElementById('ptmEventSelect');
+    if (!select) return;
+
+    if (!state.ptmEvents || state.ptmEvents.length === 0) {
+      state.ptmEvents = JSON.parse(JSON.stringify(SAMPLE_PTM_EVENTS));
+      saveStorage(STORAGE_KEYS.PTM_EVENTS, state.ptmEvents);
+    }
+
+    // Populate PTM select dropdown
+    select.innerHTML = state.ptmEvents.map(ev => `
+      <option value="${ev.id}" ${ev.id === state.activePtmId ? 'selected' : ''}>
+        ${escapeHtml(ev.title)} (${formatDateHuman(ev.date)})
+      </option>
+    `).join('');
+
+    const activeEvent = state.ptmEvents.find(ev => ev.id === state.activePtmId) || state.ptmEvents[0];
+    if (!activeEvent) return;
+    state.activePtmId = activeEvent.id;
+
+    // Populate active event metadata
+    const titleEl = document.getElementById('ptmActiveTitle');
+    const dateText = document.getElementById('ptmEventDateText');
+    const timeText = document.getElementById('ptmEventTimeText');
+    const venueText = document.getElementById('ptmEventVenueText');
+    const classesText = document.getElementById('ptmEventClassesText');
+    const noteText = document.getElementById('ptmEventNoteText');
+
+    if (titleEl) titleEl.textContent = activeEvent.title;
+    if (dateText) dateText.textContent = formatDateHuman(activeEvent.date);
+    if (timeText) timeText.textContent = `${activeEvent.startTime || '09:00'} – ${activeEvent.endTime || '13:00'}`;
+    if (venueText) venueText.textContent = activeEvent.venue || 'Main Campus';
+    if (classesText) classesText.textContent = Array.isArray(activeEvent.classes) ? activeEvent.classes.join(', ') : 'All Classes';
+    if (noteText) noteText.innerHTML = `<em>Note: ${escapeHtml(activeEvent.notes || 'Please bring student diary.')}</em>`;
+
+    // Filter students by applicable classes
+    const targetClasses = Array.isArray(activeEvent.classes) ? activeEvent.classes : ['Class 3'];
+    const matchingStudents = state.students.filter(s => targetClasses.includes(s.className) && s.status === 'Active');
+
+    let countYes = 0;
+    let countNo = 0;
+    let countMaybe = 0;
+    let countPending = 0;
+
+    activeEvent.rsvps = activeEvent.rsvps || {};
+
+    const filter = state.ptmFilter || 'ALL';
+
+    const tbody = document.getElementById('ptmInviteTableBody');
+    if (!tbody) return;
+
+    let rowIndex = 0;
+    const rowsHtml = matchingStudents.map(student => {
+      const rsvpVal = activeEvent.rsvps[student.id] || 'Pending';
+      if (rsvpVal === 'Yes') countYes++;
+      else if (rsvpVal === 'No') countNo++;
+      else if (rsvpVal === 'Maybe') countMaybe++;
+      else countPending++;
+
+      // Filter check
+      if (filter === 'YES' && rsvpVal !== 'Yes') return '';
+      if (filter === 'NO' && rsvpVal !== 'No') return '';
+      if (filter === 'MAYBE' && rsvpVal !== 'Maybe') return '';
+      if (filter === 'PENDING' && rsvpVal !== 'Pending') return '';
+
+      const slot = calculateSlotTime(activeEvent.startTime || '09:00', rowIndex++);
+      const cleanPhone = sanitizePhoneForWhatsApp(student.whatsapp);
+      const parentName = student.fatherName || student.motherName || 'Respected Parent';
+
+      const inviteMsg = `Assalam-o-Alaikum ${parentName}!
+You are cordially invited to attend the Parent-Teacher Meeting (PTM) for ${student.name} (${student.className}).
+
+Date: ${formatDateHuman(activeEvent.date)}
+Your Time Slot: ${slot}
+Venue: ${activeEvent.venue}
+Instructions: ${activeEvent.notes || 'Please bring student diary.'}
+
+Please confirm your attendance (Yes / No).
+— Principal, ${state.profile.name}`;
+
+      const waLink = cleanPhone
+        ? `https://wa.me/${cleanPhone}?text=${encodeURIComponent(inviteMsg)}`
+        : '#';
+
+      return `
+        <tr>
+          <td>
+            <strong>${escapeHtml(student.name)}</strong>
+            <div class="stud-sub-cell">Roll #${escapeHtml(student.rollNo)}</div>
+          </td>
+          <td><span class="badge badge-class">${escapeHtml(student.className)}</span></td>
+          <td>
+            <div class="stud-name-cell">${escapeHtml(parentName)}</div>
+            <div class="contact-num">${escapeHtml(student.whatsapp || '-')}</div>
+          </td>
+          <td style="font-weight: 700; color: var(--secondary); font-size: 0.82rem;">${slot}</td>
+          <td class="text-center">
+            <div class="rsvp-btn-group">
+              <button class="rsvp-btn ${rsvpVal === 'Yes' ? 'active-yes' : ''}" data-student-id="${student.id}" data-rsvp="Yes" title="Confirmed Attending">✓ Yes</button>
+              <button class="rsvp-btn ${rsvpVal === 'No' ? 'active-no' : ''}" data-student-id="${student.id}" data-rsvp="No" title="Declined Attendance">✕ No</button>
+              <button class="rsvp-btn ${rsvpVal === 'Maybe' ? 'active-maybe' : ''}" data-student-id="${student.id}" data-rsvp="Maybe" title="Tentative / Maybe">? Maybe</button>
+            </div>
+          </td>
+          <td class="text-right">
+            <a href="${waLink}" target="_blank" class="btn btn-sm btn-primary" title="Send WhatsApp Invite">
+              <span class="icon">💬</span>
+              <span>Invite</span>
+            </a>
+          </td>
+        </tr>
+      `;
+    }).join('');
+
+    tbody.innerHTML = rowsHtml || `<tr><td colspan="6" class="text-center" style="padding: 24px;">No parent records match this filter.</td></tr>`;
+
+    // Update RSVP stats
+    const statTot = document.getElementById('statPtmTotal');
+    const statY = document.getElementById('statPtmYes');
+    const statN = document.getElementById('statPtmNo');
+    const statM = document.getElementById('statPtmMaybe');
+
+    if (statTot) statTot.textContent = matchingStudents.length;
+    if (statY) statY.textContent = countYes;
+    if (statN) statN.textContent = countNo;
+    if (statM) statM.textContent = countMaybe;
+  }
+
+  function handlePtmRsvpToggle(studentId, rsvpVal) {
+    const activeEvent = state.ptmEvents.find(ev => ev.id === state.activePtmId);
+    if (!activeEvent) return;
+
+    activeEvent.rsvps = activeEvent.rsvps || {};
+    if (activeEvent.rsvps[studentId] === rsvpVal) {
+      activeEvent.rsvps[studentId] = 'Pending';
+    } else {
+      activeEvent.rsvps[studentId] = rsvpVal;
+    }
+
+    saveStorage(STORAGE_KEYS.PTM_EVENTS, state.ptmEvents);
+    renderPtmModule();
+    showToast(`RSVP recorded as ${activeEvent.rsvps[studentId]}`, 'info');
+  }
+
+  function handleOpenCreatePtm(editId = null) {
+    const modal = document.getElementById('ptmModal');
+    const form = document.getElementById('ptmForm');
+    const titleEl = document.getElementById('ptmModalTitle');
+    const editIdInput = document.getElementById('ptmEditId');
+    if (!modal || !form) return;
+
+    form.reset();
+
+    if (editId) {
+      const ev = state.ptmEvents.find(e => e.id === editId);
+      if (ev) {
+        if (titleEl) titleEl.textContent = 'Edit PTM Event';
+        if (editIdInput) editIdInput.value = ev.id;
+        document.getElementById('ptmTitleInput').value = ev.title;
+        document.getElementById('ptmDateInput').value = ev.date;
+        document.getElementById('ptmStartTimeInput').value = ev.startTime || '09:00';
+        document.getElementById('ptmEndTimeInput').value = ev.endTime || '13:00';
+        document.getElementById('ptmVenueInput').value = ev.venue || '';
+        document.getElementById('ptmNotesInput').value = ev.notes || '';
+
+        const classCbs = document.querySelectorAll('input[name="ptmClassChoice"]');
+        classCbs.forEach(cb => {
+          cb.checked = Array.isArray(ev.classes) && ev.classes.includes(cb.value);
+        });
+      }
+    } else {
+      if (titleEl) titleEl.textContent = 'Create PTM Event';
+      if (editIdInput) editIdInput.value = '';
+      document.getElementById('ptmDateInput').value = getTodayISO();
+      document.getElementById('ptmStartTimeInput').value = '09:00';
+      document.getElementById('ptmEndTimeInput').value = '13:00';
+      document.getElementById('ptmVenueInput').value = 'Main Campus & Classrooms';
+      document.getElementById('ptmNotesInput').value = 'Please bring student diary and arrive 5 mins before slot.';
+    }
+
+    modal.classList.remove('hidden');
+  }
+
+  function handleSavePtm(e) {
+    e.preventDefault();
+    const editId = document.getElementById('ptmEditId')?.value;
+    const title = document.getElementById('ptmTitleInput')?.value.trim();
+    const date = document.getElementById('ptmDateInput')?.value;
+    const startTime = document.getElementById('ptmStartTimeInput')?.value;
+    const endTime = document.getElementById('ptmEndTimeInput')?.value;
+    const venue = document.getElementById('ptmVenueInput')?.value.trim();
+    const notes = document.getElementById('ptmNotesInput')?.value.trim();
+
+    const selectedClasses = [];
+    document.querySelectorAll('input[name="ptmClassChoice"]:checked').forEach(cb => {
+      selectedClasses.push(cb.value);
+    });
+
+    if (!title || !date || selectedClasses.length === 0) {
+      showToast('Please fill all required fields and select at least one class.', 'warn');
+      return;
+    }
+
+    if (editId) {
+      const idx = state.ptmEvents.findIndex(ev => ev.id === editId);
+      if (idx !== -1) {
+        state.ptmEvents[idx].title = title;
+        state.ptmEvents[idx].date = date;
+        state.ptmEvents[idx].startTime = startTime;
+        state.ptmEvents[idx].endTime = endTime;
+        state.ptmEvents[idx].venue = venue;
+        state.ptmEvents[idx].notes = notes;
+        state.ptmEvents[idx].classes = selectedClasses;
+      }
+    } else {
+      const newEvent = {
+        id: 'ptm-' + Date.now(),
+        title,
+        date,
+        startTime,
+        endTime,
+        venue,
+        notes,
+        classes: selectedClasses,
+        rsvps: {}
+      };
+      state.ptmEvents.unshift(newEvent);
+      state.activePtmId = newEvent.id;
+    }
+
+    saveStorage(STORAGE_KEYS.PTM_EVENTS, state.ptmEvents);
+    document.getElementById('ptmModal').classList.add('hidden');
+    renderPtmModule();
+    showToast(editId ? 'PTM event updated!' : 'New PTM event created successfully!', 'success');
+  }
+
+  function handleDeletePtm(id) {
+    if (!id) return;
+    if (state.ptmEvents.length <= 1) {
+      showToast('Cannot delete the only PTM event.', 'warn');
+      return;
+    }
+    if (confirm('Are you sure you want to delete this PTM event?')) {
+      state.ptmEvents = state.ptmEvents.filter(ev => ev.id !== id);
+      state.activePtmId = state.ptmEvents[0]?.id || null;
+      saveStorage(STORAGE_KEYS.PTM_EVENTS, state.ptmEvents);
+      renderPtmModule();
+      showToast('PTM event deleted.', 'info');
+    }
+  }
+
+  function handleCopyPtmReminder() {
+    const activeEvent = state.ptmEvents.find(ev => ev.id === state.activePtmId);
+    const dateStr = activeEvent ? formatDateHuman(activeEvent.date) : 'Saturday';
+    const venueStr = activeEvent ? activeEvent.venue : 'Main Campus';
+
+    const reminderMsg = `Assalam-o-Alaikum Dear Parents!
+Reminder: The Parent-Teacher Meeting (PTM) is scheduled for ${dateStr} (${activeEvent?.startTime || '09:00 AM'} to ${activeEvent?.endTime || '01:00 PM'}) at ${venueStr}.
+Please ensure timely arrival according to your scheduled slot. We look forward to meeting you!
+— Principal, ${state.profile.name}`;
+
+    navigator.clipboard?.writeText(reminderMsg).then(() => {
+      showToast('PTM reminder template copied to clipboard!', 'success');
+    }).catch(() => {
+      showToast('Reminder ready to send to parents!', 'info');
+    });
+  }
+
+  // ========================================================
+  // MODULE 6: Communication Hub (M6)
+  // ========================================================
+  function renderCommsModule() {
+    const studentSelect = document.getElementById('callLogStudentSelect');
+    const filterStudentSelect = document.getElementById('callFilterStudentSelect');
+
+    if (studentSelect) {
+      studentSelect.innerHTML = state.students.map(s => `
+        <option value="${s.id}">
+          ${escapeHtml(s.name)} (${s.className}-${s.section || 'A'}) — Father: ${escapeHtml(s.fatherName || 'Parent')}
+        </option>
+      `).join('');
+    }
+
+    if (filterStudentSelect) {
+      const cur = filterStudentSelect.value || 'ALL';
+      filterStudentSelect.innerHTML = `<option value="ALL">All Students</option>` + state.students.map(s => `
+        <option value="${s.id}" ${s.id === cur ? 'selected' : ''}>
+          ${escapeHtml(s.name)} (${s.className})
+        </option>
+      `).join('');
+    }
+
+    renderCallLogs();
+  }
+
+  function handleGenerateBroadcastLinks() {
+    const classVal = document.getElementById('broadcastClassSelect')?.value || 'ALL';
+    const sectionVal = document.getElementById('broadcastSectionSelect')?.value || 'ALL';
+    const msgTemplate = document.getElementById('broadcastMessageBox')?.value.trim();
+    const tbody = document.getElementById('broadcastTableBody');
+    const countBadge = document.getElementById('broadcastRecipientCount');
+
+    if (!tbody) return;
+
+    if (!msgTemplate) {
+      showToast('Please type a message or select a template above.', 'warn');
+      return;
+    }
+
+    const matching = state.students.filter(s => {
+      if (s.status !== 'Active') return false;
+      if (classVal !== 'ALL' && s.className !== classVal) return false;
+      if (sectionVal !== 'ALL' && s.section !== sectionVal) return false;
+      return true;
+    });
+
+    if (countBadge) countBadge.textContent = `${matching.length} Parents`;
+
+    const rowsHtml = matching.map(student => {
+      const parentName = student.fatherName || student.motherName || 'Respected Parent';
+      const cleanPhone = sanitizePhoneForWhatsApp(student.whatsapp);
+
+      const personalized = msgTemplate
+        .replace(/\{student_name\}/g, student.name)
+        .replace(/\{parent_name\}/g, parentName)
+        .replace(/\{class\}/g, `${student.className}-${student.section || 'A'}`)
+        .replace(/\{school_name\}/g, state.profile.name);
+
+      const waLink = cleanPhone
+        ? `https://wa.me/${cleanPhone}?text=${encodeURIComponent(personalized)}`
+        : '#';
+
+      return `
+        <tr>
+          <td>
+            <strong>${escapeHtml(student.name)}</strong>
+            <div class="stud-sub-cell">Roll #${escapeHtml(student.rollNo)}</div>
+          </td>
+          <td><span class="badge badge-class">${escapeHtml(student.className)}-${escapeHtml(student.section || 'A')}</span></td>
+          <td>
+            <div class="stud-name-cell">${escapeHtml(parentName)}</div>
+            <div class="contact-num">${escapeHtml(student.whatsapp || '-')}</div>
+          </td>
+          <td>
+            <div style="font-size: 0.8rem; color: #E2E8F0; line-height: 1.4; max-width: 320px; white-space: pre-wrap; word-break: break-word;">
+              ${escapeHtml(personalized.length > 100 ? personalized.substring(0, 100) + '...' : personalized)}
+            </div>
+          </td>
+          <td class="text-right">
+            <div style="display: flex; gap: 4px; justify-content: flex-end;">
+              <a href="${waLink}" target="_blank" class="btn btn-sm btn-primary" title="Send via WhatsApp">
+                <span class="icon">💬</span>
+                <span>Send</span>
+              </a>
+            </div>
+          </td>
+        </tr>
+      `;
+    }).join('');
+
+    tbody.innerHTML = rowsHtml || `<tr><td colspan="5" class="text-center" style="padding: 24px;">No matching students found for selected class.</td></tr>`;
+    showToast(`Generated personalized WhatsApp links for ${matching.length} parents!`, 'success');
+  }
+
+  function renderCallLogs() {
+    const container = document.getElementById('callLogsContainer');
+    const badgeCount = document.getElementById('callLogBadgeCount');
+    if (!container) return;
+
+    if (badgeCount) badgeCount.textContent = state.callLogs.length;
+
+    const studentFilter = document.getElementById('callFilterStudentSelect')?.value || 'ALL';
+    const outcomeFilter = document.getElementById('callFilterOutcomeSelect')?.value || 'ALL';
+
+    const filtered = state.callLogs.filter(log => {
+      if (studentFilter !== 'ALL' && log.studentId !== studentFilter) return false;
+      if (outcomeFilter !== 'ALL' && !log.outcome.includes(outcomeFilter)) return false;
+      return true;
+    });
+
+    let countResolved = 0;
+    let countFollowUp = 0;
+    let countNoAnswer = 0;
+
+    state.callLogs.forEach(l => {
+      if (l.outcome === 'Resolved') countResolved++;
+      else if (l.outcome.includes('Follow-up')) countFollowUp++;
+      else countNoAnswer++;
+    });
+
+    const statTot = document.getElementById('statCallTotal');
+    const statRes = document.getElementById('statCallResolved');
+    const statFol = document.getElementById('statCallFollowUp');
+    const statNo = document.getElementById('statCallNoAnswer');
+
+    if (statTot) statTot.textContent = state.callLogs.length;
+    if (statRes) statRes.textContent = countResolved;
+    if (statFol) statFol.textContent = countFollowUp;
+    if (statNo) statNo.textContent = countNoAnswer;
+
+    if (filtered.length === 0) {
+      container.innerHTML = `<div style="text-align: center; padding: 24px; color: var(--text-muted);">No phone calls logged matching this filter. Tap "Log Call" to add one.</div>`;
+      return;
+    }
+
+    container.innerHTML = filtered.map(log => {
+      let outcomeCls = 'badge-pass';
+      if (log.outcome.includes('Follow-up')) outcomeCls = 'badge-gold';
+      else if (log.outcome.includes('No Answer')) outcomeCls = 'badge-fail';
+
+      return `
+        <div class="call-log-card">
+          <div class="call-log-header">
+            <div>
+              <span class="call-log-student">${escapeHtml(log.studentName)}</span>
+              <span class="badge badge-class" style="margin-left: 6px;">${escapeHtml(log.className || 'Class 3')}</span>
+              <div class="call-log-parent">Parent: ${escapeHtml(log.parentName)} • Tel: ${escapeHtml(log.phone || '-')}</div>
+            </div>
+            <div class="call-log-badges">
+              <span class="badge badge-pilot">${escapeHtml(log.reason)}</span>
+              <span class="badge ${outcomeCls}">${escapeHtml(log.outcome)}</span>
+            </div>
+          </div>
+          <div class="call-log-notes">
+            "${escapeHtml(log.notes)}"
+          </div>
+          <div class="call-log-footer">
+            <span>📅 ${escapeHtml(log.date)}</span>
+            <button class="btn btn-subtle btn-sm btn-logout btn-delete-call" data-id="${log.id}" title="Delete log">
+              <span class="icon">🗑️</span> Delete
+            </button>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  function handleSaveCallLog(e) {
+    e.preventDefault();
+    const dateVal = document.getElementById('callLogDateInput')?.value;
+    const studentId = document.getElementById('callLogStudentSelect')?.value;
+    const reason = document.getElementById('callLogReasonSelect')?.value;
+    const outcome = document.getElementById('callLogOutcomeSelect')?.value;
+    const notes = document.getElementById('callLogNotesInput')?.value.trim();
+
+    const student = state.students.find(s => s.id === studentId);
+    if (!student || !notes) {
+      showToast('Please provide conversation summary notes.', 'warn');
+      return;
+    }
+
+    const newLog = {
+      id: 'call-' + Date.now(),
+      studentId: student.id,
+      studentName: student.name,
+      className: student.className,
+      parentName: student.fatherName || student.motherName || 'Parent',
+      phone: student.whatsapp || student.emergencyPhone || '',
+      date: dateVal ? dateVal.replace('T', ' ') : new Date().toLocaleString(),
+      reason,
+      outcome,
+      notes
+    };
+
+    state.callLogs.unshift(newLog);
+    saveStorage(STORAGE_KEYS.CALL_LOGS, state.callLogs);
+    document.getElementById('callLogModal').classList.add('hidden');
+    renderCallLogs();
+    showToast(`Call logged for ${student.name}!`, 'success');
+  }
+
+  function handleDeleteCallLog(id) {
+    if (confirm('Delete this call record?')) {
+      state.callLogs = state.callLogs.filter(l => l.id !== id);
+      saveStorage(STORAGE_KEYS.CALL_LOGS, state.callLogs);
+      renderCallLogs();
+      showToast('Call log removed.', 'info');
+    }
+  }
+
+  // ========================================================
   // Event Bindings
   // ========================================================
   function bindEvents() {
@@ -1777,6 +2638,149 @@ ${student.name} (${classLabel}) is marked PRESENT today (${formattedDate}).
     document.getElementById('reportTermSelect')?.addEventListener('change', renderReportCard);
     document.getElementById('btnPrintReportCard')?.addEventListener('click', () => {
       window.print();
+    });
+    document.getElementById('btnGoToDispatch')?.addEventListener('click', () => {
+      switchTab('tab-dispatch');
+    });
+
+    // M4 Result Dispatch
+    document.getElementById('dispatchClassSelect')?.addEventListener('change', renderDispatchRoster);
+    document.getElementById('dispatchSectionSelect')?.addEventListener('change', renderDispatchRoster);
+    document.getElementById('dispatchMonthSelect')?.addEventListener('change', renderDispatchRoster);
+    document.getElementById('btnTriggerDispatch')?.addEventListener('click', handleTriggerDispatch);
+    document.getElementById('btnDispatchMarkAllSent')?.addEventListener('click', handleDispatchMarkAllSent);
+    document.getElementById('btnDispatchResetLog')?.addEventListener('click', handleDispatchResetLog);
+
+    document.querySelectorAll('[data-dispatch-filter]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('[data-dispatch-filter]').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        state.dispatchFilter = btn.getAttribute('data-dispatch-filter') || 'ALL';
+        renderDispatchRoster();
+      });
+    });
+
+    document.getElementById('dispatchTableBody')?.addEventListener('click', (e) => {
+      const waBtn = e.target.closest('.btn-dispatch-wa');
+      if (waBtn) {
+        const studentId = waBtn.getAttribute('data-student-id');
+        if (studentId) handleDispatchMarkSent(studentId);
+        return;
+      }
+
+      const repBtn = e.target.closest('.btn-preview-rep');
+      if (repBtn) {
+        const studentId = repBtn.getAttribute('data-student-id');
+        const className = repBtn.getAttribute('data-class');
+        if (studentId) {
+          const reportClassSelect = document.getElementById('reportClassSelect');
+          if (reportClassSelect) reportClassSelect.value = className;
+          populateReportStudentsDropdown();
+          const reportStudentSelect = document.getElementById('reportStudentSelect');
+          if (reportStudentSelect) reportStudentSelect.value = studentId;
+          switchTab('tab-reports');
+          renderReportCard();
+        }
+      }
+    });
+
+    // M5 PTM Scheduler
+    document.getElementById('ptmEventSelect')?.addEventListener('change', (e) => {
+      state.activePtmId = e.target.value;
+      renderPtmModule();
+    });
+    document.getElementById('btnOpenCreatePtm')?.addEventListener('click', () => handleOpenCreatePtm());
+    document.getElementById('btnClosePtmModal')?.addEventListener('click', () => {
+      document.getElementById('ptmModal').classList.add('hidden');
+    });
+    document.getElementById('btnCancelPtmModal')?.addEventListener('click', () => {
+      document.getElementById('ptmModal').classList.add('hidden');
+    });
+    document.getElementById('ptmForm')?.addEventListener('submit', handleSavePtm);
+    document.getElementById('btnEditCurrentPtm')?.addEventListener('click', () => handleOpenCreatePtm(state.activePtmId));
+    document.getElementById('btnDeleteCurrentPtm')?.addEventListener('click', () => handleDeletePtm(state.activePtmId));
+    document.getElementById('btnCopyPtmReminder')?.addEventListener('click', handleCopyPtmReminder);
+
+    document.querySelectorAll('[data-ptm-filter]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('[data-ptm-filter]').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        state.ptmFilter = btn.getAttribute('data-ptm-filter') || 'ALL';
+        renderPtmModule();
+      });
+    });
+
+    document.getElementById('ptmInviteTableBody')?.addEventListener('click', (e) => {
+      const rsvpBtn = e.target.closest('.rsvp-btn');
+      if (rsvpBtn) {
+        const studentId = rsvpBtn.getAttribute('data-student-id');
+        const rsvpVal = rsvpBtn.getAttribute('data-rsvp');
+        if (studentId && rsvpVal) handlePtmRsvpToggle(studentId, rsvpVal);
+      }
+    });
+
+    // M6 Communication Hub
+    document.getElementById('btnSubtabBroadcast')?.addEventListener('click', () => {
+      document.getElementById('btnSubtabBroadcast').classList.add('active');
+      document.getElementById('btnSubtabCallLogs').classList.remove('active');
+      document.getElementById('commsBroadcastView').classList.remove('hidden');
+      document.getElementById('commsCallLogsView').classList.add('hidden');
+    });
+
+    document.getElementById('btnSubtabCallLogs')?.addEventListener('click', () => {
+      document.getElementById('btnSubtabCallLogs').classList.add('active');
+      document.getElementById('btnSubtabBroadcast').classList.remove('active');
+      document.getElementById('commsCallLogsView').classList.remove('hidden');
+      document.getElementById('commsBroadcastView').classList.add('hidden');
+      renderCallLogs();
+    });
+
+    document.getElementById('broadcastTemplateSelect')?.addEventListener('change', (e) => {
+      const tmplKey = e.target.value;
+      const msgBox = document.getElementById('broadcastMessageBox');
+      if (msgBox && tmplKey && BROADCAST_TEMPLATES[tmplKey]) {
+        msgBox.value = BROADCAST_TEMPLATES[tmplKey];
+      }
+    });
+
+    document.getElementById('btnGenerateBroadcastLinks')?.addEventListener('click', handleGenerateBroadcastLinks);
+    document.getElementById('btnClearBroadcastMessage')?.addEventListener('click', () => {
+      const msgBox = document.getElementById('broadcastMessageBox');
+      if (msgBox) msgBox.value = '';
+    });
+
+    // Call Logs
+    document.getElementById('btnOpenLogCallModal')?.addEventListener('click', () => {
+      const modal = document.getElementById('callLogModal');
+      const form = document.getElementById('callLogForm');
+      if (modal && form) {
+        form.reset();
+        const dateInput = document.getElementById('callLogDateInput');
+        if (dateInput) {
+          const now = new Date();
+          now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+          dateInput.value = now.toISOString().slice(0, 16);
+        }
+        modal.classList.remove('hidden');
+      }
+    });
+
+    document.getElementById('btnCloseCallLogModal')?.addEventListener('click', () => {
+      document.getElementById('callLogModal').classList.add('hidden');
+    });
+    document.getElementById('btnCancelCallLogModal')?.addEventListener('click', () => {
+      document.getElementById('callLogModal').classList.add('hidden');
+    });
+    document.getElementById('callLogForm')?.addEventListener('submit', handleSaveCallLog);
+    document.getElementById('callFilterStudentSelect')?.addEventListener('change', renderCallLogs);
+    document.getElementById('callFilterOutcomeSelect')?.addEventListener('change', renderCallLogs);
+
+    document.getElementById('callLogsContainer')?.addEventListener('click', (e) => {
+      const delBtn = e.target.closest('.btn-delete-call');
+      if (delBtn) {
+        const id = delBtn.getAttribute('data-id');
+        if (id) handleDeleteCallLog(id);
+      }
     });
   }
 
@@ -2038,6 +3042,9 @@ ${student.name} (${classLabel}) is marked PRESENT today (${formattedDate}).
     renderAttendanceRoster();
     renderMarksEntrySheet();
     renderReportCard();
+    renderDispatchRoster();
+    renderPtmModule();
+    renderCommsModule();
   }
 
   function initApp() {

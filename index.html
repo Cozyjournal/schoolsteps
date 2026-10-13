@@ -99,7 +99,7 @@
           <div>
             <div class="brand-row">
               <h1 class="brand-title">SchoolSteps</h1>
-              <span class="badge badge-pilot">Phase 1 Pilot</span>
+              <span class="badge badge-pilot">Phase 2: Parent Loop</span>
             </div>
             <p class="school-name-subtitle" id="headerSchoolName">Beacon Oak Grammar School</p>
           </div>
@@ -142,6 +142,18 @@
         <button class="tab-btn" data-tab="tab-reports" role="tab" aria-selected="false">
           <span class="tab-icon">📜</span>
           <span class="tab-text">Report Cards</span>
+        </button>
+        <button class="tab-btn" data-tab="tab-dispatch" role="tab" aria-selected="false">
+          <span class="tab-icon">🚀</span>
+          <span class="tab-text">Result Dispatch</span>
+        </button>
+        <button class="tab-btn" data-tab="tab-ptm" role="tab" aria-selected="false">
+          <span class="tab-icon">🤝</span>
+          <span class="tab-text">PTM Scheduler</span>
+        </button>
+        <button class="tab-btn" data-tab="tab-comms" role="tab" aria-selected="false">
+          <span class="tab-icon">📢</span>
+          <span class="tab-text">Comms Hub</span>
         </button>
       </nav>
     </header>
@@ -555,6 +567,425 @@
           </article>
         </div>
       </section>
+
+      <!-- ==============================================
+           MODULE 4: Monthly Result Auto-Delivery
+           ============================================== -->
+      <section id="tab-dispatch" class="tab-panel">
+        <div class="panel-header-wrap">
+          <div>
+            <h2 class="panel-title">🚀 Monthly Result Auto-Delivery (M4)</h2>
+            <p class="panel-subtitle">Generate class report cards and dispatch personalized WhatsApp messages to parents</p>
+          </div>
+        </div>
+
+        <!-- Controls Card -->
+        <div class="card filter-card">
+          <div class="form-row">
+            <div class="form-col">
+              <label for="dispatchClassSelect" class="form-label">Select Class</label>
+              <select id="dispatchClassSelect" class="form-select">
+                <option value="Class 1">Class 1</option>
+                <option value="Class 2">Class 2</option>
+                <option value="Class 3" selected>Class 3</option>
+                <option value="Class 4">Class 4</option>
+                <option value="Class 5">Class 5</option>
+              </select>
+            </div>
+            <div class="form-col">
+              <label for="dispatchSectionSelect" class="form-label">Section</label>
+              <select id="dispatchSectionSelect" class="form-select">
+                <option value="A" selected>Section A</option>
+                <option value="B">Section B</option>
+                <option value="C">Section C</option>
+              </select>
+            </div>
+            <div class="form-col">
+              <label for="dispatchMonthSelect" class="form-label">Assessment / Month</label>
+              <select id="dispatchMonthSelect" class="form-select">
+                <option value="October 2026 Monthly Assessment" selected>October 2026 Monthly Assessment</option>
+                <option value="November 2026 Monthly Assessment">November 2026 Monthly Assessment</option>
+                <option value="Mid-Year Examinations 2026">Mid-Year Examinations 2026</option>
+                <option value="Final Term Examinations 2027">Final Term Examinations 2027</option>
+              </select>
+            </div>
+          </div>
+          <div class="filter-actions-row">
+            <button class="btn btn-primary" id="btnTriggerDispatch">
+              <span class="icon">🚀</span>
+              <span class="btn-label">Dispatch Monthly Results</span>
+            </button>
+            <button class="btn btn-subtle" id="btnDispatchMarkAllSent" title="Mark all students as sent">
+              <span class="icon">✓</span>
+              <span class="btn-label">Mark All Sent</span>
+            </button>
+            <button class="btn btn-subtle" id="btnDispatchResetLog" title="Reset delivery log for this class">
+              <span class="icon">🔄</span>
+              <span class="btn-label">Reset Log</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Quick Summary Stats -->
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-val" id="statDispatchTotal">0</div>
+            <div class="stat-lbl">Class Students</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-val stat-val-green" id="statDispatchSent">0</div>
+            <div class="stat-lbl">Sent / Dispatched</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-val stat-val-gold" id="statDispatchPending">0</div>
+            <div class="stat-lbl">Pending Dispatch</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-val stat-val-blue" id="statDispatchAvg">0%</div>
+            <div class="stat-lbl">Class Avg Score</div>
+          </div>
+        </div>
+
+        <!-- Delivery Log List / Table -->
+        <div class="card">
+          <div class="card-header-bar">
+            <div>
+              <h3 class="card-title">📋 Parent WhatsApp Delivery Log</h3>
+              <p class="card-subtitle">Review generated report cards and trigger individual WhatsApp delivery</p>
+            </div>
+            <div class="dispatch-filter-pills">
+              <button class="badge-filter-btn active" data-dispatch-filter="ALL">All (<span id="dispatchCountAll">0</span>)</button>
+              <button class="badge-filter-btn" data-dispatch-filter="PENDING">Pending (<span id="dispatchCountPending">0</span>)</button>
+              <button class="badge-filter-btn" data-dispatch-filter="SENT">Sent (<span id="dispatchCountSent">0</span>)</button>
+            </div>
+          </div>
+
+          <div class="table-responsive">
+            <table class="data-table" id="dispatchTable">
+              <thead>
+                <tr>
+                  <th>Roll</th>
+                  <th>Student & Parent</th>
+                  <th>Contact</th>
+                  <th class="text-center">Score / %</th>
+                  <th class="text-center">Grade</th>
+                  <th class="text-center">Status</th>
+                  <th class="text-center">Delivery Time</th>
+                  <th class="text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="dispatchTableBody">
+                <!-- Injected via JavaScript -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==============================================
+           MODULE 5: PTM Scheduler
+           ============================================== -->
+      <section id="tab-ptm" class="tab-panel">
+        <div class="panel-header-wrap">
+          <div>
+            <h2 class="panel-title">🤝 Parent-Teacher Meeting (PTM) Scheduler (M5)</h2>
+            <p class="panel-subtitle">Create PTM events, send personalized WhatsApp invitations, reminders, and track parent RSVPs</p>
+          </div>
+          <div class="panel-actions">
+            <button class="btn btn-primary" id="btnOpenCreatePtm">
+              <span class="icon">➕</span>
+              <span class="btn-label">Create PTM</span>
+            </button>
+            <button class="btn btn-subtle" id="btnCopyPtmReminder" title="Copy reminder template message">
+              <span class="icon">📋</span>
+              <span class="btn-label">Reminder Template</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Active PTM Event Selector & Details Card -->
+        <div class="card">
+          <div class="card-header-bar">
+            <div>
+              <h3 class="card-title" id="ptmActiveTitle">Parent-Teacher Meeting</h3>
+              <p class="card-subtitle" id="ptmActiveSubtitle">Select or create a PTM session to manage invites and RSVPs</p>
+            </div>
+            <div class="ptm-event-picker-wrap">
+              <select id="ptmEventSelect" class="form-select form-select-sm">
+                <!-- Populated dynamically -->
+              </select>
+            </div>
+          </div>
+
+          <!-- PTM Event Metadata Box -->
+          <div class="ptm-meta-banner" id="ptmMetaBanner">
+            <div class="ptm-meta-item">
+              <span class="ptm-meta-icon">📅</span>
+              <div>
+                <strong class="ptm-meta-label">Date</strong>
+                <span class="ptm-meta-value" id="ptmEventDateText">Saturday, Oct 25, 2026</span>
+              </div>
+            </div>
+            <div class="ptm-meta-item">
+              <span class="ptm-meta-icon">⏰</span>
+              <div>
+                <strong class="ptm-meta-label">Time Window</strong>
+                <span class="ptm-meta-value" id="ptmEventTimeText">09:00 AM – 01:00 PM</span>
+              </div>
+            </div>
+            <div class="ptm-meta-item">
+              <span class="ptm-meta-icon">🏫</span>
+              <div>
+                <strong class="ptm-meta-label">Venue / Room</strong>
+                <span class="ptm-meta-value" id="ptmEventVenueText">Main Campus & Classrooms</span>
+              </div>
+            </div>
+            <div class="ptm-meta-item">
+              <span class="ptm-meta-icon">🎒</span>
+              <div>
+                <strong class="ptm-meta-label">Classes</strong>
+                <span class="ptm-meta-value" id="ptmEventClassesText">Class 3, Class 4</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- PTM Action Row for Edit/Delete -->
+          <div class="ptm-card-footer-actions">
+            <div class="ptm-note-preview" id="ptmEventNoteText">
+              <em>Note: Please bring the student diary.</em>
+            </div>
+            <div class="ptm-btn-group">
+              <button class="btn btn-subtle btn-sm" id="btnEditCurrentPtm">
+                <span class="icon">✏️</span> Edit Event
+              </button>
+              <button class="btn btn-subtle btn-sm btn-logout" id="btnDeleteCurrentPtm">
+                <span class="icon">🗑️</span> Delete Event
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- RSVP Stats Grid -->
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-val" id="statPtmTotal">0</div>
+            <div class="stat-lbl">Total Invited</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-val stat-val-green" id="statPtmYes">0</div>
+            <div class="stat-lbl">Attending (Yes)</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-val stat-val-rose" id="statPtmNo">0</div>
+            <div class="stat-lbl">Declined (No)</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-val stat-val-gold" id="statPtmMaybe">0</div>
+            <div class="stat-lbl">Tentative (Maybe)</div>
+          </div>
+        </div>
+
+        <!-- Parent Invite & RSVP Roster Card -->
+        <div class="card">
+          <div class="card-header-bar">
+            <div>
+              <h3 class="card-title">👨‍👩‍👧 Parent Invites & RSVP Tracking</h3>
+              <p class="card-subtitle">Send WhatsApp invite links and record parent responses (Yes / No / Maybe)</p>
+            </div>
+            <div class="dispatch-filter-pills">
+              <button class="badge-filter-btn active" data-ptm-filter="ALL">All</button>
+              <button class="badge-filter-btn" data-ptm-filter="YES">Yes</button>
+              <button class="badge-filter-btn" data-ptm-filter="NO">No</button>
+              <button class="badge-filter-btn" data-ptm-filter="MAYBE">Maybe</button>
+              <button class="badge-filter-btn" data-ptm-filter="PENDING">Pending</button>
+            </div>
+          </div>
+
+          <div class="table-responsive">
+            <table class="data-table" id="ptmInviteTable">
+              <thead>
+                <tr>
+                  <th>Student</th>
+                  <th>Class</th>
+                  <th>Parent & Contact</th>
+                  <th>Slot Time</th>
+                  <th class="text-center">RSVP Status</th>
+                  <th class="text-right">WhatsApp Invite</th>
+                </tr>
+              </thead>
+              <tbody id="ptmInviteTableBody">
+                <!-- Injected via JavaScript -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==============================================
+           MODULE 6: Communication Hub
+           ============================================== -->
+      <section id="tab-comms" class="tab-panel">
+        <div class="panel-header-wrap">
+          <div>
+            <h2 class="panel-title">📢 Communication Hub (M6)</h2>
+            <p class="panel-subtitle">WhatsApp class broadcasts with quick templates, and student parent call logs</p>
+          </div>
+        </div>
+
+        <!-- Sub-navigation: Broadcast vs Call Logs -->
+        <div class="sub-tab-group" role="tablist">
+          <button type="button" class="sub-tab-btn active" id="btnSubtabBroadcast">
+            📢 WhatsApp Broadcast
+          </button>
+          <button type="button" class="sub-tab-btn" id="btnSubtabCallLogs">
+            📞 Parent Call Logs (<span id="callLogBadgeCount">0</span>)
+          </button>
+        </div>
+
+        <!-- VIEW 1: WhatsApp Broadcast -->
+        <div id="commsBroadcastView" class="comms-view">
+          <div class="card filter-card">
+            <div class="form-row">
+              <div class="form-col">
+                <label for="broadcastClassSelect" class="form-label">Target Class</label>
+                <select id="broadcastClassSelect" class="form-select">
+                  <option value="ALL">All Classes (Whole School)</option>
+                  <option value="Class 1">Class 1</option>
+                  <option value="Class 2">Class 2</option>
+                  <option value="Class 3" selected>Class 3</option>
+                  <option value="Class 4">Class 4</option>
+                  <option value="Class 5">Class 5</option>
+                </select>
+              </div>
+              <div class="form-col">
+                <label for="broadcastSectionSelect" class="form-label">Section</label>
+                <select id="broadcastSectionSelect" class="form-select">
+                  <option value="ALL">All Sections</option>
+                  <option value="A" selected>Section A</option>
+                  <option value="B">Section B</option>
+                  <option value="C">Section C</option>
+                </select>
+              </div>
+              <div class="form-col">
+                <label for="broadcastTemplateSelect" class="form-label">Message Template</label>
+                <select id="broadcastTemplateSelect" class="form-select">
+                  <option value="">-- Choose Quick Template --</option>
+                  <option value="fee_reminder">Fee Reminder</option>
+                  <option value="holiday_notice">Holiday Notice</option>
+                  <option value="urgent_alert">Urgent Alert</option>
+                  <option value="ptm_invite">PTM Invite</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="form-group" style="margin-top: 10px;">
+              <label for="broadcastMessageBox" class="form-label required">Broadcast Message Text</label>
+              <textarea id="broadcastMessageBox" class="form-textarea" rows="4" placeholder="Type announcement or pick a template above... Placeholders: {student_name}, {parent_name}, {class}, {school_name}"></textarea>
+              <span class="field-hint">Supports placeholders: {student_name}, {parent_name}, {class}, {school_name}</span>
+            </div>
+
+            <div class="filter-actions-row">
+              <button class="btn btn-primary" id="btnGenerateBroadcastLinks">
+                <span class="icon">⚡</span>
+                <span class="btn-label">Generate Links</span>
+              </button>
+              <button class="btn btn-subtle" id="btnClearBroadcastMessage">
+                <span class="icon">✕</span>
+                <span class="btn-label">Clear Message</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Generated Links Container -->
+          <div class="card" id="broadcastResultsCard">
+            <div class="card-header-bar">
+              <div>
+                <h3 class="card-title">💬 Parent WhatsApp Broadcast Roster</h3>
+                <p class="card-subtitle">Click the WhatsApp button for each parent to send the personalized message</p>
+              </div>
+              <span class="badge badge-info" id="broadcastRecipientCount">0 Parents</span>
+            </div>
+
+            <div class="table-responsive">
+              <table class="data-table" id="broadcastTable">
+                <thead>
+                  <tr>
+                    <th>Student</th>
+                    <th>Class</th>
+                    <th>Parent & Phone</th>
+                    <th>Message Preview</th>
+                    <th class="text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody id="broadcastTableBody">
+                  <!-- Populated via JS -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- VIEW 2: Student Parent Call Logs -->
+        <div id="commsCallLogsView" class="comms-view hidden">
+          <div class="card">
+            <div class="card-header-bar">
+              <div>
+                <h3 class="card-title">📞 Student Parent Call History</h3>
+                <p class="card-subtitle">Track individual phone communications, reasons, and follow-up outcomes per family</p>
+              </div>
+              <button class="btn btn-primary" id="btnOpenLogCallModal">
+                <span class="icon">📞</span>
+                <span class="btn-label">Log Call</span>
+              </button>
+            </div>
+
+            <!-- Call Log Stats -->
+            <div class="stats-grid" style="margin-top: 10px;">
+              <div class="stat-card">
+                <div class="stat-val" id="statCallTotal">0</div>
+                <div class="stat-lbl">Total Calls</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-val stat-val-green" id="statCallResolved">0</div>
+                <div class="stat-lbl">Resolved</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-val stat-val-gold" id="statCallFollowUp">0</div>
+                <div class="stat-lbl">Follow-up Required</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-val stat-val-rose" id="statCallNoAnswer">0</div>
+                <div class="stat-lbl">No Answer / Left Msg</div>
+              </div>
+            </div>
+
+            <!-- Filter row for Call Logs -->
+            <div class="form-row" style="margin-top: 10px;">
+              <div class="form-col">
+                <label for="callFilterStudentSelect" class="form-label">Filter by Student</label>
+                <select id="callFilterStudentSelect" class="form-select">
+                  <option value="ALL">All Students</option>
+                  <!-- Populated via JS -->
+                </select>
+              </div>
+              <div class="form-col">
+                <label for="callFilterOutcomeSelect" class="form-label">Filter by Outcome</label>
+                <select id="callFilterOutcomeSelect" class="form-select">
+                  <option value="ALL">All Outcomes</option>
+                  <option value="Resolved">Resolved</option>
+                  <option value="Follow-up Required">Follow-up Required</option>
+                  <option value="No Answer / Left Message">No Answer / Left Message</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Call Logs Timeline / Cards -->
+            <div class="call-logs-container" id="callLogsContainer" style="margin-top: 14px;">
+              <!-- Injected via JS -->
+            </div>
+          </div>
+        </div>
+      </section>
     </main>
 
     <!-- Bottom Navigation Bar (Mobile) -->
@@ -574,6 +1005,18 @@
       <button class="mobile-tab-btn" data-tab="tab-reports">
         <span class="icon">📜</span>
         <span class="label">Report</span>
+      </button>
+      <button class="mobile-tab-btn" data-tab="tab-dispatch">
+        <span class="icon">🚀</span>
+        <span class="label">Dispatch</span>
+      </button>
+      <button class="mobile-tab-btn" data-tab="tab-ptm">
+        <span class="icon">🤝</span>
+        <span class="label">PTM</span>
+      </button>
+      <button class="mobile-tab-btn" data-tab="tab-comms">
+        <span class="icon">📢</span>
+        <span class="label">Comms</span>
       </button>
     </nav>
   </div>
@@ -801,6 +1244,122 @@
         <div class="modal-footer">
           <button type="button" class="btn btn-subtle" id="btnCancelSchoolModal">Cancel</button>
           <button type="submit" class="btn btn-primary">Save Branding</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Create / Edit PTM Modal (M5) -->
+  <div class="modal-overlay hidden" id="ptmModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 class="modal-title" id="ptmModalTitle">Create PTM Event</h3>
+        <button class="btn-close" id="btnClosePtmModal">✕</button>
+      </div>
+      <form id="ptmForm" class="modal-body" novalidate>
+        <input type="hidden" id="ptmEditId">
+
+        <div class="form-group">
+          <label for="ptmTitleInput" class="form-label required">Event Title</label>
+          <input type="text" id="ptmTitleInput" class="form-input" placeholder="e.g. Term 1 Parent-Teacher Meeting" required>
+        </div>
+
+        <div class="form-row">
+          <div class="form-col">
+            <label for="ptmDateInput" class="form-label required">Meeting Date</label>
+            <input type="date" id="ptmDateInput" class="form-input" required>
+          </div>
+          <div class="form-col">
+            <label class="form-label required">Time Slot Window</label>
+            <div style="display: flex; gap: 6px; align-items: center;">
+              <input type="time" id="ptmStartTimeInput" class="form-input" value="09:00" required>
+              <span style="color: var(--text-muted); font-weight: bold; font-size: 0.8rem;">to</span>
+              <input type="time" id="ptmEndTimeInput" class="form-input" value="13:00" required>
+            </div>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label required">Select Classes Included</label>
+          <div class="class-checkbox-grid" id="ptmClassCheckboxes">
+            <label class="checkbox-pill"><input type="checkbox" name="ptmClassChoice" value="Class 1"> Class 1</label>
+            <label class="checkbox-pill"><input type="checkbox" name="ptmClassChoice" value="Class 2"> Class 2</label>
+            <label class="checkbox-pill"><input type="checkbox" name="ptmClassChoice" value="Class 3" checked> Class 3</label>
+            <label class="checkbox-pill"><input type="checkbox" name="ptmClassChoice" value="Class 4" checked> Class 4</label>
+            <label class="checkbox-pill"><input type="checkbox" name="ptmClassChoice" value="Class 5"> Class 5</label>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="ptmVenueInput" class="form-label required">Venue / Location</label>
+          <input type="text" id="ptmVenueInput" class="form-input" placeholder="e.g. Main Auditorium & Classrooms" value="Main Campus & Classrooms" required>
+        </div>
+
+        <div class="form-group">
+          <label for="ptmNotesInput" class="form-label">Note / Parent Instructions</label>
+          <input type="text" id="ptmNotesInput" class="form-input" placeholder="e.g. Please bring student diary and arrive 5 mins before slot.">
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-subtle" id="btnCancelPtmModal">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="btnSubmitPtm">Save PTM Event</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Log Parent Call Modal (M6) -->
+  <div class="modal-overlay hidden" id="callLogModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 class="modal-title">📞 Log Parent Call</h3>
+        <button class="btn-close" id="btnCloseCallLogModal">✕</button>
+      </div>
+      <form id="callLogForm" class="modal-body" novalidate>
+        <div class="form-row">
+          <div class="form-col">
+            <label for="callLogDateInput" class="form-label required">Date & Time</label>
+            <input type="datetime-local" id="callLogDateInput" class="form-input" required>
+          </div>
+          <div class="form-col">
+            <label for="callLogStudentSelect" class="form-label required">Student & Parent</label>
+            <select id="callLogStudentSelect" class="form-select" required>
+              <!-- Populated dynamically -->
+            </select>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-col">
+            <label for="callLogReasonSelect" class="form-label required">Reason for Call</label>
+            <select id="callLogReasonSelect" class="form-select" required>
+              <option value="Academic Performance">Academic Performance</option>
+              <option value="Attendance / Absences">Attendance / Absences</option>
+              <option value="Fee Reminder">Fee Reminder</option>
+              <option value="Discipline / Behavior">Discipline / Behavior</option>
+              <option value="Health / Medical">Health / Medical</option>
+              <option value="PTM Discussion">PTM Discussion</option>
+              <option value="General Query">General Query</option>
+            </select>
+          </div>
+          <div class="form-col">
+            <label for="callLogOutcomeSelect" class="form-label required">Outcome</label>
+            <select id="callLogOutcomeSelect" class="form-select" required>
+              <option value="Resolved">Resolved</option>
+              <option value="Follow-up Required">Follow-up Required</option>
+              <option value="No Answer / Left Message">No Answer / Left Message</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="callLogNotesInput" class="form-label required">Conversation Summary & Notes</label>
+          <textarea id="callLogNotesInput" class="form-textarea" rows="3" placeholder="Summary of phone call with father/mother..." required></textarea>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-subtle" id="btnCancelCallLogModal">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="btnSubmitCallLog">Save Call Log</button>
         </div>
       </form>
     </div>

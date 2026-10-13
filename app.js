@@ -803,10 +803,11 @@
         10
       );
 
-      // Make sure local state is loaded
-      initData();
+      try {
+        // Make sure local state is loaded
+        initData();
 
-      const userEmail = currentUser?.email || 'Admin';
+        const userEmail = currentUser?.email || 'Admin';
 
       // 1. Migrate Students (20%)
       FirestoreDB.setSyncProgress(20, 'Migrating student directory to Cloud Firestore...');
@@ -1000,7 +1001,14 @@
       FirestoreDB.setSyncProgress(100, 'Migration completed successfully!');
       localStorage.setItem('schoolsteps_migrated_v1', 'true');
       showToast('Successfully migrated all school data to Cloud Firestore!', 'success');
-    },
+    } catch (err) {
+      console.warn('Error during autoMigrate to Firestore, falling back to local storage:', err);
+      initData();
+      FirestoreDB.hideSyncOverlay();
+    } finally {
+      FirestoreDB.hideSyncOverlay();
+    }
+  },
 
     async loadAllFromFirestore() {
       FirestoreDB.showSyncOverlay('Loading SchoolSteps', 'Syncing latest school records from Cloud Firestore...');
@@ -1128,6 +1136,9 @@
       } catch (err) {
         console.warn('Error loading from Firestore, using offline cache:', err);
         initData();
+        FirestoreDB.hideSyncOverlay();
+      } finally {
+        FirestoreDB.hideSyncOverlay();
       }
     },
 

@@ -242,6 +242,108 @@
       address: 'House 22, St 11, G-10/2, Islamabad',
       status: 'Active',
       admissionDate: '2025-08-14'
+    },
+    {
+      id: 'stud-011',
+      name: 'Daniyal Tariq',
+      rollNo: '01',
+      className: 'Class 6',
+      section: 'Blue',
+      gender: 'Male',
+      dob: '2014-03-15',
+      admissionNo: 'BOGS-2021-021',
+      fatherName: 'Tariq Mehmood',
+      motherName: 'Sadia Tariq',
+      whatsapp: '+923001234567',
+      emergencyPhone: '+923219876543',
+      address: 'House 55, St 14, F-7/2, Islamabad',
+      status: 'Active',
+      admissionDate: '2021-08-10'
+    },
+    {
+      id: 'stud-012',
+      name: 'Anum Zahra',
+      rollNo: '01',
+      className: 'Class 7',
+      section: 'Rose',
+      gender: 'Female',
+      dob: '2013-05-18',
+      admissionNo: 'BOGS-2020-034',
+      fatherName: 'Zahid Hussain',
+      motherName: 'Kishwar Zahra',
+      whatsapp: '+923335551234',
+      emergencyPhone: '+923005556789',
+      address: 'House 18, St 9, G-8/1, Islamabad',
+      status: 'Active',
+      admissionDate: '2020-08-12'
+    },
+    {
+      id: 'stud-013',
+      name: 'Saad Arshad',
+      rollNo: '01',
+      className: 'Class 8',
+      section: 'Alif',
+      gender: 'Male',
+      dob: '2012-11-04',
+      admissionNo: 'BOGS-2019-019',
+      fatherName: 'Arshad Malik',
+      motherName: 'Noreen Arshad',
+      whatsapp: '+923458765432',
+      emergencyPhone: '+923331112233',
+      address: 'House 89, St 3, I-8/4, Islamabad',
+      status: 'Active',
+      admissionDate: '2019-08-15'
+    },
+    {
+      id: 'stud-014',
+      name: 'Mahnoor Faisal',
+      rollNo: '01',
+      className: 'Class 9',
+      section: 'Science',
+      gender: 'Female',
+      dob: '2011-08-22',
+      admissionNo: 'BOGS-2018-052',
+      fatherName: 'Faisal Javaid',
+      motherName: 'Hina Faisal',
+      whatsapp: '+923129998877',
+      emergencyPhone: '+923014445566',
+      address: 'House 142, St 22, F-11/3, Islamabad',
+      status: 'Active',
+      admissionDate: '2018-08-16'
+    },
+    {
+      id: 'stud-015',
+      name: 'Zayd Ibrahim (Matric)',
+      rollNo: '01',
+      className: 'Class 10',
+      section: 'Science',
+      gender: 'Male',
+      dob: '2010-09-12',
+      admissionNo: 'BOGS-2017-005',
+      fatherName: 'Ibrahim Khalil',
+      motherName: 'Ayesha Ibrahim',
+      whatsapp: '+923224443322',
+      emergencyPhone: '+923002221100',
+      address: 'House 7, St 1, Sector E-7, Islamabad',
+      status: 'Active',
+      admissionDate: '2017-08-14'
+    },
+    {
+      id: 'stud-016',
+      name: 'Sana Qasim (Matric)',
+      rollNo: '02',
+      className: 'Class 10',
+      section: 'Science',
+      gender: 'Female',
+      dob: '2010-04-05',
+      admissionNo: 'BOGS-2017-009',
+      fatherName: 'Qasim Ali',
+      motherName: 'Uzma Qasim',
+      whatsapp: '+923058887766',
+      emergencyPhone: '+923156667788',
+      address: 'House 26, St 17, Sector F-6/1, Islamabad',
+      status: 'Active',
+      admissionDate: '2017-08-14'
     }
   ];
 
@@ -305,6 +407,46 @@
       date: '2026-10-12',
       maxMarks: 50,
       passMarks: 20
+    },
+    {
+      id: 'test-201',
+      title: 'October Monthly Assessment',
+      className: 'Class 10',
+      section: 'Science',
+      subject: 'Mathematics',
+      date: '2026-10-10',
+      maxMarks: 75,
+      passMarks: 30
+    },
+    {
+      id: 'test-202',
+      title: 'October Monthly Assessment',
+      className: 'Class 10',
+      section: 'Science',
+      subject: 'Physics',
+      date: '2026-10-11',
+      maxMarks: 75,
+      passMarks: 30
+    },
+    {
+      id: 'test-203',
+      title: 'October Monthly Assessment',
+      className: 'Class 10',
+      section: 'Science',
+      subject: 'English',
+      date: '2026-10-12',
+      maxMarks: 75,
+      passMarks: 30
+    },
+    {
+      id: 'test-204',
+      title: 'October Monthly Assessment',
+      className: 'Class 10',
+      section: 'Science',
+      subject: 'Computer Science',
+      date: '2026-10-13',
+      maxMarks: 75,
+      passMarks: 30
     }
   ];
 
@@ -355,7 +497,23 @@
     'test-106_stud-003': { marks: 36, remarks: 'Passes, review Pakistan geography.' },
     'test-106_stud-004': { marks: 43, remarks: 'Enthusiastic and knowledgeable.' },
     'test-106_stud-005': { marks: 37, remarks: 'Fair effort, keep practicing.' },
-    'test-106_stud-006': { marks: 42, remarks: 'Good neatness and presentation.' }
+    'test-106_stud-006': { marks: 42, remarks: 'Good neatness and presentation.' },
+
+    // test-201 (Class 10 Science - Mathematics)
+    'test-201_stud-015': { marks: 71, remarks: 'Outstanding algebra and theorem proofs.' },
+    'test-201_stud-016': { marks: 68, remarks: 'Excellent trigonometry calculations.' },
+
+    // test-202 (Class 10 Science - Physics)
+    'test-202_stud-015': { marks: 69, remarks: 'Strong theoretical conceptual grasp.' },
+    'test-202_stud-016': { marks: 66, remarks: 'Neat numerical and circuit diagrams.' },
+
+    // test-203 (Class 10 Science - English)
+    'test-203_stud-015': { marks: 68, remarks: 'High vocabulary and essay writing.' },
+    'test-203_stud-016': { marks: 72, remarks: 'Flawless comprehension and grammar.' },
+
+    // test-204 (Class 10 Science - Computer Science)
+    'test-204_stud-015': { marks: 73, remarks: 'Top programmer, accurate C/algorithms.' },
+    'test-204_stud-016': { marks: 70, remarks: 'Excellent database and logic models.' }
   };
 
   // ========================================================
@@ -514,6 +672,51 @@
       state.attendance[todayKey] = initialAtt;
       saveStorage(STORAGE_KEYS.ATTENDANCE, state.attendance);
     }
+
+    const todayMatricKey = `${todayStr}_Class 10_Science`;
+    if (!state.attendance[todayMatricKey]) {
+      state.attendance[todayMatricKey] = {
+        'stud-015': { status: 'Present', time: '' },
+        'stud-016': { status: 'Present', time: '' }
+      };
+      saveStorage(STORAGE_KEYS.ATTENDANCE, state.attendance);
+    }
+
+    // Ensure all sample students (including Matric/Class 6-10) exist in state
+    if (state.students && Array.isArray(state.students)) {
+      let added = false;
+      SAMPLE_STUDENTS.forEach(s => {
+        if (!state.students.some(cur => cur.id === s.id)) {
+          state.students.push({ ...s });
+          added = true;
+        }
+      });
+      if (added) saveStorage(STORAGE_KEYS.STUDENTS, state.students);
+    }
+
+    // Ensure sample tests for Class 10 exist in state
+    if (state.tests && Array.isArray(state.tests)) {
+      let added = false;
+      SAMPLE_TESTS.forEach(t => {
+        if (!state.tests.some(cur => cur.id === t.id)) {
+          state.tests.push({ ...t });
+          added = true;
+        }
+      });
+      if (added) saveStorage(STORAGE_KEYS.TESTS, state.tests);
+    }
+
+    // Ensure sample marks for Class 10 exist in state
+    if (state.marks) {
+      let added = false;
+      Object.keys(SAMPLE_MARKS).forEach(k => {
+        if (!state.marks[k]) {
+          state.marks[k] = SAMPLE_MARKS[k];
+          added = true;
+        }
+      });
+      if (added) saveStorage(STORAGE_KEYS.MARKS, state.marks);
+    }
   }
 
   function resetToDemoData() {
@@ -536,6 +739,11 @@
       'stud-004': { status: 'Present', time: '' },
       'stud-005': { status: 'Late', time: '08:20 AM' },
       'stud-006': { status: 'Present', time: '' }
+    };
+    const todayMatricKey = `${todayStr}_Class 10_Science`;
+    state.attendance[todayMatricKey] = {
+      'stud-015': { status: 'Present', time: '' },
+      'stud-016': { status: 'Present', time: '' }
     };
 
     saveStorage(STORAGE_KEYS.PROFILE, state.profile);
@@ -688,13 +896,68 @@
   // ========================================================
   // MODULE 1: Student & Parent Database
   // ========================================================
+  const ALL_DEFAULT_CLASSES = [
+    'Class 1', 'Class 2', 'Class 3', 'Class 4', 'Class 5',
+    'Class 6', 'Class 7', 'Class 8', 'Class 9', 'Class 10'
+  ];
+
+  function sortClasses(classList) {
+    return Array.from(classList).sort((a, b) => {
+      const numA = parseInt((a.match(/\d+/) || [999])[0], 10);
+      const numB = parseInt((b.match(/\d+/) || [999])[0], 10);
+      if (!isNaN(numA) && !isNaN(numB) && numA !== numB) {
+        return numA - numB;
+      }
+      return a.localeCompare(b);
+    });
+  }
+
+  function updateSectionSuggestions() {
+    const defaultSections = ['A', 'B', 'C', 'Blue', 'Rose', 'Alif', 'Science'];
+    const secSet = new Set(defaultSections);
+    (state.students || []).forEach(s => {
+      if (s.section && s.section.trim()) secSet.add(s.section.trim());
+    });
+    (state.tests || []).forEach(t => {
+      if (t.section && t.section.trim()) secSet.add(t.section.trim());
+    });
+
+    const sortedSecs = Array.from(secSet).sort((a, b) => a.localeCompare(b));
+
+    const secDatalist = document.getElementById('sectionSuggestions');
+    if (secDatalist) {
+      secDatalist.innerHTML = '';
+      sortedSecs.forEach(sec => {
+        const opt = document.createElement('option');
+        opt.value = sec;
+        opt.textContent = `Section ${sec}`;
+        secDatalist.appendChild(opt);
+      });
+    }
+
+    const filterSecDatalist = document.getElementById('filterSectionSuggestions');
+    if (filterSecDatalist) {
+      filterSecDatalist.innerHTML = '';
+      const optAll = document.createElement('option');
+      optAll.value = 'ALL';
+      optAll.textContent = 'All Sections';
+      filterSecDatalist.appendChild(optAll);
+      sortedSecs.forEach(sec => {
+        const opt = document.createElement('option');
+        opt.value = sec;
+        opt.textContent = `Section ${sec}`;
+        filterSecDatalist.appendChild(opt);
+      });
+    }
+  }
+
   function renderClassDropdowns() {
-    const classSet = new Set(['Class 1', 'Class 2', 'Class 3', 'Class 4', 'Class 5']);
+    const classSet = new Set(ALL_DEFAULT_CLASSES);
     state.students.forEach(s => {
       if (s.className) classSet.add(s.className);
     });
 
-    const sortedClasses = Array.from(classSet).sort();
+    const sortedClasses = sortClasses(classSet);
 
     // Populate filter dropdown
     const filterSelect = document.getElementById('filterClassSelect');
@@ -791,6 +1054,8 @@
         broadcastClassSelect.appendChild(opt);
       });
     }
+
+    updateSectionSuggestions();
   }
 
   function renderStudentsList() {
@@ -799,12 +1064,13 @@
     const summarySpan = document.getElementById('studentsListSummary');
     const searchVal = (document.getElementById('studentSearchInput')?.value || '').trim().toLowerCase();
     const classFilter = document.getElementById('filterClassSelect')?.value || 'ALL';
-    const sectionFilter = document.getElementById('filterSectionSelect')?.value || 'ALL';
+    const rawSectionFilter = (document.getElementById('filterSectionSelect')?.value || 'ALL').trim();
+    const isAllSection = !rawSectionFilter || rawSectionFilter.toUpperCase() === 'ALL';
 
     // Filter students
     const filtered = state.students.filter(student => {
       if (classFilter !== 'ALL' && student.className !== classFilter) return false;
-      if (sectionFilter !== 'ALL' && student.section !== sectionFilter) return false;
+      if (!isAllSection && (student.section || 'A').toLowerCase() !== rawSectionFilter.toLowerCase()) return false;
 
       if (searchVal) {
         const matchName = (student.name || '').toLowerCase().includes(searchVal);
@@ -1079,14 +1345,18 @@
 
     const selectedDate = dateInput.value;
     const selectedClass = classSelect.value || 'Class 3';
-    const selectedSection = sectionSelect.value || 'A';
+    const selectedSection = (sectionSelect.value || 'A').trim();
 
     // Update labels
     document.getElementById('attSummaryClassLabel').textContent = `${selectedClass} - ${selectedSection} Attendance`;
     document.getElementById('attSummaryDateLabel').textContent = formatDateHuman(selectedDate);
 
     // Filter students for this class & section
-    const enrolled = state.students.filter(s => s.className === selectedClass && s.section === selectedSection && s.status === 'Active');
+    const enrolled = state.students.filter(s =>
+      s.className === selectedClass &&
+      (s.section || 'A').toLowerCase() === selectedSection.toLowerCase() &&
+      s.status === 'Active'
+    );
     document.getElementById('rosterCount').textContent = enrolled.length;
 
     if (enrolled.length === 0) {
@@ -1181,9 +1451,13 @@
 
     const selectedDate = dateInput.value || getTodayISO();
     const selectedClass = classSelect.value || 'Class 3';
-    const selectedSection = sectionSelect.value || 'A';
+    const selectedSection = (sectionSelect.value || 'A').trim();
 
-    const enrolled = state.students.filter(s => s.className === selectedClass && s.section === selectedSection && s.status === 'Active');
+    const enrolled = state.students.filter(s =>
+      s.className === selectedClass &&
+      (s.section || 'A').toLowerCase() === selectedSection.toLowerCase() &&
+      s.status === 'Active'
+    );
     if (enrolled.length === 0) return;
 
     enrolled.forEach(student => {
@@ -1543,7 +1817,7 @@ ${student.name} (${classLabel}) is marked PRESENT today (${formattedDate}).
     e.preventDefault();
     const title = document.getElementById('newTestTitle').value.trim();
     const className = document.getElementById('newTestClass').value;
-    const section = document.getElementById('newTestSection').value;
+    const section = (document.getElementById('newTestSection').value || 'A').trim();
     const subject = document.getElementById('newTestSubject').value;
     const date = document.getElementById('newTestDate').value;
     const maxMarks = parseInt(document.getElementById('newTestMaxMarks').value, 10);
@@ -1568,6 +1842,7 @@ ${student.name} (${classLabel}) is marked PRESENT today (${formattedDate}).
     state.tests.push(newTest);
     saveStorage(STORAGE_KEYS.TESTS, state.tests);
     state.currentTestId = newTest.id;
+    updateSectionSuggestions();
 
     document.getElementById('newTestModal').classList.add('hidden');
     document.getElementById('newTestForm').reset();
@@ -1862,10 +2137,15 @@ ${student.name} (${classLabel}) is marked PRESENT today (${formattedDate}).
     if (!tbody) return;
 
     const selectedClass = classSelect?.value || 'Class 3';
-    const selectedSection = sectionSelect?.value || 'A';
+    const rawSection = (sectionSelect?.value || 'A').trim();
+    const isAllSection = !rawSection || rawSection.toUpperCase() === 'ALL';
     const selectedMonth = monthSelect?.value || 'October 2026 Monthly Assessment';
 
-    const enrolled = state.students.filter(s => s.className === selectedClass && (s.section === selectedSection || !s.section) && s.status === 'Active');
+    const enrolled = state.students.filter(s =>
+      s.className === selectedClass &&
+      (isAllSection || (s.section || 'A').toLowerCase() === rawSection.toLowerCase()) &&
+      s.status === 'Active'
+    );
 
     let totalScoreSum = 0;
     let testedCount = 0;
@@ -2001,10 +2281,15 @@ Status: ${res.anyFailed ? 'PROMOTED ON TRIAL' : 'PASSED'}
     const sectionSelect = document.getElementById('dispatchSectionSelect');
     const monthSelect = document.getElementById('dispatchMonthSelect');
     const selectedClass = classSelect?.value || 'Class 3';
-    const selectedSection = sectionSelect?.value || 'A';
+    const rawSection = (sectionSelect?.value || 'A').trim();
+    const isAllSection = !rawSection || rawSection.toUpperCase() === 'ALL';
     const selectedMonth = monthSelect?.value || 'October 2026 Monthly Assessment';
 
-    const enrolled = state.students.filter(s => s.className === selectedClass && (s.section === selectedSection || !s.section) && s.status === 'Active');
+    const enrolled = state.students.filter(s =>
+      s.className === selectedClass &&
+      (isAllSection || (s.section || 'A').toLowerCase() === rawSection.toLowerCase()) &&
+      s.status === 'Active'
+    );
     const nowStr = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) + ', ' + new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 
     enrolled.forEach(s => {
@@ -2025,10 +2310,15 @@ Status: ${res.anyFailed ? 'PROMOTED ON TRIAL' : 'PASSED'}
     const sectionSelect = document.getElementById('dispatchSectionSelect');
     const monthSelect = document.getElementById('dispatchMonthSelect');
     const selectedClass = classSelect?.value || 'Class 3';
-    const selectedSection = sectionSelect?.value || 'A';
+    const rawSection = (sectionSelect?.value || 'A').trim();
+    const isAllSection = !rawSection || rawSection.toUpperCase() === 'ALL';
     const selectedMonth = monthSelect?.value || 'October 2026 Monthly Assessment';
 
-    const enrolled = state.students.filter(s => s.className === selectedClass && (s.section === selectedSection || !s.section) && s.status === 'Active');
+    const enrolled = state.students.filter(s =>
+      s.className === selectedClass &&
+      (isAllSection || (s.section || 'A').toLowerCase() === rawSection.toLowerCase()) &&
+      s.status === 'Active'
+    );
     enrolled.forEach(s => {
       const logKey = getDispatchLogKey(selectedMonth, selectedClass, s.id);
       delete state.dispatchLogs[logKey];
@@ -2356,7 +2646,8 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
 
   function handleGenerateBroadcastLinks() {
     const classVal = document.getElementById('broadcastClassSelect')?.value || 'ALL';
-    const sectionVal = document.getElementById('broadcastSectionSelect')?.value || 'ALL';
+    const rawSectionVal = (document.getElementById('broadcastSectionSelect')?.value || 'ALL').trim();
+    const isAllSec = !rawSectionVal || rawSectionVal.toUpperCase() === 'ALL';
     const msgTemplate = document.getElementById('broadcastMessageBox')?.value.trim();
     const tbody = document.getElementById('broadcastTableBody');
     const countBadge = document.getElementById('broadcastRecipientCount');
@@ -2371,7 +2662,7 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
     const matching = state.students.filter(s => {
       if (s.status !== 'Active') return false;
       if (classVal !== 'ALL' && s.className !== classVal) return false;
-      if (sectionVal !== 'ALL' && s.section !== sectionVal) return false;
+      if (!isAllSec && (s.section || 'A').toLowerCase() !== rawSectionVal.toLowerCase()) return false;
       return true;
     });
 
@@ -2583,11 +2874,13 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
 
     document.getElementById('filterClassSelect')?.addEventListener('change', renderStudentsList);
     document.getElementById('filterSectionSelect')?.addEventListener('change', renderStudentsList);
+    document.getElementById('filterSectionSelect')?.addEventListener('input', renderStudentsList);
 
     // M2 Attendance
     document.getElementById('attDatePicker')?.addEventListener('change', renderAttendanceRoster);
     document.getElementById('attClassSelect')?.addEventListener('change', renderAttendanceRoster);
     document.getElementById('attSectionSelect')?.addEventListener('change', renderAttendanceRoster);
+    document.getElementById('attSectionSelect')?.addEventListener('input', renderAttendanceRoster);
     document.getElementById('btnMarkAllPresent')?.addEventListener('click', handleMarkAllPresent);
     document.getElementById('btnSaveAttendance')?.addEventListener('click', handleSaveAttendance);
 
@@ -2599,8 +2892,12 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
         state.attendanceFilter = btn.getAttribute('data-filter') || 'ALL';
         const dateStr = document.getElementById('attDatePicker')?.value || getTodayISO();
         const className = document.getElementById('attClassSelect')?.value || 'Class 3';
-        const section = document.getElementById('attSectionSelect')?.value || 'A';
-        const enrolled = state.students.filter(s => s.className === className && s.section === section && s.status === 'Active');
+        const section = (document.getElementById('attSectionSelect')?.value || 'A').trim();
+        const enrolled = state.students.filter(s =>
+          s.className === className &&
+          (s.section || 'A').toLowerCase() === section.toLowerCase() &&
+          s.status === 'Active'
+        );
         renderWhatsAppMessagesList(enrolled, dateStr, className, section);
       });
     });
@@ -2646,6 +2943,7 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
     // M4 Result Dispatch
     document.getElementById('dispatchClassSelect')?.addEventListener('change', renderDispatchRoster);
     document.getElementById('dispatchSectionSelect')?.addEventListener('change', renderDispatchRoster);
+    document.getElementById('dispatchSectionSelect')?.addEventListener('input', renderDispatchRoster);
     document.getElementById('dispatchMonthSelect')?.addEventListener('change', renderDispatchRoster);
     document.getElementById('btnTriggerDispatch')?.addEventListener('click', handleTriggerDispatch);
     document.getElementById('btnDispatchMarkAllSent')?.addEventListener('click', handleDispatchMarkAllSent);
@@ -3054,6 +3352,7 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
     renderApp();
     isAppInitialized = true;
   }
+  window.__initSchoolSteps = initApp;
 
   function start() {
     bindAuthEvents();

@@ -99,7 +99,7 @@
           <div>
             <div class="brand-row">
               <h1 class="brand-title">SchoolSteps</h1>
-              <span class="badge badge-pilot">Phase 2: Parent Loop</span>
+              <span class="badge badge-pilot">Phase 2</span>
             </div>
             <p class="school-name-subtitle" id="headerSchoolName">Beacon Oak Grammar School</p>
           </div>
@@ -124,7 +124,7 @@
         </div>
       </div>
 
-      <!-- Navigation Tabs (Mobile-first) -->
+      <!-- Navigation Tabs (Mobile-first, 2-row thumb-reachable grid on mobile) -->
       <nav class="nav-tabs" role="tablist">
         <button class="tab-btn active" data-tab="tab-students" role="tab" aria-selected="true">
           <span class="tab-icon">👥</span>
@@ -137,25 +137,46 @@
         </button>
         <button class="tab-btn" data-tab="tab-tests" role="tab" aria-selected="false">
           <span class="tab-icon">📊</span>
-          <span class="tab-text">Test Marks</span>
+          <span class="tab-text">Marks</span>
         </button>
         <button class="tab-btn" data-tab="tab-reports" role="tab" aria-selected="false">
           <span class="tab-icon">📜</span>
-          <span class="tab-text">Report Cards</span>
+          <span class="tab-text">Reports</span>
         </button>
         <button class="tab-btn" data-tab="tab-dispatch" role="tab" aria-selected="false">
           <span class="tab-icon">🚀</span>
-          <span class="tab-text">Result Dispatch</span>
+          <span class="tab-text">Dispatch</span>
         </button>
         <button class="tab-btn" data-tab="tab-ptm" role="tab" aria-selected="false">
           <span class="tab-icon">🤝</span>
-          <span class="tab-text">PTM Scheduler</span>
+          <span class="tab-text">PTM</span>
         </button>
         <button class="tab-btn" data-tab="tab-comms" role="tab" aria-selected="false">
           <span class="tab-icon">📢</span>
-          <span class="tab-text">Comms Hub</span>
+          <span class="tab-text">Comms</span>
         </button>
       </nav>
+
+      <!-- Section Suggestions Datalists (Fix 3: Customizable section names) -->
+      <datalist id="sectionSuggestions">
+        <option value="A">Section A</option>
+        <option value="B">Section B</option>
+        <option value="C">Section C</option>
+        <option value="Blue">Section Blue</option>
+        <option value="Rose">Section Rose</option>
+        <option value="Alif">Section Alif</option>
+        <option value="Science">Section Science</option>
+      </datalist>
+      <datalist id="filterSectionSuggestions">
+        <option value="ALL">All Sections</option>
+        <option value="A">Section A</option>
+        <option value="B">Section B</option>
+        <option value="C">Section C</option>
+        <option value="Blue">Section Blue</option>
+        <option value="Rose">Section Rose</option>
+        <option value="Alif">Section Alif</option>
+        <option value="Science">Section Science</option>
+      </datalist>
     </header>
 
     <!-- Main Content Area -->
@@ -193,12 +214,7 @@
                 <option value="ALL">All Classes</option>
                 <!-- Populated dynamically -->
               </select>
-              <select id="filterSectionSelect" class="form-select">
-                <option value="ALL">All Sections</option>
-                <option value="A">Section A</option>
-                <option value="B">Section B</option>
-                <option value="C">Section C</option>
-              </select>
+              <input type="text" id="filterSectionSelect" list="filterSectionSuggestions" class="form-input" placeholder="Section (All or A, Blue...)" value="ALL" autocomplete="off" style="max-width: 140px;">
               <button class="btn btn-primary" id="btnOpenAddStudent">
                 <span class="icon">➕</span>
                 <span>Add Student</span>
@@ -243,11 +259,7 @@
             </div>
             <div class="control-item">
               <label for="attSectionSelect" class="control-label">🏷️ Section</label>
-              <select id="attSectionSelect" class="form-select">
-                <option value="A">Section A</option>
-                <option value="B">Section B</option>
-                <option value="C">Section C</option>
-              </select>
+              <input type="text" id="attSectionSelect" list="sectionSuggestions" class="form-input" placeholder="e.g. A, Blue, Alif" value="A" autocomplete="off">
             </div>
             <div class="control-actions">
               <button class="btn btn-subtle" id="btnMarkAllPresent" title="Mark all enrolled students as Present">
@@ -590,15 +602,16 @@
                 <option value="Class 3" selected>Class 3</option>
                 <option value="Class 4">Class 4</option>
                 <option value="Class 5">Class 5</option>
+                <option value="Class 6">Class 6</option>
+                <option value="Class 7">Class 7</option>
+                <option value="Class 8">Class 8</option>
+                <option value="Class 9">Class 9</option>
+                <option value="Class 10">Class 10</option>
               </select>
             </div>
             <div class="form-col">
               <label for="dispatchSectionSelect" class="form-label">Section</label>
-              <select id="dispatchSectionSelect" class="form-select">
-                <option value="A" selected>Section A</option>
-                <option value="B">Section B</option>
-                <option value="C">Section C</option>
-              </select>
+              <input type="text" id="dispatchSectionSelect" list="sectionSuggestions" class="form-input" placeholder="e.g. A, Blue, Alif" value="A" autocomplete="off">
             </div>
             <div class="form-col">
               <label for="dispatchMonthSelect" class="form-label">Assessment / Month</label>
@@ -855,16 +868,16 @@
                   <option value="Class 3" selected>Class 3</option>
                   <option value="Class 4">Class 4</option>
                   <option value="Class 5">Class 5</option>
+                  <option value="Class 6">Class 6</option>
+                  <option value="Class 7">Class 7</option>
+                  <option value="Class 8">Class 8</option>
+                  <option value="Class 9">Class 9</option>
+                  <option value="Class 10">Class 10</option>
                 </select>
               </div>
               <div class="form-col">
                 <label for="broadcastSectionSelect" class="form-label">Section</label>
-                <select id="broadcastSectionSelect" class="form-select">
-                  <option value="ALL">All Sections</option>
-                  <option value="A" selected>Section A</option>
-                  <option value="B">Section B</option>
-                  <option value="C">Section C</option>
-                </select>
+                <input type="text" id="broadcastSectionSelect" list="filterSectionSuggestions" class="form-input" placeholder="Section (All or A, Blue...)" value="ALL" autocomplete="off">
               </div>
               <div class="form-col">
                 <label for="broadcastTemplateSelect" class="form-label">Message Template</label>
@@ -1056,6 +1069,11 @@
               <option value="Class 3" selected>Class 3</option>
               <option value="Class 4">Class 4</option>
               <option value="Class 5">Class 5</option>
+              <option value="Class 6">Class 6</option>
+              <option value="Class 7">Class 7</option>
+              <option value="Class 8">Class 8</option>
+              <option value="Class 9">Class 9</option>
+              <option value="Class 10">Class 10</option>
               <option value="Nursery">Nursery</option>
               <option value="KG">KG</option>
               <option value="Prep">Prep</option>
@@ -1063,11 +1081,7 @@
           </div>
           <div class="form-col">
             <label for="studSection" class="form-label required">Section</label>
-            <select id="studSection" class="form-select" required>
-              <option value="A" selected>Section A</option>
-              <option value="B">Section B</option>
-              <option value="C">Section C</option>
-            </select>
+            <input type="text" id="studSection" list="sectionSuggestions" class="form-input" placeholder="e.g. A, Blue, Alif" value="A" required autocomplete="off">
           </div>
           <div class="form-col">
             <label for="studGender" class="form-label">Gender</label>
@@ -1157,15 +1171,16 @@
               <option value="Class 3" selected>Class 3</option>
               <option value="Class 4">Class 4</option>
               <option value="Class 5">Class 5</option>
+              <option value="Class 6">Class 6</option>
+              <option value="Class 7">Class 7</option>
+              <option value="Class 8">Class 8</option>
+              <option value="Class 9">Class 9</option>
+              <option value="Class 10">Class 10</option>
             </select>
           </div>
           <div class="form-col">
             <label for="newTestSection" class="form-label required">Section</label>
-            <select id="newTestSection" class="form-select" required>
-              <option value="A" selected>Section A</option>
-              <option value="B">Section B</option>
-              <option value="C">Section C</option>
-            </select>
+            <input type="text" id="newTestSection" list="sectionSuggestions" class="form-input" placeholder="e.g. A, Blue, Alif" value="A" required autocomplete="off">
           </div>
         </div>
 
@@ -1287,6 +1302,11 @@
             <label class="checkbox-pill"><input type="checkbox" name="ptmClassChoice" value="Class 3" checked> Class 3</label>
             <label class="checkbox-pill"><input type="checkbox" name="ptmClassChoice" value="Class 4" checked> Class 4</label>
             <label class="checkbox-pill"><input type="checkbox" name="ptmClassChoice" value="Class 5"> Class 5</label>
+            <label class="checkbox-pill"><input type="checkbox" name="ptmClassChoice" value="Class 6"> Class 6</label>
+            <label class="checkbox-pill"><input type="checkbox" name="ptmClassChoice" value="Class 7"> Class 7</label>
+            <label class="checkbox-pill"><input type="checkbox" name="ptmClassChoice" value="Class 8"> Class 8</label>
+            <label class="checkbox-pill"><input type="checkbox" name="ptmClassChoice" value="Class 9"> Class 9</label>
+            <label class="checkbox-pill"><input type="checkbox" name="ptmClassChoice" value="Class 10"> Class 10</label>
           </div>
         </div>
 

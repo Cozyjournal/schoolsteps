@@ -4186,11 +4186,23 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
           'Synchronizing school database with Cloud Firestore (asia-south1)...'
         );
 
+        const syncTimeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => reject(new Error('SYNC_TIMEOUT')), 15000);
+        });
+
         try {
-          await FirestoreDB.syncAndLoad(user);
+          await Promise.race([
+            FirestoreDB.syncAndLoad(user),
+            syncTimeoutPromise
+          ]);
         } catch (err) {
-          console.error('Firestore sync error on login:', err);
-          showToast('Loaded local offline cache. Changes will sync when connected.', 'warn');
+          console.warn('Firestore sync error/timeout on login:', err);
+          if (err && err.message === 'SYNC_TIMEOUT') {
+            showToast('Sync timed out, using offline data', 'warn');
+          } else {
+            showToast('Loaded local offline cache. Changes will sync when connected.', 'warn');
+          }
+          initData();
         } finally {
           FirestoreDB.hideSyncOverlay();
         }

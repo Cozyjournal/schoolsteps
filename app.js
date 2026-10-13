@@ -24,6 +24,7 @@
   };
 
   let auth = null;
+  let db = null;
   if (typeof firebase !== 'undefined') {
     if (!firebase.apps || !firebase.apps.length) {
       firebase.initializeApp(firebaseConfig);
@@ -36,6 +37,23 @@
       }
     }
     auth = firebase.auth();
+    if (typeof firebase.firestore === 'function') {
+      try {
+        db = firebase.firestore();
+        // Enable offline persistence so SchoolSteps operates seamlessly without internet
+        db.enablePersistence({ synchronizeTabs: true }).catch((err) => {
+          if (err.code === 'failed-precondition') {
+            console.warn('Firestore persistence warning: Multiple tabs open');
+          } else if (err.code === 'unimplemented') {
+            console.warn('Firestore persistence warning: Browser unsupported');
+          } else {
+            console.warn('Firestore persistence error:', err);
+          }
+        });
+      } catch (err) {
+        console.warn('Firestore initialization error:', err);
+      }
+    }
   }
 
   // ========================================================
@@ -61,6 +79,9 @@
   function setUserRole(email, role) {
     if (!email) return;
     localStorage.setItem(ROLE_STORAGE_PREFIX + email.toLowerCase(), role);
+    if (typeof FirestoreDB !== 'undefined' && FirestoreDB.saveUser) {
+      FirestoreDB.saveUser(email, role, state.profile?.name);
+    }
   }
 
   const DEFAULT_SCHOOL_PROFILE = {
@@ -618,6 +639,748 @@
     }
   }
 
+  // ========================================================
+  // Cloud Firestore Database Service & Auto-Migration Layer
+  // Collections:
+  //  - students:    { name, class, section, parentName, parentPhone, admissionNo }
+  //  - attendance:  { date, studentId, class, section, status, markedBy }
+  //  - marks:       { studentId, subject, term, obtained, total }
+  //  - tests:       { id, title, className, section, subject, date, maxMarks, passMarks }
+  //  - dispatches:  { class, month, studentId, status, sentAt }
+  //  - ptms:        { title, date, timeSlots, classes, venue, invites[] }
+  //  - calls:       { studentId, date, reason, outcome }
+  //  - users:       { email, role, schoolName }
+  //  - settings:    settings/profile
+  // ========================================================
+  const FirestoreDB = {
+    isReady() {
+      return !!db;
+    },
+
+    showSyncOverlay(title, desc, showProgress = false, progressPercent = 0) {
+      const overlay = document.getElementById('syncOverlay');
+      const titleEl = document.getElementById('syncTitle');
+      const descEl = document.getElementById('syncDesc');
+      const progWrap = document.getElementById('syncProgressWrap');
+      const progBar = document.getElementById('syncProgressBar');
+
+      if (titleEl) titleEl.textContent = title;
+      if (descEl) descEl.textContent = desc;
+      if (progWrap) {
+        if (showProgress) {
+          progWrap.classList.remove('hidden');
+          if (progBar) progBar.style.width = `${progressPercent}%`;
+        } else {
+          progWrap.classList.add('hidden');
+        }
+      }
+      if (overlay) overlay.classList.remove('hidden');
+    },
+
+    setSyncProgress(percent, desc) {
+      const progBar = document.getElementById('syncProgressBar');
+      const descEl = document.getElementById('syncDesc');
+      if (progBar) progBar.style.width = `${percent}%`;
+      if (desc && descEl) descEl.textContent = desc;
+    },
+
+    hideSyncOverlay() {
+      const overlay = document.getElementById('syncOverlay');
+      if (overlay) overlay.classList.add('hidden');
+    },
+
+    showWriteErrorModal(opName, retryFn) {
+      const modal = document.getElementById('syncErrorModal');
+      const titleEl = document.getElementById('syncErrorOperationTitle');
+      const retryBtn = document.getElementById('btnRetrySyncOperation');
+      const dismissBtn = document.getElementById('btnDismissSyncError');
+      const closeBtn = document.getElementById('btnCloseSyncErrorModal');
+
+      if (titleEl) titleEl.textContent = `Sync Interrupted: ${opName}`;
+      if (modal) modal.classList.remove('hidden');
+
+      const cleanup = () => {
+        if (modal) modal.classList.add('hidden');
+        if (retryBtn) retryBtn.onclick = null;
+        if (dismissBtn) dismissBtn.onclick = null;
+        if (closeBtn) closeBtn.onclick = null;
+      };
+
+      if (dismissBtn) dismissBtn.onclick = cleanup;
+      if (closeBtn) closeBtn.onclick = cleanup;
+      if (retryBtn) {
+        retryBtn.onclick = async () => {
+          cleanup();
+          showToast(`Retrying sync for ${opName}...`, 'info');
+          try {
+            await retryFn();
+            showToast(`Synced ${opName} successfully!`, 'success');
+          } catch (e) {
+            console.error('Retry failed:', e);
+            FirestoreDB.showWriteErrorModal(opName, retryFn);
+          }
+        };
+      }
+    },
+
+    async writeWithRetry(opName, writeFn, maxRetries = 2) {
+      if (!db) {
+        // Offline / SDK missing: changes remain in localStorage cache safely
+        return false;
+      }
+      let attempt = 0;
+      while (attempt <= maxRetries) {
+        try {
+          await writeFn();
+          return true;
+        } catch (err) {
+          attempt++;
+          console.warn(`Write attempt ${attempt} for ${opName} failed:`, err);
+          if (attempt > maxRetries) {
+            FirestoreDB.showWriteErrorModal(opName, writeFn);
+            return false;
+          }
+          await new Promise(res => setTimeout(res, 500 * attempt));
+        }
+      }
+      return false;
+    },
+
+    async syncAndLoad(currentUser) {
+      if (!db) {
+        console.warn('Firestore is not available; falling back to local storage.');
+        initData();
+        return;
+      }
+
+      // Sync user profile & role in users collection
+      if (currentUser && currentUser.email) {
+        const emailLower = currentUser.email.toLowerCase();
+        try {
+          const userDocRef = db.collection('users').doc(emailLower);
+          const userSnap = await userDocRef.get();
+          if (userSnap.exists) {
+            const userData = userSnap.data();
+            if (userData.role) {
+              localStorage.setItem(ROLE_STORAGE_PREFIX + emailLower, userData.role);
+            }
+          } else {
+            const currentRole = getUserRole(emailLower);
+            await userDocRef.set({
+              email: emailLower,
+              role: currentRole,
+              schoolName: state.profile.name || DEFAULT_SCHOOL_PROFILE.name
+            }, { merge: true });
+          }
+        } catch (err) {
+          console.warn('User record sync warning:', err);
+        }
+      }
+
+      // Check if Firestore students collection is empty
+      let isFirestoreEmpty = false;
+      try {
+        const testSnap = await db.collection('students').limit(1).get();
+        isFirestoreEmpty = testSnap.empty;
+      } catch (err) {
+        console.warn('Firestore initial check error, checking cache/offline:', err);
+      }
+
+      if (isFirestoreEmpty) {
+        // Auto-migration path: if localStorage has data + Firestore empty -> auto-migrate
+        await FirestoreDB.autoMigrate(currentUser);
+      } else {
+        // Firestore has data: Firestore = source of truth, localStorage = read cache only
+        await FirestoreDB.loadAllFromFirestore();
+      }
+    },
+
+    async autoMigrate(currentUser) {
+      FirestoreDB.showSyncOverlay(
+        'Migrating to Cloud Firestore',
+        'Transferring existing school database from device to Cloud Firestore (asia-south1)...',
+        true,
+        10
+      );
+
+      // Make sure local state is loaded
+      initData();
+
+      const userEmail = currentUser?.email || 'Admin';
+
+      // 1. Migrate Students (20%)
+      FirestoreDB.setSyncProgress(20, 'Migrating student directory to Cloud Firestore...');
+      const studentBatch = db.batch();
+      (state.students || []).forEach(s => {
+        const docRef = db.collection('students').doc(s.id);
+        studentBatch.set(docRef, {
+          id: s.id,
+          name: s.name || '',
+          class: s.className || s.class || '',
+          className: s.className || s.class || '',
+          section: s.section || 'A',
+          parentName: s.fatherName || s.parentName || s.motherName || '',
+          fatherName: s.fatherName || s.parentName || '',
+          motherName: s.motherName || '',
+          parentPhone: s.whatsapp || s.parentPhone || '',
+          whatsapp: s.whatsapp || s.parentPhone || '',
+          emergencyPhone: s.emergencyPhone || '',
+          admissionNo: s.admissionNo || '',
+          rollNo: s.rollNo || '',
+          gender: s.gender || 'Male',
+          dob: s.dob || '',
+          address: s.address || '',
+          status: s.status || 'Active',
+          admissionDate: s.admissionDate || getTodayISO()
+        }, { merge: true });
+      });
+      await studentBatch.commit();
+
+      // 2. Migrate Tests & Marks (45%)
+      FirestoreDB.setSyncProgress(45, 'Migrating tests and subject mark records...');
+      const testsBatch = db.batch();
+      (state.tests || []).forEach(t => {
+        const docRef = db.collection('tests').doc(t.id);
+        testsBatch.set(docRef, {
+          id: t.id,
+          title: t.title || '',
+          className: t.className || '',
+          section: t.section || '',
+          subject: t.subject || '',
+          date: t.date || '',
+          maxMarks: t.maxMarks || 100,
+          passMarks: t.passMarks || 40
+        }, { merge: true });
+      });
+      await testsBatch.commit();
+
+      const marksEntries = Object.entries(state.marks || {});
+      const marksBatches = [];
+      let currentBatch = db.batch();
+      let count = 0;
+      marksEntries.forEach(([key, val]) => {
+        const parts = key.split('_');
+        const testId = parts[0];
+        const studentId = parts[1];
+        const testObj = (state.tests || []).find(t => t.id === testId) || {};
+
+        const docRef = db.collection('marks').doc(key);
+        currentBatch.set(docRef, {
+          studentId: studentId || '',
+          testId: testId || '',
+          subject: testObj.subject || '',
+          term: testObj.title || 'Term Assessment',
+          obtained: val.marks != null ? val.marks : 0,
+          total: testObj.maxMarks || 100,
+          marks: val.marks != null ? val.marks : 0,
+          remarks: val.remarks || '',
+          className: testObj.className || '',
+          section: testObj.section || ''
+        }, { merge: true });
+        count++;
+        if (count % 400 === 0) {
+          marksBatches.push(currentBatch.commit());
+          currentBatch = db.batch();
+        }
+      });
+      if (count % 400 !== 0) {
+        marksBatches.push(currentBatch.commit());
+      }
+      await Promise.all(marksBatches);
+
+      // 3. Migrate Attendance (65%)
+      FirestoreDB.setSyncProgress(65, 'Migrating daily attendance records...');
+      const attBatches = [];
+      let attBatch = db.batch();
+      let attCount = 0;
+      Object.entries(state.attendance || {}).forEach(([recordKey, studentMap]) => {
+        const [dateStr, className, section] = recordKey.split('_');
+        Object.entries(studentMap || {}).forEach(([studId, attData]) => {
+          const docId = `${dateStr}_${studId}`;
+          const docRef = db.collection('attendance').doc(docId);
+          attBatch.set(docRef, {
+            date: dateStr,
+            studentId: studId,
+            class: className || 'Class 3',
+            className: className || 'Class 3',
+            section: section || 'A',
+            status: attData.status || 'Present',
+            time: attData.time || '',
+            markedBy: userEmail
+          }, { merge: true });
+          attCount++;
+          if (attCount % 400 === 0) {
+            attBatches.push(attBatch.commit());
+            attBatch = db.batch();
+          }
+        });
+      });
+      if (attCount % 400 !== 0) {
+        attBatches.push(attBatch.commit());
+      }
+      await Promise.all(attBatches);
+
+      // 4. Migrate Dispatches, PTMs, Call Logs (85%)
+      FirestoreDB.setSyncProgress(85, 'Migrating dispatches, PTM scheduler, and call logs...');
+      const commsBatch = db.batch();
+
+      // Dispatches
+      Object.entries(state.dispatchLogs || {}).forEach(([logKey, dispatchData]) => {
+        const parts = logKey.split('_');
+        const month = parts[0] || 'Monthly Assessment';
+        const className = parts[1] || 'Class 3';
+        const studentId = parts[2] || '';
+        const cleanDocId = `${month.replace(/[^a-zA-Z0-9]/g, '_')}_${className.replace(/[^a-zA-Z0-9]/g, '_')}_${studentId}`;
+        const docRef = db.collection('dispatches').doc(cleanDocId);
+        commsBatch.set(docRef, {
+          class: className,
+          className: className,
+          month: month,
+          studentId: studentId,
+          status: dispatchData.status || 'Pending',
+          sentAt: dispatchData.sentAt || ''
+        }, { merge: true });
+      });
+
+      // PTMs
+      (state.ptmEvents || []).forEach(ptm => {
+        const docRef = db.collection('ptms').doc(ptm.id);
+        commsBatch.set(docRef, {
+          id: ptm.id,
+          title: ptm.title || '',
+          date: ptm.date || '',
+          timeSlots: ptm.timeSlots || `${ptm.startTime || '09:00'} - ${ptm.endTime || '13:00'}`,
+          startTime: ptm.startTime || '09:00',
+          endTime: ptm.endTime || '13:00',
+          classes: ptm.classes || [],
+          venue: ptm.venue || '',
+          notes: ptm.notes || '',
+          invites: Object.keys(ptm.rsvps || {}).map(sId => ({
+            studentId: sId,
+            status: ptm.rsvps[sId]
+          })),
+          rsvps: ptm.rsvps || {}
+        }, { merge: true });
+      });
+
+      // Call logs
+      (state.callLogs || []).forEach(call => {
+        const docRef = db.collection('calls').doc(call.id);
+        commsBatch.set(docRef, {
+          id: call.id,
+          studentId: call.studentId || '',
+          date: call.date || '',
+          reason: call.reason || '',
+          outcome: call.outcome || '',
+          studentName: call.studentName || '',
+          className: call.className || '',
+          parentName: call.parentName || '',
+          phone: call.phone || '',
+          notes: call.notes || ''
+        }, { merge: true });
+      });
+
+      // Settings/Profile
+      const profileRef = db.collection('settings').doc('profile');
+      commsBatch.set(profileRef, state.profile || DEFAULT_SCHOOL_PROFILE, { merge: true });
+
+      // User record
+      if (currentUser && currentUser.email) {
+        const emailLower = currentUser.email.toLowerCase();
+        const userRef = db.collection('users').doc(emailLower);
+        commsBatch.set(userRef, {
+          email: emailLower,
+          role: getUserRole(emailLower),
+          schoolName: state.profile.name || DEFAULT_SCHOOL_PROFILE.name
+        }, { merge: true });
+      }
+
+      await commsBatch.commit();
+
+      FirestoreDB.setSyncProgress(100, 'Migration completed successfully!');
+      localStorage.setItem('schoolsteps_migrated_v1', 'true');
+      showToast('Successfully migrated all school data to Cloud Firestore!', 'success');
+    },
+
+    async loadAllFromFirestore() {
+      FirestoreDB.showSyncOverlay('Loading SchoolSteps', 'Syncing latest school records from Cloud Firestore...');
+
+      try {
+        const [
+          studentsSnap,
+          testsSnap,
+          marksSnap,
+          attSnap,
+          dispatchSnap,
+          ptmSnap,
+          callSnap,
+          profileSnap
+        ] = await Promise.all([
+          db.collection('students').get(),
+          db.collection('tests').get(),
+          db.collection('marks').get(),
+          db.collection('attendance').get(),
+          db.collection('dispatches').get(),
+          db.collection('ptms').get(),
+          db.collection('calls').get(),
+          db.collection('settings').doc('profile').get()
+        ]);
+
+        // 1. Students
+        if (!studentsSnap.empty) {
+          state.students = studentsSnap.docs.map(doc => {
+            const data = doc.data();
+            return {
+              id: doc.id,
+              ...data,
+              className: data.className || data.class || 'Class 3',
+              section: data.section || 'A',
+              fatherName: data.fatherName || data.parentName || '',
+              whatsapp: data.whatsapp || data.parentPhone || ''
+            };
+          });
+          state.students.sort((a, b) => (parseInt(a.rollNo, 10) || 0) - (parseInt(b.rollNo, 10) || 0));
+          saveStorage(STORAGE_KEYS.STUDENTS, state.students);
+        }
+
+        // 2. Tests
+        if (!testsSnap.empty) {
+          state.tests = testsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          saveStorage(STORAGE_KEYS.TESTS, state.tests);
+        }
+
+        // 3. Marks
+        if (!marksSnap.empty) {
+          state.marks = {};
+          marksSnap.docs.forEach(doc => {
+            const d = doc.data();
+            const key = d.testId && d.studentId ? `${d.testId}_${d.studentId}` : doc.id;
+            state.marks[key] = {
+              marks: d.obtained != null ? d.obtained : (d.marks != null ? d.marks : 0),
+              remarks: d.remarks || ''
+            };
+          });
+          saveStorage(STORAGE_KEYS.MARKS, state.marks);
+        }
+
+        // 4. Attendance
+        if (!attSnap.empty) {
+          state.attendance = {};
+          attSnap.docs.forEach(doc => {
+            const d = doc.data();
+            const key = `${d.date}_${d.className || d.class || 'Class 3'}_${d.section || 'A'}`;
+            state.attendance[key] = state.attendance[key] || {};
+            state.attendance[key][d.studentId] = {
+              status: d.status || 'Present',
+              time: d.time || ''
+            };
+          });
+          saveStorage(STORAGE_KEYS.ATTENDANCE, state.attendance);
+        }
+
+        // 5. Dispatches
+        if (!dispatchSnap.empty) {
+          state.dispatchLogs = {};
+          dispatchSnap.docs.forEach(doc => {
+            const d = doc.data();
+            const key = `${d.month}_${d.className || d.class}_${d.studentId}`;
+            state.dispatchLogs[key] = {
+              status: d.status || 'Pending',
+              sentAt: d.sentAt || ''
+            };
+          });
+          saveStorage(STORAGE_KEYS.DISPATCH_LOG, state.dispatchLogs);
+        }
+
+        // 6. PTMs
+        if (!ptmSnap.empty) {
+          state.ptmEvents = ptmSnap.docs.map(doc => {
+            const d = doc.data();
+            let rsvps = d.rsvps || {};
+            if (Array.isArray(d.invites) && Object.keys(rsvps).length === 0) {
+              d.invites.forEach(inv => {
+                if (inv && inv.studentId) rsvps[inv.studentId] = inv.status;
+              });
+            }
+            return {
+              id: doc.id,
+              ...d,
+              rsvps
+            };
+          });
+          state.activePtmId = state.ptmEvents[0]?.id || null;
+          saveStorage(STORAGE_KEYS.PTM_EVENTS, state.ptmEvents);
+        }
+
+        // 7. Calls
+        if (!callSnap.empty) {
+          state.callLogs = callSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          state.callLogs.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+          saveStorage(STORAGE_KEYS.CALL_LOGS, state.callLogs);
+        }
+
+        // 8. Profile
+        if (profileSnap.exists) {
+          state.profile = { ...DEFAULT_SCHOOL_PROFILE, ...profileSnap.data() };
+          saveStorage(STORAGE_KEYS.PROFILE, state.profile);
+        }
+
+      } catch (err) {
+        console.warn('Error loading from Firestore, using offline cache:', err);
+        initData();
+      }
+    },
+
+    // --- Direct CRUD Mutation Methods ---
+    async saveStudent(student) {
+      return this.writeWithRetry(`Save Student (${student.name})`, async () => {
+        const docRef = db.collection('students').doc(student.id);
+        await docRef.set({
+          id: student.id,
+          name: student.name || '',
+          class: student.className || student.class || '',
+          className: student.className || student.class || '',
+          section: student.section || 'A',
+          parentName: student.fatherName || student.parentName || student.motherName || '',
+          fatherName: student.fatherName || student.parentName || '',
+          motherName: student.motherName || '',
+          parentPhone: student.whatsapp || student.parentPhone || '',
+          whatsapp: student.whatsapp || student.parentPhone || '',
+          emergencyPhone: student.emergencyPhone || '',
+          admissionNo: student.admissionNo || '',
+          rollNo: student.rollNo || '',
+          gender: student.gender || 'Male',
+          dob: student.dob || '',
+          address: student.address || '',
+          status: student.status || 'Active',
+          admissionDate: student.admissionDate || getTodayISO()
+        }, { merge: true });
+      });
+    },
+
+    async deleteStudent(id) {
+      return this.writeWithRetry(`Delete Student`, async () => {
+        await db.collection('students').doc(id).delete();
+      });
+    },
+
+    async saveAttendanceRecord(dateStr, className, section, studentId, status, timeStr = '', markedBy = '') {
+      return this.writeWithRetry(`Attendance for ${studentId}`, async () => {
+        const docId = `${dateStr}_${studentId}`;
+        await db.collection('attendance').doc(docId).set({
+          date: dateStr,
+          studentId,
+          class: className,
+          className,
+          section,
+          status,
+          time: timeStr,
+          markedBy: markedBy || (auth?.currentUser?.email || 'Teacher')
+        }, { merge: true });
+      });
+    },
+
+    async saveAttendanceBatch(records) {
+      return this.writeWithRetry(`Save Attendance Batch`, async () => {
+        const batch = db.batch();
+        records.forEach(r => {
+          const docId = `${r.date}_${r.studentId}`;
+          const ref = db.collection('attendance').doc(docId);
+          batch.set(ref, {
+            date: r.date,
+            studentId: r.studentId,
+            class: r.className || r.class,
+            className: r.className || r.class,
+            section: r.section,
+            status: r.status,
+            time: r.time || '',
+            markedBy: r.markedBy || (auth?.currentUser?.email || 'Teacher')
+          }, { merge: true });
+        });
+        await batch.commit();
+      });
+    },
+
+    async saveTest(test) {
+      return this.writeWithRetry(`Save Test (${test.title})`, async () => {
+        await db.collection('tests').doc(test.id).set({
+          id: test.id,
+          title: test.title || '',
+          className: test.className || '',
+          section: test.section || '',
+          subject: test.subject || '',
+          date: test.date || '',
+          maxMarks: test.maxMarks || 100,
+          passMarks: test.passMarks || 40
+        }, { merge: true });
+      });
+    },
+
+    async saveMarksBatch(test, marksList) {
+      return this.writeWithRetry(`Save Marks (${test.subject})`, async () => {
+        const batch = db.batch();
+        marksList.forEach(m => {
+          const docId = `${test.id}_${m.studentId}`;
+          const ref = db.collection('marks').doc(docId);
+          batch.set(ref, {
+            studentId: m.studentId,
+            testId: test.id,
+            subject: test.subject || '',
+            term: test.title || 'Assessment',
+            obtained: m.marks != null ? m.marks : 0,
+            total: test.maxMarks || 100,
+            marks: m.marks != null ? m.marks : 0,
+            remarks: m.remarks || '',
+            className: test.className || '',
+            section: test.section || ''
+          }, { merge: true });
+        });
+        await batch.commit();
+      });
+    },
+
+    async saveProfile(profile) {
+      return this.writeWithRetry(`Save School Profile`, async () => {
+        await db.collection('settings').doc('profile').set({
+          name: profile.name || '',
+          motto: profile.motto || '',
+          address: profile.address || '',
+          principal: profile.principal || '',
+          academicYear: profile.academicYear || '',
+          passPercentage: profile.passPercentage || 40
+        }, { merge: true });
+      });
+    },
+
+    async saveDispatch(month, className, studentId, status, sentAt) {
+      return this.writeWithRetry(`Dispatch for ${studentId}`, async () => {
+        const cleanDocId = `${month.replace(/[^a-zA-Z0-9]/g, '_')}_${className.replace(/[^a-zA-Z0-9]/g, '_')}_${studentId}`;
+        await db.collection('dispatches').doc(cleanDocId).set({
+          class: className,
+          className,
+          month,
+          studentId,
+          status,
+          sentAt: sentAt || ''
+        }, { merge: true });
+      });
+    },
+
+    async saveDispatchBatch(month, className, students, status, sentAt) {
+      return this.writeWithRetry(`Batch Dispatch for ${className}`, async () => {
+        const batch = db.batch();
+        students.forEach(s => {
+          const cleanDocId = `${month.replace(/[^a-zA-Z0-9]/g, '_')}_${className.replace(/[^a-zA-Z0-9]/g, '_')}_${s.id}`;
+          const ref = db.collection('dispatches').doc(cleanDocId);
+          batch.set(ref, {
+            class: className,
+            className,
+            month,
+            studentId: s.id,
+            status,
+            sentAt: sentAt || ''
+          }, { merge: true });
+        });
+        await batch.commit();
+      });
+    },
+
+    async resetDispatchBatch(month, className, students) {
+      return this.writeWithRetry(`Reset Dispatch for ${className}`, async () => {
+        const batch = db.batch();
+        students.forEach(s => {
+          const cleanDocId = `${month.replace(/[^a-zA-Z0-9]/g, '_')}_${className.replace(/[^a-zA-Z0-9]/g, '_')}_${s.id}`;
+          const ref = db.collection('dispatches').doc(cleanDocId);
+          batch.delete(ref);
+        });
+        await batch.commit();
+      });
+    },
+
+    async savePtm(ptm) {
+      return this.writeWithRetry(`Save PTM (${ptm.title})`, async () => {
+        await db.collection('ptms').doc(ptm.id).set({
+          id: ptm.id,
+          title: ptm.title || '',
+          date: ptm.date || '',
+          timeSlots: ptm.timeSlots || `${ptm.startTime || '09:00'} - ${ptm.endTime || '13:00'}`,
+          startTime: ptm.startTime || '09:00',
+          endTime: ptm.endTime || '13:00',
+          classes: ptm.classes || [],
+          venue: ptm.venue || '',
+          notes: ptm.notes || '',
+          invites: Object.keys(ptm.rsvps || {}).map(sId => ({
+            studentId: sId,
+            status: ptm.rsvps[sId]
+          })),
+          rsvps: ptm.rsvps || {}
+        }, { merge: true });
+      });
+    },
+
+    async deletePtm(id) {
+      return this.writeWithRetry(`Delete PTM`, async () => {
+        await db.collection('ptms').doc(id).delete();
+      });
+    },
+
+    async updatePtmRsvp(ptmId, studentId, rsvpVal) {
+      return this.writeWithRetry(`RSVP for ${studentId}`, async () => {
+        const ptmRef = db.collection('ptms').doc(ptmId);
+        await ptmRef.set({
+          rsvps: { [studentId]: rsvpVal }
+        }, { merge: true });
+      });
+    },
+
+    async saveCallLog(call) {
+      return this.writeWithRetry(`Save Call Log`, async () => {
+        await db.collection('calls').doc(call.id).set({
+          id: call.id,
+          studentId: call.studentId || '',
+          date: call.date || '',
+          reason: call.reason || '',
+          outcome: call.outcome || '',
+          studentName: call.studentName || '',
+          className: call.className || '',
+          parentName: call.parentName || '',
+          phone: call.phone || '',
+          notes: call.notes || ''
+        }, { merge: true });
+      });
+    },
+
+    async deleteCallLog(id) {
+      return this.writeWithRetry(`Delete Call Log`, async () => {
+        await db.collection('calls').doc(id).delete();
+      });
+    },
+
+    async saveUser(email, role, schoolName) {
+      if (!email || !db) return;
+      return this.writeWithRetry(`Save User Role`, async () => {
+        await db.collection('users').doc(email.toLowerCase()).set({
+          email: email.toLowerCase(),
+          role: role || 'Teacher',
+          schoolName: schoolName || state.profile.name || DEFAULT_SCHOOL_PROFILE.name
+        }, { merge: true });
+      });
+    },
+
+    async resetToDemoData(userEmail) {
+      if (!db) return;
+      FirestoreDB.showSyncOverlay('Reloading Demo Data', 'Updating Cloud Firestore with sample school dataset...', true, 20);
+
+      try {
+        await FirestoreDB.autoMigrate({ email: userEmail });
+      } catch (e) {
+        console.error('Error resetting demo data in Firestore:', e);
+      } finally {
+        FirestoreDB.hideSyncOverlay();
+      }
+    }
+  };
+
   function initData() {
     state.profile = loadStorage(STORAGE_KEYS.PROFILE, DEFAULT_SCHOOL_PROFILE);
     state.students = loadStorage(STORAGE_KEYS.STUDENTS, null);
@@ -754,9 +1517,12 @@
     saveStorage(STORAGE_KEYS.DISPATCH_LOG, state.dispatchLogs);
     saveStorage(STORAGE_KEYS.PTM_EVENTS, state.ptmEvents);
     saveStorage(STORAGE_KEYS.CALL_LOGS, state.callLogs);
-
-    showToast('Demo data reloaded successfully!', 'success');
-    renderApp();
+    if (FirestoreDB.isReady()) {
+      FirestoreDB.resetToDemoData(auth?.currentUser?.email || 'Teacher');
+    } else {
+      showToast('Demo data reloaded successfully!', 'success');
+      renderApp();
+    }
   }
 
   // ========================================================
@@ -1283,6 +2049,12 @@
     }
 
     saveStorage(STORAGE_KEYS.STUDENTS, state.students);
+    const targetStudent = state.editingStudentId
+      ? state.students.find(s => s.id === state.editingStudentId)
+      : state.students[state.students.length - 1];
+    if (targetStudent && FirestoreDB.isReady()) {
+      FirestoreDB.saveStudent(targetStudent);
+    }
     closeStudentModal();
     renderClassDropdowns();
     renderStudentsList();
@@ -1296,6 +2068,9 @@
     if (confirm(`Are you sure you want to delete student "${student.name}" (Roll #${student.rollNo})?`)) {
       state.students = state.students.filter(s => s.id !== id);
       saveStorage(STORAGE_KEYS.STUDENTS, state.students);
+      if (FirestoreDB.isReady()) {
+        FirestoreDB.deleteStudent(id);
+      }
       showToast(`Removed student ${student.name}`, 'info');
       renderClassDropdowns();
       renderStudentsList();
@@ -1330,6 +2105,9 @@
       time: timeStr
     };
     saveStorage(STORAGE_KEYS.ATTENDANCE, state.attendance);
+    if (FirestoreDB.isReady()) {
+      FirestoreDB.saveAttendanceRecord(dateStr, className, section, studentId, status, timeStr);
+    }
   }
 
   function renderAttendanceRoster() {
@@ -1460,16 +2238,49 @@
     );
     if (enrolled.length === 0) return;
 
+    const batchRecords = [];
     enrolled.forEach(student => {
-      setStudentAttendanceStatus(selectedDate, selectedClass, selectedSection, student.id, 'Present', '');
+      const key = getAttendanceRecordKey(selectedDate, selectedClass, selectedSection);
+      if (!state.attendance[key]) state.attendance[key] = {};
+      state.attendance[key][student.id] = { status: 'Present', time: '' };
+      batchRecords.push({
+        date: selectedDate,
+        studentId: student.id,
+        className: selectedClass,
+        section: selectedSection,
+        status: 'Present',
+        time: ''
+      });
     });
+    saveStorage(STORAGE_KEYS.ATTENDANCE, state.attendance);
+    if (FirestoreDB.isReady() && batchRecords.length > 0) {
+      FirestoreDB.saveAttendanceBatch(batchRecords);
+    }
 
     showToast(`Marked all ${enrolled.length} students Present for ${selectedClass}-${selectedSection}!`, 'success');
     renderAttendanceRoster();
   }
 
   function handleSaveAttendance() {
-    showToast('Daily attendance record saved to device!', 'success');
+    const dateInput = document.getElementById('attDatePicker');
+    const classSelect = document.getElementById('attClassSelect');
+    const sectionSelect = document.getElementById('attSectionSelect');
+    const selectedDate = dateInput?.value || getTodayISO();
+    const selectedClass = classSelect?.value || 'Class 3';
+    const selectedSection = (sectionSelect?.value || 'A').trim();
+    const attMap = getAttendanceForDateAndClass(selectedDate, selectedClass, selectedSection);
+    const records = Object.entries(attMap).map(([sId, val]) => ({
+      date: selectedDate,
+      studentId: sId,
+      className: selectedClass,
+      section: selectedSection,
+      status: val.status,
+      time: val.time || ''
+    }));
+    if (FirestoreDB.isReady() && records.length > 0) {
+      FirestoreDB.saveAttendanceBatch(records);
+    }
+    showToast('Daily attendance saved & synced to Cloud Firestore!', 'success');
   }
 
   // ========================================================
@@ -1809,6 +2620,24 @@ ${student.name} (${classLabel}) is marked PRESENT today (${formattedDate}).
     });
 
     saveStorage(STORAGE_KEYS.MARKS, state.marks);
+    if (FirestoreDB.isReady()) {
+      const marksList = [];
+      inputs.forEach(inp => {
+        const sId = inp.dataset.studentId;
+        const val = inp.value.trim();
+        if (val !== '' && sId) {
+          const remInput = document.querySelector(`.mark-remarks-input[data-student-id="${sId}"]`);
+          marksList.push({
+            studentId: sId,
+            marks: parseFloat(val),
+            remarks: remInput ? remInput.value.trim() : ''
+          });
+        }
+      });
+      if (marksList.length > 0) {
+        FirestoreDB.saveMarksBatch(test, marksList);
+      }
+    }
     showToast(`Saved marks for ${savedCount} students in ${test.subject}!`, 'success');
     renderMarksEntrySheet();
   }
@@ -1841,6 +2670,9 @@ ${student.name} (${classLabel}) is marked PRESENT today (${formattedDate}).
 
     state.tests.push(newTest);
     saveStorage(STORAGE_KEYS.TESTS, state.tests);
+    if (FirestoreDB.isReady()) {
+      FirestoreDB.saveTest(newTest);
+    }
     state.currentTestId = newTest.id;
     updateSectionSuggestions();
 
@@ -2073,6 +2905,9 @@ ${student.name} (${classLabel}) is marked PRESENT today (${formattedDate}).
     };
 
     saveStorage(STORAGE_KEYS.PROFILE, state.profile);
+    if (FirestoreDB.isReady()) {
+      FirestoreDB.saveProfile(state.profile);
+    }
     document.getElementById('schoolSettingsModal').classList.add('hidden');
     document.getElementById('headerSchoolName').textContent = state.profile.name;
     showToast('School profile & branding updated successfully!', 'success');
@@ -2273,6 +3108,9 @@ Status: ${res.anyFailed ? 'PROMOTED ON TRIAL' : 'PASSED'}
       sentAt: nowStr
     };
     saveStorage(STORAGE_KEYS.DISPATCH_LOG, state.dispatchLogs);
+    if (FirestoreDB.isReady()) {
+      FirestoreDB.saveDispatch(selectedMonth, selectedClass, studentId, 'Sent', nowStr);
+    }
     renderDispatchRoster();
   }
 
@@ -2301,6 +3139,9 @@ Status: ${res.anyFailed ? 'PROMOTED ON TRIAL' : 'PASSED'}
     });
 
     saveStorage(STORAGE_KEYS.DISPATCH_LOG, state.dispatchLogs);
+    if (FirestoreDB.isReady()) {
+      FirestoreDB.saveDispatchBatch(selectedMonth, selectedClass, enrolled, 'Sent', nowStr);
+    }
     renderDispatchRoster();
     showToast(`Marked all ${enrolled.length} students as Sent!`, 'success');
   }
@@ -2325,6 +3166,9 @@ Status: ${res.anyFailed ? 'PROMOTED ON TRIAL' : 'PASSED'}
     });
 
     saveStorage(STORAGE_KEYS.DISPATCH_LOG, state.dispatchLogs);
+    if (FirestoreDB.isReady()) {
+      FirestoreDB.resetDispatchBatch(selectedMonth, selectedClass, enrolled);
+    }
     renderDispatchRoster();
     showToast('Delivery log reset to Pending for this class.', 'info');
   }
@@ -2489,6 +3333,9 @@ Please confirm your attendance (Yes / No).
     }
 
     saveStorage(STORAGE_KEYS.PTM_EVENTS, state.ptmEvents);
+    if (FirestoreDB.isReady()) {
+      FirestoreDB.updatePtmRsvp(activeEvent.id, studentId, activeEvent.rsvps[studentId]);
+    }
     renderPtmModule();
     showToast(`RSVP recorded as ${activeEvent.rsvps[studentId]}`, 'info');
   }
@@ -2580,6 +3427,12 @@ Please confirm your attendance (Yes / No).
     }
 
     saveStorage(STORAGE_KEYS.PTM_EVENTS, state.ptmEvents);
+    const targetPtm = editId
+      ? state.ptmEvents.find(ev => ev.id === editId)
+      : state.ptmEvents[0];
+    if (targetPtm && FirestoreDB.isReady()) {
+      FirestoreDB.savePtm(targetPtm);
+    }
     document.getElementById('ptmModal').classList.add('hidden');
     renderPtmModule();
     showToast(editId ? 'PTM event updated!' : 'New PTM event created successfully!', 'success');
@@ -2595,6 +3448,9 @@ Please confirm your attendance (Yes / No).
       state.ptmEvents = state.ptmEvents.filter(ev => ev.id !== id);
       state.activePtmId = state.ptmEvents[0]?.id || null;
       saveStorage(STORAGE_KEYS.PTM_EVENTS, state.ptmEvents);
+      if (FirestoreDB.isReady()) {
+        FirestoreDB.deletePtm(id);
+      }
       renderPtmModule();
       showToast('PTM event deleted.', 'info');
     }
@@ -2816,6 +3672,9 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
 
     state.callLogs.unshift(newLog);
     saveStorage(STORAGE_KEYS.CALL_LOGS, state.callLogs);
+    if (FirestoreDB.isReady()) {
+      FirestoreDB.saveCallLog(newLog);
+    }
     document.getElementById('callLogModal').classList.add('hidden');
     renderCallLogs();
     showToast(`Call logged for ${student.name}!`, 'success');
@@ -2825,6 +3684,9 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
     if (confirm('Delete this call record?')) {
       state.callLogs = state.callLogs.filter(l => l.id !== id);
       saveStorage(STORAGE_KEYS.CALL_LOGS, state.callLogs);
+      if (FirestoreDB.isReady()) {
+        FirestoreDB.deleteCallLog(id);
+      }
       renderCallLogs();
       showToast('Call log removed.', 'info');
     }
@@ -3303,9 +4165,25 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
       return;
     }
 
-    auth.onAuthStateChanged((user) => {
+    auth.onAuthStateChanged(async (user) => {
       if (user) {
         authScreen?.classList.add('hidden');
+
+        // Show sync & migration loader
+        FirestoreDB.showSyncOverlay(
+          'Connecting to Cloud Firestore',
+          'Synchronizing school database with Cloud Firestore (asia-south1)...'
+        );
+
+        try {
+          await FirestoreDB.syncAndLoad(user);
+        } catch (err) {
+          console.error('Firestore sync error on login:', err);
+          showToast('Loaded local offline cache. Changes will sync when connected.', 'warn');
+        } finally {
+          FirestoreDB.hideSyncOverlay();
+        }
+
         appContainer?.classList.remove('hidden');
         mobileBottomBar?.classList.remove('hidden');
 
@@ -3313,11 +4191,13 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
         updateUserHeader(user.email, role);
 
         if (!isAppInitialized) {
-          initApp();
-        } else {
-          renderApp();
+          initNavigation();
+          bindEvents();
+          isAppInitialized = true;
         }
+        renderApp();
       } else {
+        FirestoreDB.hideSyncOverlay();
         authScreen?.classList.remove('hidden');
         appContainer?.classList.add('hidden');
         mobileBottomBar?.classList.add('hidden');

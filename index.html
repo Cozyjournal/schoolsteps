@@ -12,6 +12,7 @@
   <!-- Firebase SDK (v10.x Compat) -->
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-analytics-compat.js"></script>
 
   <link rel="stylesheet" href="style.css">
@@ -84,6 +85,19 @@
           <button type="button" class="auth-switch-link" id="authSwitchLink">Create an account</button>
         </div>
       </form>
+    </div>
+  <!-- Sync & Auto-Migration Overlay -->
+  <div id="syncOverlay" class="sync-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="syncTitle">
+    <div class="sync-card card">
+      <div class="sync-spinner-wrap">
+        <div class="sync-spinner"></div>
+      </div>
+      <h3 class="sync-title" id="syncTitle">Connecting to Cloud Firestore</h3>
+      <p class="sync-desc" id="syncDesc">Loading your school database and syncing with Cloud Firestore...</p>
+      <div class="sync-progress-bar-wrap hidden" id="syncProgressWrap">
+        <div class="sync-progress-bar" id="syncProgressBar"></div>
+      </div>
+      <p class="sync-status-hint" id="syncStatusHint">⚡ Powered by Cloud Firestore (asia-south1) • Offline ready</p>
     </div>
   </div>
 
@@ -1382,6 +1396,27 @@
           <button type="submit" class="btn btn-primary" id="btnSubmitCallLog">Save Call Log</button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- Write Error & Retry Modal -->
+  <div id="syncErrorModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="syncErrorOperationTitle">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 class="modal-title" style="color: var(--status-rose);">⚠️ Sync Notice</h3>
+        <button type="button" class="btn-close" id="btnCloseSyncErrorModal" aria-label="Close modal">✕</button>
+      </div>
+      <div class="modal-body">
+        <p style="margin-bottom: 10px; font-weight: 700; color: var(--text-heading);" id="syncErrorOperationTitle">Cloud Sync Interrupted</p>
+        <p class="modal-intro" id="syncErrorMessage">A recent change could not be uploaded to Cloud Firestore immediately. Your changes are saved safely in your offline cache.</p>
+        <div style="background: var(--bg-surface); padding: 10px; border-radius: var(--radius-sm); border: 1px solid var(--border-soft); margin-top: 10px; font-size: 0.82rem; color: var(--text-muted);" id="syncErrorDetails">
+          Firestore offline persistence is active. Changes will sync automatically when your connection is restored.
+        </div>
+      </div>
+      <div class="modal-footer" style="display: flex; gap: 8px; justify-content: flex-end; padding: 12px 14px; border-top: 1px solid var(--border-soft); background: var(--bg-surface);">
+        <button type="button" class="btn btn-subtle" id="btnDismissSyncError">Dismiss</button>
+        <button type="button" class="btn btn-primary" id="btnRetrySyncOperation">Retry Sync</button>
+      </div>
     </div>
   </div>
 

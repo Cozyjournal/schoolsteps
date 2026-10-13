@@ -11,8 +11,37 @@
   'use strict';
 
   // ========================================================
+  // Firebase Configuration & Initialization
+  // ========================================================
+  const firebaseConfig = {
+    apiKey: "AIzaSyCRD8lzF7BS1F2HZYdAcrk6hXgZcuExXcA",
+    authDomain: "schoolsteps-f8b97.firebaseapp.com",
+    projectId: "schoolsteps-f8b97",
+    storageBucket: "schoolsteps-f8b97.firebasestorage.app",
+    messagingSenderId: "280556240060",
+    appId: "1:280556240060:web:053bc322584d07e0db24b9",
+    measurementId: "G-XGYRC5PNZW"
+  };
+
+  let auth = null;
+  if (typeof firebase !== 'undefined') {
+    if (!firebase.apps || !firebase.apps.length) {
+      firebase.initializeApp(firebaseConfig);
+    }
+    if (typeof firebase.analytics === 'function' && firebaseConfig.measurementId) {
+      try {
+        firebase.analytics();
+      } catch (err) {
+        console.warn('Analytics initialization error:', err);
+      }
+    }
+    auth = firebase.auth();
+  }
+
+  // ========================================================
   // Storage Keys & Default State
   // ========================================================
+  const ROLE_STORAGE_PREFIX = 'schoolsteps_role_';
   const STORAGE_KEYS = {
     STUDENTS: 'schoolsteps_students_v1',
     ATTENDANCE: 'schoolsteps_attendance_v1',
@@ -20,6 +49,16 @@
     MARKS: 'schoolsteps_marks_v1',
     PROFILE: 'schoolsteps_profile_v1'
   };
+
+  function getUserRole(email) {
+    if (!email) return 'Teacher';
+    return localStorage.getItem(ROLE_STORAGE_PREFIX + email.toLowerCase()) || 'Teacher';
+  }
+
+  function setUserRole(email, role) {
+    if (!email) return;
+    localStorage.setItem(ROLE_STORAGE_PREFIX + email.toLowerCase(), role);
+  }
 
   const DEFAULT_SCHOOL_PROFILE = {
     name: 'Beacon Oak Grammar School',
@@ -1742,6 +1781,254 @@ ${student.name} (${classLabel}) is marked PRESENT today (${formattedDate}).
   }
 
   // ========================================================
+  // Firebase Authentication & Session Management
+  // ========================================================
+  let currentAuthMode = 'login'; // 'login' or 'signup'
+  let isAppInitialized = false;
+
+  function getFriendlyAuthErrorMessage(error) {
+    if (!error) return 'An unexpected error occurred. Please try again.';
+    const code = error.code || '';
+    switch (code) {
+      case 'auth/invalid-email':
+        return 'Please enter a valid email address.';
+      case 'auth/user-not-found':
+        return 'No account found with this email. Please check your email or click Sign Up.';
+      case 'auth/wrong-password':
+        return 'Incorrect password. Please check your password and try again.';
+      case 'auth/invalid-credential':
+        return 'Invalid email or password. Please verify your details and try again.';
+      case 'auth/email-already-in-use':
+        return 'An account already exists with this email. Please sign in instead.';
+      case 'auth/weak-password':
+        return 'Password is too weak. Please choose a password with at least 6 characters.';
+      case 'auth/too-many-requests':
+        return 'Too many unsuccessful attempts. Access has been temporarily locked. Please try again in a few minutes.';
+      case 'auth/network-request-failed':
+        return 'Unable to connect to the authentication server. Please check your internet connection.';
+      case 'auth/operation-not-allowed':
+        return 'Email and password sign-in is not enabled. Please contact support.';
+      case 'auth/user-disabled':
+        return 'This account has been disabled. Please contact your administrator.';
+      default:
+        return error.message || 'Authentication failed. Please verify your details and try again.';
+    }
+  }
+
+  function showAuthError(message) {
+    const box = document.getElementById('authErrorBox');
+    const text = document.getElementById('authErrorText');
+    if (box && text) {
+      text.textContent = message;
+      box.classList.remove('hidden');
+    }
+  }
+
+  function hideAuthError() {
+    const box = document.getElementById('authErrorBox');
+    const text = document.getElementById('authErrorText');
+    if (box && text) {
+      text.textContent = '';
+      box.classList.add('hidden');
+    }
+  }
+
+  function setAuthLoading(isLoading) {
+    const submitBtn = document.getElementById('btnAuthSubmit');
+    const spinner = document.getElementById('authSpinner');
+    if (!submitBtn) return;
+    submitBtn.disabled = isLoading;
+    if (spinner) {
+      if (isLoading) spinner.classList.remove('hidden');
+      else spinner.classList.add('hidden');
+    }
+  }
+
+  function setAuthMode(mode) {
+    currentAuthMode = mode;
+    hideAuthError();
+    const btnLogin = document.getElementById('btnToggleLogin');
+    const btnSignup = document.getElementById('btnToggleSignup');
+    const submitText = document.getElementById('btnAuthSubmitText');
+    const switchPromptText = document.getElementById('authSwitchPromptText');
+    const switchLink = document.getElementById('authSwitchLink');
+
+    if (mode === 'signup') {
+      btnLogin?.classList.remove('active');
+      btnLogin?.setAttribute('aria-selected', 'false');
+      btnSignup?.classList.add('active');
+      btnSignup?.setAttribute('aria-selected', 'true');
+      if (submitText) submitText.textContent = 'Create Account';
+      if (switchPromptText) switchPromptText.textContent = 'Already have an account?';
+      if (switchLink) switchLink.textContent = 'Sign in';
+    } else {
+      btnSignup?.classList.remove('active');
+      btnSignup?.setAttribute('aria-selected', 'false');
+      btnLogin?.classList.add('active');
+      btnLogin?.setAttribute('aria-selected', 'true');
+      if (submitText) submitText.textContent = 'Sign In';
+      if (switchPromptText) switchPromptText.textContent = "Don't have an account?";
+      if (switchLink) switchLink.textContent = 'Create an account';
+    }
+  }
+
+  function updateUserHeader(email, role) {
+    const roleBadge = document.getElementById('userRoleBadge');
+    const emailSub = document.getElementById('userEmailSub');
+    if (roleBadge) {
+      roleBadge.textContent = role || 'Teacher';
+    }
+    if (emailSub) {
+      emailSub.textContent = email || '';
+      emailSub.title = email || '';
+    }
+  }
+
+  async function handleAuthSubmit(e) {
+    e.preventDefault();
+    hideAuthError();
+
+    const emailInput = document.getElementById('authEmail');
+    const passwordInput = document.getElementById('authPassword');
+    const email = emailInput?.value.trim() || '';
+    const password = passwordInput?.value || '';
+    const selectedRole = document.querySelector('input[name="authRole"]:checked')?.value || 'Teacher';
+
+    if (!email) {
+      showAuthError('Please enter your email address.');
+      emailInput?.focus();
+      return;
+    }
+    if (!password) {
+      showAuthError('Please enter your password.');
+      passwordInput?.focus();
+      return;
+    }
+    if (password.length < 6) {
+      showAuthError('Password must be at least 6 characters long.');
+      passwordInput?.focus();
+      return;
+    }
+
+    if (!auth) {
+      showAuthError('Firebase Authentication is not available. Please check network connection.');
+      return;
+    }
+
+    setAuthLoading(true);
+
+    try {
+      if (currentAuthMode === 'signup') {
+        const userCredential = await auth.createUserWithEmailAndPassword(email, password);
+        if (userCredential && userCredential.user) {
+          setUserRole(userCredential.user.email, selectedRole);
+          showToast(`Account created! Welcome, ${selectedRole}.`, 'success');
+        }
+      } else {
+        const userCredential = await auth.signInWithEmailAndPassword(email, password);
+        if (userCredential && userCredential.user) {
+          setUserRole(userCredential.user.email, selectedRole);
+          showToast('Signed in successfully!', 'success');
+        }
+      }
+    } catch (error) {
+      console.error('Firebase Auth error:', error);
+      showAuthError(getFriendlyAuthErrorMessage(error));
+    } finally {
+      setAuthLoading(false);
+    }
+  }
+
+  async function handleLogout() {
+    if (confirm('Are you sure you want to log out of SchoolSteps?')) {
+      try {
+        if (auth) {
+          await auth.signOut();
+        }
+        showToast('Logged out successfully.', 'info');
+      } catch (err) {
+        console.error('Logout error:', err);
+        showToast('Error logging out. Please try again.', 'error');
+      }
+    }
+  }
+
+  function bindAuthEvents() {
+    document.getElementById('btnToggleLogin')?.addEventListener('click', () => setAuthMode('login'));
+    document.getElementById('btnToggleSignup')?.addEventListener('click', () => setAuthMode('signup'));
+    document.getElementById('authSwitchLink')?.addEventListener('click', () => {
+      setAuthMode(currentAuthMode === 'login' ? 'signup' : 'login');
+    });
+
+    // Role selection cards
+    const roleCards = document.querySelectorAll('.role-option-card');
+    roleCards.forEach(card => {
+      card.addEventListener('click', () => {
+        const radio = card.querySelector('input[name="authRole"]');
+        if (radio) radio.checked = true;
+        roleCards.forEach(c => c.classList.remove('active'));
+        card.classList.add('active');
+      });
+    });
+
+    // Remembered role lookup on blur
+    document.getElementById('authEmail')?.addEventListener('blur', (e) => {
+      const email = e.target.value.trim();
+      if (email) {
+        const rememberedRole = localStorage.getItem(ROLE_STORAGE_PREFIX + email.toLowerCase());
+        if (rememberedRole) {
+          const radio = document.querySelector(`input[name="authRole"][value="${rememberedRole}"]`);
+          if (radio) {
+            radio.checked = true;
+            roleCards.forEach(card => card.classList.toggle('active', card.contains(radio)));
+          }
+        }
+      }
+    });
+
+    document.getElementById('authForm')?.addEventListener('submit', handleAuthSubmit);
+    document.getElementById('btnLogout')?.addEventListener('click', handleLogout);
+  }
+
+  function initAuthGating() {
+    const authScreen = document.getElementById('authScreen');
+    const appContainer = document.getElementById('appContainer');
+    const mobileBottomBar = document.getElementById('mobileBottomBar');
+
+    if (!auth) {
+      console.warn('Firebase Auth SDK is not available.');
+      showAuthError('Firebase Authentication could not be connected. Please check your internet connection.');
+      return;
+    }
+
+    auth.onAuthStateChanged((user) => {
+      if (user) {
+        authScreen?.classList.add('hidden');
+        appContainer?.classList.remove('hidden');
+        mobileBottomBar?.classList.remove('hidden');
+
+        const role = getUserRole(user.email);
+        updateUserHeader(user.email, role);
+
+        if (!isAppInitialized) {
+          initApp();
+        } else {
+          renderApp();
+        }
+      } else {
+        authScreen?.classList.remove('hidden');
+        appContainer?.classList.add('hidden');
+        mobileBottomBar?.classList.add('hidden');
+
+        const pwField = document.getElementById('authPassword');
+        if (pwField) pwField.value = '';
+        hideAuthError();
+        setAuthLoading(false);
+      }
+    });
+  }
+
+  // ========================================================
   // App Render & Startup
   // ========================================================
   function renderApp() {
@@ -1753,18 +2040,24 @@ ${student.name} (${classLabel}) is marked PRESENT today (${formattedDate}).
     renderReportCard();
   }
 
-  function init() {
+  function initApp() {
     initData();
     initNavigation();
     bindEvents();
     renderApp();
+    isAppInitialized = true;
+  }
+
+  function start() {
+    bindAuthEvents();
+    initAuthGating();
   }
 
   // Run on DOM Ready
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
+    document.addEventListener('DOMContentLoaded', start);
   } else {
-    init();
+    start();
   }
 
 })();

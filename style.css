@@ -200,6 +200,46 @@ h1, h2, h3, h4, h5, h6 {
   align-items: center;
   gap: 8px;
   flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.user-pill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+}
+
+.user-role-badge {
+  background: var(--secondary-light);
+  color: var(--secondary);
+  border: 1px solid rgba(46, 155, 255, 0.3);
+  font-size: 0.72rem;
+  font-weight: 800;
+  padding: 2px 6px;
+}
+
+.user-email-sub {
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  max-width: 130px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.btn-logout {
+  border-color: rgba(239, 68, 68, 0.3);
+  color: #F87171;
+}
+
+.btn-logout:hover {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: #EF4444;
+  color: #FFFFFF;
 }
 
 /* On mobile <= 540px, stack header actions full width so buttons never clip */
@@ -216,17 +256,30 @@ h1, h2, h3, h4, h5, h6 {
 
   .header-actions {
     display: flex;
+    flex-wrap: wrap;
     width: 100%;
-    gap: 8px;
+    gap: 6px;
+  }
+
+  .user-pill {
+    width: 100%;
+    justify-content: space-between;
+    padding: 4px 8px;
+    margin-bottom: 2px;
+  }
+
+  .user-email-sub {
+    max-width: 190px;
   }
 
   .header-actions .btn {
     flex: 1;
     min-height: 38px;
-    padding: 6px 10px;
-    font-size: 0.82rem;
+    padding: 6px 6px;
+    font-size: 0.78rem;
     justify-content: center;
     white-space: nowrap;
+    min-width: 0;
   }
 }
 
@@ -2368,3 +2421,222 @@ h1, h2, h3, h4, h5, h6 {
   from { transform: translateY(20px); opacity: 0; }
   to { transform: translateY(0); opacity: 1; }
 }
+
+/* ========================================================
+   Firebase Authentication Screen
+   ======================================================== */
+.auth-screen {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px 10px;
+  background-color: var(--bg-main);
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.auth-card {
+  max-width: 400px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 24px 18px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  box-sizing: border-box;
+}
+
+@media (max-width: 380px) {
+  .auth-card {
+    padding: 18px 12px;
+  }
+}
+
+.auth-header {
+  text-align: center;
+  margin-bottom: 16px;
+}
+
+.auth-logo-wrap {
+  width: 52px;
+  height: 52px;
+  margin: 0 auto 10px;
+  background: var(--bg-surface);
+  border: 1.5px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--shadow-sm);
+}
+
+.auth-logo {
+  width: 38px;
+  height: 38px;
+  object-fit: contain;
+}
+
+.auth-title {
+  font-family: var(--font-heading);
+  font-size: 1.5rem;
+  color: var(--primary);
+  margin-bottom: 2px;
+  line-height: 1.2;
+}
+
+.auth-subtitle {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.auth-toggle-group {
+  display: flex;
+  gap: 4px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-soft);
+  padding: 3px;
+  border-radius: var(--radius-sm);
+  margin-bottom: 14px;
+}
+
+.auth-toggle-btn {
+  flex: 1;
+  padding: 8px 10px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: var(--font-family);
+  font-size: 0.86rem;
+  font-weight: 700;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.auth-toggle-btn.active {
+  background: var(--bg-card);
+  color: var(--primary);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--border-soft);
+}
+
+.auth-error-box {
+  background: var(--status-rose-light);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  border-radius: var(--radius-sm);
+  padding: 9px 12px;
+  font-size: 0.82rem;
+  color: #FCA5A5;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 12px;
+  line-height: 1.4;
+}
+
+.auth-error-box .error-icon {
+  font-size: 0.95rem;
+  flex-shrink: 0;
+}
+
+.auth-error-box .error-text {
+  flex: 1;
+  word-break: break-word;
+}
+
+.role-selector-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.role-option-card {
+  background: var(--bg-surface);
+  border: 1.5px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.role-option-card:hover {
+  border-color: var(--secondary);
+}
+
+.role-option-card.active {
+  border-color: var(--secondary);
+  background: rgba(46, 155, 255, 0.12);
+}
+
+.role-radio {
+  display: none;
+}
+
+.role-icon {
+  font-size: 1.25rem;
+  flex-shrink: 0;
+}
+
+.role-text-wrap {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.role-name {
+  font-size: 0.84rem;
+  color: var(--text-heading);
+  line-height: 1.2;
+}
+
+.role-desc {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  line-height: 1.1;
+  margin-top: 2px;
+}
+
+.btn-block {
+  width: 100%;
+  margin-top: 10px;
+}
+
+.btn-spinner {
+  display: inline-block;
+  animation: spin 1s infinite linear;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.auth-switch-prompt {
+  text-align: center;
+  margin-top: 14px;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+.auth-switch-link {
+  background: none;
+  border: none;
+  color: var(--secondary);
+  font-family: var(--font-family);
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  text-decoration: underline;
+  margin-left: 4px;
+}
+
+.auth-switch-link:hover {
+  color: #64B5F6;
+}
+

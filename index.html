@@ -8,10 +8,87 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+  
+  <!-- Firebase SDK (v10.x Compat) -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-analytics-compat.js"></script>
+
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div class="app-container">
+  <!-- Auth Screen (Gated Entry - shown when user is not logged in) -->
+  <div id="authScreen" class="auth-screen">
+    <div class="auth-card card">
+      <div class="auth-header">
+        <div class="auth-logo-wrap">
+          <img src="icon.svg" alt="SchoolSteps Logo" class="auth-logo">
+        </div>
+        <h2 class="auth-title">SchoolSteps</h2>
+        <p class="auth-subtitle">School Management System • Phase 1 Pilot</p>
+      </div>
+
+      <!-- Mode Toggle: Sign In / Sign Up -->
+      <div class="auth-toggle-group" role="tablist">
+        <button type="button" class="auth-toggle-btn active" id="btnToggleLogin" role="tab" aria-selected="true">Sign In</button>
+        <button type="button" class="auth-toggle-btn" id="btnToggleSignup" role="tab" aria-selected="false">Sign Up</button>
+      </div>
+
+      <!-- Error Alert Box -->
+      <div id="authErrorBox" class="auth-error-box hidden" role="alert">
+        <span class="error-icon">⚠️</span>
+        <span id="authErrorText" class="error-text"></span>
+      </div>
+
+      <form id="authForm" novalidate>
+        <div class="form-group">
+          <label for="authEmail" class="form-label required">Email Address</label>
+          <input type="email" id="authEmail" class="form-input" placeholder="e.g. teacher@schoolsteps.pk" autocomplete="email" required>
+        </div>
+
+        <div class="form-group">
+          <label for="authPassword" class="form-label required">Password</label>
+          <input type="password" id="authPassword" class="form-input" placeholder="Minimum 6 characters" autocomplete="current-password" required>
+        </div>
+
+        <!-- Role Selector: Admin / Teacher -->
+        <div class="form-group">
+          <label class="form-label required">Select Role</label>
+          <div class="role-selector-grid">
+            <label class="role-option-card active" id="roleCardTeacher">
+              <input type="radio" name="authRole" value="Teacher" checked class="role-radio">
+              <span class="role-icon">👨‍🏫</span>
+              <span class="role-text-wrap">
+                <strong class="role-name">Teacher</strong>
+                <span class="role-desc">Attendance, Marks & Roster</span>
+              </span>
+            </label>
+            <label class="role-option-card" id="roleCardAdmin">
+              <input type="radio" name="authRole" value="Admin" class="role-radio">
+              <span class="role-icon">🏫</span>
+              <span class="role-text-wrap">
+                <strong class="role-name">Admin</strong>
+                <span class="role-desc">Full School Management</span>
+              </span>
+            </label>
+          </div>
+        </div>
+
+        <button type="submit" id="btnAuthSubmit" class="btn btn-primary btn-block">
+          <span class="btn-spinner hidden" id="authSpinner">⏳</span>
+          <span id="btnAuthSubmitText">Sign In</span>
+        </button>
+
+        <div class="auth-switch-prompt">
+          <span id="authSwitchPromptText">Don't have an account?</span>
+          <button type="button" class="auth-switch-link" id="authSwitchLink">Create an account</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Main App (Gated - hidden until authenticated) -->
+  <div class="app-container hidden" id="appContainer">
     <!-- Header -->
     <header class="app-header">
       <div class="header-main">
@@ -28,6 +105,10 @@
           </div>
         </div>
         <div class="header-actions">
+          <div class="user-pill" id="userHeaderPill">
+            <span class="user-role-badge badge" id="userRoleBadge">Teacher</span>
+            <span class="user-email-sub" id="userEmailSub"></span>
+          </div>
           <button class="btn btn-subtle btn-sm" id="btnSchoolSettings" title="School Branding & Settings">
             <span class="icon">🏫</span>
             <span class="btn-label">School Profile</span>
@@ -35,6 +116,10 @@
           <button class="btn btn-subtle btn-sm" id="btnDemoData" title="Reset or Reload Sample Data">
             <span class="icon">🌱</span>
             <span class="btn-label">Demo Data</span>
+          </button>
+          <button class="btn btn-subtle btn-sm btn-logout" id="btnLogout" title="Log out of SchoolSteps">
+            <span class="icon">🚪</span>
+            <span class="btn-label">Logout</span>
           </button>
         </div>
       </div>
@@ -473,7 +558,7 @@
     </main>
 
     <!-- Bottom Navigation Bar (Mobile) -->
-    <nav class="mobile-bottom-bar no-print">
+    <nav class="mobile-bottom-bar no-print hidden" id="mobileBottomBar">
       <button class="mobile-tab-btn active" data-tab="tab-students">
         <span class="icon">👥</span>
         <span class="label">Students</span>

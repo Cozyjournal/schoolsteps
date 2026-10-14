@@ -194,6 +194,16 @@
       </datalist>
     </header>
 
+    <!-- App Data Load Error Box (shown at top of app if data loading fails) -->
+    <div id="dataLoadErrorBox" class="auth-error-box hidden" style="margin: 12px 14px 0;" role="alert">
+      <span class="error-icon">⚠️</span>
+      <div style="flex: 1;">
+        <strong style="display: block; font-weight: 700; margin-bottom: 2px;">Data Loading Error</strong>
+        <span id="dataLoadErrorText" class="error-text"></span>
+      </div>
+      <button type="button" class="btn-close" id="btnCloseDataLoadError" aria-label="Dismiss" style="background: none; border: none; font-size: 1rem; cursor: pointer; color: #DC2626; padding: 0 4px; line-height: 1;">✕</button>
+    </div>
+
     <!-- Main Content Area -->
     <main class="main-content">
       <!-- ==============================================

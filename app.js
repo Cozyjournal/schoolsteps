@@ -1400,7 +1400,7 @@
   };
 
   function initData() {
-    state.profile = loadStorage(STORAGE_KEYS.PROFILE, DEFAULT_SCHOOL_PROFILE);
+    state.profile = Object.assign({}, DEFAULT_SCHOOL_PROFILE, loadStorage(STORAGE_KEYS.PROFILE, DEFAULT_SCHOOL_PROFILE));
     state.students = loadStorage(STORAGE_KEYS.STUDENTS, null);
     state.tests = loadStorage(STORAGE_KEYS.TESTS, null);
     state.marks = loadStorage(STORAGE_KEYS.MARKS, null);
@@ -1420,9 +1420,17 @@
       saveStorage(STORAGE_KEYS.TESTS, state.tests);
     }
 
-    if (!state.marks || Object.keys(state.marks).length === 0) {
+    if (!state.marks || typeof state.marks !== 'object' || Object.keys(state.marks).length === 0) {
       state.marks = { ...SAMPLE_MARKS };
       saveStorage(STORAGE_KEYS.MARKS, state.marks);
+    }
+
+    if (!state.attendance || typeof state.attendance !== 'object') {
+      state.attendance = {};
+    }
+
+    if (!state.dispatchLogs || typeof state.dispatchLogs !== 'object') {
+      state.dispatchLogs = {};
     }
 
     if (!state.ptmEvents || !Array.isArray(state.ptmEvents) || state.ptmEvents.length === 0) {
@@ -4259,6 +4267,50 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
     }
   }
 
+  function showDataLoadError(message) {
+    let box = document.getElementById('dataLoadErrorBox');
+    let textEl = document.getElementById('dataLoadErrorText');
+    if (!box) {
+      box = document.createElement('div');
+      box.id = 'dataLoadErrorBox';
+      box.className = 'auth-error-box';
+      box.style.margin = '12px 14px 0';
+      box.setAttribute('role', 'alert');
+      box.innerHTML = `
+        <span class="error-icon">⚠️</span>
+        <div style="flex: 1;">
+          <strong style="display: block; font-weight: 700; margin-bottom: 2px;">Data Loading Error</strong>
+          <span id="dataLoadErrorText" class="error-text"></span>
+        </div>
+        <button type="button" class="btn-close" id="btnCloseDataLoadError" aria-label="Dismiss" style="background: none; border: none; font-size: 1rem; cursor: pointer; color: #DC2626; padding: 0 4px; line-height: 1;">✕</button>
+      `;
+      const appContainer = document.getElementById('appContainer');
+      const header = document.querySelector('.app-header');
+      if (header && header.nextSibling) {
+        appContainer.insertBefore(box, header.nextSibling);
+      } else if (appContainer) {
+        appContainer.insertBefore(box, appContainer.firstChild);
+      }
+      textEl = document.getElementById('dataLoadErrorText');
+    }
+    if (textEl) {
+      textEl.textContent = message;
+    }
+    box.classList.remove('hidden');
+
+    const closeBtn = document.getElementById('btnCloseDataLoadError');
+    if (closeBtn) {
+      closeBtn.onclick = () => {
+        box.classList.add('hidden');
+      };
+    }
+  }
+
+  function hideDataLoadError() {
+    const box = document.getElementById('dataLoadErrorBox');
+    if (box) box.classList.add('hidden');
+  }
+
   function initAuthGating() {
     const authScreen = document.getElementById('authScreen');
     const appContainer = document.getElementById('appContainer');
@@ -4272,29 +4324,58 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
 
     auth.onAuthStateChanged((user) => {
       if (user) {
-        // 1. Hide login screen, IMMEDIATELY show appContainer + mobileBottomBar
-        authScreen?.classList.add('hidden');
-        appContainer?.classList.remove('hidden');
-        mobileBottomBar?.classList.remove('hidden');
+        // STEP 1: Show the app shell (header + tabs) FIRST, immediately after sign-in
+        if (authScreen) authScreen.classList.add('hidden');
+        if (appContainer) appContainer.classList.remove('hidden');
+        if (mobileBottomBar) mobileBottomBar.classList.remove('hidden');
 
-        // Immediately initialize with LOCAL data (localStorage) — usable within 1s
-        initData();
-
-        const role = getUserRole(user.email);
-        updateUserHeader(user.email, role);
-
+        // Immediately wire up navigation & events so tabs and shell buttons work right away
         if (!isAppInitialized) {
-          initNavigation();
-          bindEvents();
-          isAppInitialized = true;
+          try {
+            initNavigation();
+            bindEvents();
+            isAppInitialized = true;
+          } catch (initErr) {
+            console.error('Shell navigation/events initialization error:', initErr);
+          }
         }
-        renderApp();
 
-        // 2. Start Firestore sync in the BACKGROUND (do NOT await it, no blocking overlay)
-        startBackgroundSync(user);
+        // Set user role badge & email in header shell
+        try {
+          const role = getUserRole(user.email);
+          updateUserHeader(user.email, role);
+        } catch (hdrErr) {
+          console.warn('User header update error:', hdrErr);
+        }
+
+        // STEP 2: THEN try to load data
+        hideDataLoadError();
+        try {
+          initData();
+          renderApp();
+        } catch (dataErr) {
+          console.error('Data loading error in SchoolSteps:', dataErr);
+          // If data loading fails, show a red error box at the top of the app with the error message
+          showDataLoadError(`Failed to load school records: ${dataErr.message || dataErr}`);
+
+          // Never leave a blank screen: render fallback so the shell has content
+          try {
+            renderApp();
+          } catch (fallbackErr) {
+            console.error('Fallback render error:', fallbackErr);
+          }
+        }
+
+        // STEP 3: Make sure the app opens even if Firestore is completely unreachable
+        try {
+          startBackgroundSync(user);
+        } catch (syncErr) {
+          console.warn('Background sync start warning:', syncErr);
+        }
       } else {
         stopBackgroundSync();
         FirestoreDB.hideSyncOverlay();
+        hideDataLoadError();
         authScreen?.classList.remove('hidden');
         appContainer?.classList.add('hidden');
         mobileBottomBar?.classList.add('hidden');
@@ -4311,7 +4392,14 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
   // App Render & Startup
   // ========================================================
   function renderApp() {
-    document.getElementById('headerSchoolName').textContent = state.profile.name;
+    try {
+      const headerSchoolName = document.getElementById('headerSchoolName');
+      if (headerSchoolName) {
+        headerSchoolName.textContent = (state.profile && state.profile.name) ? state.profile.name : DEFAULT_SCHOOL_PROFILE.name;
+      }
+    } catch (e) {
+      console.warn('headerSchoolName render warning:', e);
+    }
     renderClassDropdowns();
     renderStudentsList();
     renderAttendanceRoster();
@@ -4333,6 +4421,8 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
   window.__showSyncIndicator = showSyncIndicator;
   window.__hideSyncIndicator = hideSyncIndicator;
   window.__startBackgroundSync = startBackgroundSync;
+  window.__showDataLoadError = showDataLoadError;
+  window.__hideDataLoadError = hideDataLoadError;
 
   function start() {
     bindAuthEvents();

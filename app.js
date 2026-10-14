@@ -4324,54 +4324,23 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
 
     auth.onAuthStateChanged((user) => {
       if (user) {
-        // STEP 1: Show the app shell (header + tabs) FIRST, immediately after sign-in
-        if (authScreen) authScreen.classList.add('hidden');
-        if (appContainer) appContainer.classList.remove('hidden');
-        if (mobileBottomBar) mobileBottomBar.classList.remove('hidden');
+        // FIRST line: hide login, show app. Nothing before it.
+        authScreen?.classList.add('hidden');
+        appContainer?.classList.remove('hidden');
+        mobileBottomBar?.classList.remove('hidden');
 
-        // Immediately wire up navigation & events so tabs and shell buttons work right away
-        if (!isAppInitialized) {
+        // THEN: setTimeout(() => { try { initData(); renderApp(); } catch(e) { console.error(e); } }, 500);
+        setTimeout(() => {
           try {
-            initNavigation();
-            bindEvents();
-            isAppInitialized = true;
-          } catch (initErr) {
-            console.error('Shell navigation/events initialization error:', initErr);
-          }
-        }
-
-        // Set user role badge & email in header shell
-        try {
-          const role = getUserRole(user.email);
-          updateUserHeader(user.email, role);
-        } catch (hdrErr) {
-          console.warn('User header update error:', hdrErr);
-        }
-
-        // STEP 2: THEN try to load data
-        hideDataLoadError();
-        try {
-          initData();
-          renderApp();
-        } catch (dataErr) {
-          console.error('Data loading error in SchoolSteps:', dataErr);
-          // If data loading fails, show a red error box at the top of the app with the error message
-          showDataLoadError(`Failed to load school records: ${dataErr.message || dataErr}`);
-
-          // Never leave a blank screen: render fallback so the shell has content
-          try {
+            initData();
             renderApp();
-          } catch (fallbackErr) {
-            console.error('Fallback render error:', fallbackErr);
+          } catch (e) {
+            console.error(e);
           }
-        }
+        }, 500);
 
-        // STEP 3: Make sure the app opens even if Firestore is completely unreachable
-        try {
-          startBackgroundSync(user);
-        } catch (syncErr) {
-          console.warn('Background sync start warning:', syncErr);
-        }
+        // THEN: start background sync.
+        startBackgroundSync(user);
       } else {
         stopBackgroundSync();
         FirestoreDB.hideSyncOverlay();
@@ -4400,6 +4369,14 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
     } catch (e) {
       console.warn('headerSchoolName render warning:', e);
     }
+    try {
+      if (auth && auth.currentUser) {
+        const role = getUserRole(auth.currentUser.email);
+        updateUserHeader(auth.currentUser.email, role);
+      }
+    } catch (e) {
+      console.warn('userHeader update warning:', e);
+    }
     renderClassDropdowns();
     renderStudentsList();
     renderAttendanceRoster();
@@ -4426,6 +4403,15 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
 
   function start() {
     bindAuthEvents();
+    if (!isAppInitialized) {
+      try {
+        initNavigation();
+        bindEvents();
+        isAppInitialized = true;
+      } catch (e) {
+        console.warn('Early navigation bind warning:', e);
+      }
+    }
     initAuthGating();
   }
 

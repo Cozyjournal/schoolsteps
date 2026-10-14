@@ -61,7 +61,7 @@
               <span class="role-icon">👨‍🏫</span>
               <span class="role-text-wrap">
                 <strong class="role-name">Teacher</strong>
-                <span class="role-desc">Attendance, Marks & Roster</span>
+                <span class="role-desc">Join existing school</span>
               </span>
             </label>
             <label class="role-option-card" id="roleCardAdmin">
@@ -69,9 +69,35 @@
               <span class="role-icon">🏫</span>
               <span class="role-text-wrap">
                 <strong class="role-name">Admin</strong>
-                <span class="role-desc">Full School Management</span>
+                <span class="role-desc">Register new school</span>
               </span>
             </label>
+          </div>
+        </div>
+
+        <!-- Dynamic School Fields for Signup -->
+        <!-- Admin Fields: New School Details -->
+        <div id="signupAdminFields" class="signup-school-fields hidden">
+          <div class="form-group">
+            <label for="authSchoolName" class="form-label required">School Name</label>
+            <input type="text" id="authSchoolName" class="form-input" placeholder="e.g. Crescent Public Academy">
+          </div>
+          <div class="form-group">
+            <label for="authSchoolAddress" class="form-label">School Address (Optional)</label>
+            <input type="text" id="authSchoolAddress" class="form-input" placeholder="e.g. Main Boulevard, Campus 1">
+          </div>
+          <div class="form-group">
+            <label for="authSchoolPhone" class="form-label">School Phone (Optional)</label>
+            <input type="text" id="authSchoolPhone" class="form-input" placeholder="e.g. +92 51 1234567">
+          </div>
+        </div>
+
+        <!-- Teacher Fields: School Code -->
+        <div id="signupTeacherFields" class="signup-school-fields hidden">
+          <div class="form-group">
+            <label for="authSchoolCode" class="form-label required">School Code</label>
+            <input type="text" id="authSchoolCode" class="form-input" placeholder="e.g. K7X2P9" maxlength="6" style="text-transform: uppercase; letter-spacing: 2px; font-weight: 700;">
+            <p style="font-size: 0.74rem; color: var(--text-muted); margin-top: 4px;">Enter the 6-character code provided by your School Admin.</p>
           </div>
         </div>
 
@@ -116,7 +142,7 @@
               <h1 class="brand-title">SchoolSteps</h1>
               <span class="badge badge-pilot">Phase 2</span>
             </div>
-            <p class="school-name-subtitle" id="headerSchoolName">Beacon Oak Grammar School</p>
+            <p class="school-name-subtitle" id="headerSchoolName">SchoolSteps</p>
           </div>
         </div>
         <div class="header-actions">
@@ -128,10 +154,6 @@
           <button class="btn btn-subtle btn-sm" id="btnSchoolSettings" title="School Branding & Settings">
             <span class="icon">🏫</span>
             <span class="btn-label">School Profile</span>
-          </button>
-          <button class="btn btn-subtle btn-sm" id="btnDemoData" title="Reset or Reload Sample Data">
-            <span class="icon">🌱</span>
-            <span class="btn-label">Demo Data</span>
           </button>
           <button class="btn btn-subtle btn-sm btn-logout" id="btnLogout" title="Log out of SchoolSteps">
             <span class="icon">🚪</span>
@@ -260,8 +282,7 @@
           <div id="noStudentsState" class="empty-state hidden">
             <div class="empty-icon">🎒</div>
             <h3>No Students Found</h3>
-            <p>No matching student records found. Add a new student or load sample pilot data.</p>
-            <button class="btn btn-secondary" id="btnLoadDemoFromEmpty">Load Sample Students</button>
+            <p>No matching student records found. Click "Add Student" to enroll your first student.</p>
           </div>
         </div>
       </section>
@@ -487,9 +508,9 @@
                 <img src="icon.svg" alt="School Crest" class="school-crest-img">
               </div>
               <div class="report-school-info">
-                <h2 class="report-school-name" id="repSchoolName">Beacon Oak Grammar School</h2>
-                <p class="report-school-motto" id="repSchoolMotto">Knowledge • Character • Excellence</p>
-                <p class="report-school-address" id="repSchoolAddress">Plot 14, Main Double Road, Sector F-10, Islamabad | Tel: +92 51 2345678</p>
+                <h2 class="report-school-name" id="repSchoolName">SchoolSteps</h2>
+                <p class="report-school-motto" id="repSchoolMotto"></p>
+                <p class="report-school-address" id="repSchoolAddress"></p>
               </div>
             </header>
 
@@ -505,29 +526,29 @@
               <div class="profile-box">
                 <div class="profile-field">
                   <span class="field-lbl">Student Name:</span>
-                  <span class="field-val" id="repStudentName">Ahmed Raza</span>
+                  <span class="field-val" id="repStudentName">—</span>
                 </div>
                 <div class="profile-field">
                   <span class="field-lbl">Father's Name:</span>
-                  <span class="field-val" id="repFatherName">Muhammad Raza Khan</span>
+                  <span class="field-val" id="repFatherName">—</span>
                 </div>
                 <div class="profile-field">
                   <span class="field-lbl">Roll Number:</span>
-                  <span class="field-val" id="repRollNo">01</span>
+                  <span class="field-val" id="repRollNo">—</span>
                 </div>
               </div>
               <div class="profile-box">
                 <div class="profile-field">
                   <span class="field-lbl">Class & Section:</span>
-                  <span class="field-val" id="repClassSection">Class 3 - A</span>
+                  <span class="field-val" id="repClassSection">—</span>
                 </div>
                 <div class="profile-field">
                   <span class="field-lbl">Admission No:</span>
-                  <span class="field-val" id="repAdmissionNo">BOGS-2024-089</span>
+                  <span class="field-val" id="repAdmissionNo">—</span>
                 </div>
                 <div class="profile-field">
                   <span class="field-lbl">Attendance Rate:</span>
-                  <span class="field-val highlight-val" id="repAttendanceRate">96% (24 / 25 days)</span>
+                  <span class="field-val highlight-val" id="repAttendanceRate">—</span>
                 </div>
               </div>
             </section>
@@ -553,13 +574,13 @@
                 <tfoot>
                   <tr class="total-row">
                     <td>Grand Total</td>
-                    <td class="text-center" id="repTotalMax">300</td>
-                    <td class="text-center" id="repTotalPass">120</td>
-                    <td class="text-center highlight-score" id="repTotalObtained">268</td>
-                    <td class="text-center highlight-score" id="repTotalPercent">89.3%</td>
-                    <td class="text-center" id="repOverallGrade"><span class="grade-pill grade-a">A</span></td>
-                    <td class="text-center" id="repResultStatus"><span class="badge-pass">PASSED</span></td>
-                    <td id="repSummaryPosition">Class Position: <strong>2nd</strong></td>
+                    <td class="text-center" id="repTotalMax">—</td>
+                    <td class="text-center" id="repTotalPass">—</td>
+                    <td class="text-center highlight-score" id="repTotalObtained">—</td>
+                    <td class="text-center highlight-score" id="repTotalPercent">—</td>
+                    <td class="text-center" id="repOverallGrade">—</td>
+                    <td class="text-center" id="repResultStatus">—</td>
+                    <td id="repSummaryPosition">—</td>
                   </tr>
                 </tfoot>
               </table>
@@ -570,7 +591,7 @@
               <div class="summary-box">
                 <h4>Teacher's Remarks</h4>
                 <p class="teacher-remarks-text" id="repTeacherRemarks">
-                  "Ahmed is a sincere and hardworking student. He demonstrates an excellent grasp of mathematical concepts and participates actively in classroom discussions."
+                  Select a student from the Marks Entry tab to view and generate their progress report card.
                 </p>
               </div>
               <div class="summary-box">
@@ -1164,7 +1185,7 @@
 
         <div class="form-group">
           <label for="parentAddress" class="form-label">Home Address</label>
-          <input type="text" id="parentAddress" class="form-input" placeholder="e.g. House 42, St 5, F-10/2, Islamabad">
+          <input type="text" id="parentAddress" class="form-input" placeholder="e.g. House 42, Street 5">
         </div>
 
         <div class="modal-footer">
@@ -1256,25 +1277,38 @@
         <button class="btn-close" id="btnCloseSchoolModal">✕</button>
       </div>
       <form id="schoolSettingsForm" class="modal-body" novalidate>
-        <p class="modal-intro">
-          PRD White-label principle: Every school sees its OWN brand across headers, WhatsApp messages, and Report Cards.
-        </p>
+        <!-- School Code Box with Copy Button -->
+        <div class="school-code-card" style="background: #F1F5F9; border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 12px 14px; margin-bottom: 16px; display: flex; align-items: center; justify-content: space-between; gap: 10px;">
+          <div>
+            <div style="font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); font-weight: 700;">School Code (Share with Teachers)</div>
+            <div id="settingSchoolCodeDisplay" style="font-size: 1.3rem; font-weight: 800; letter-spacing: 3px; color: var(--teal); font-family: monospace;">------</div>
+          </div>
+          <button type="button" class="btn btn-secondary btn-sm" id="btnCopySchoolCode" title="Copy School Code">
+            <span class="icon">📋</span>
+            <span>Copy Code</span>
+          </button>
+        </div>
+
         <div class="form-group">
           <label for="settingSchoolName" class="form-label required">School Name</label>
-          <input type="text" id="settingSchoolName" class="form-input" value="Beacon Oak Grammar School" required>
+          <input type="text" id="settingSchoolName" class="form-input" placeholder="Enter school name" required>
         </div>
         <div class="form-group">
           <label for="settingSchoolMotto" class="form-label">School Motto / Tagline</label>
-          <input type="text" id="settingSchoolMotto" class="form-input" value="Knowledge • Character • Excellence">
+          <input type="text" id="settingSchoolMotto" class="form-input" placeholder="e.g. Knowledge • Character • Excellence">
         </div>
         <div class="form-group">
-          <label for="settingSchoolAddress" class="form-label">Campus Address & Contact</label>
-          <input type="text" id="settingSchoolAddress" class="form-input" value="Plot 14, Main Double Road, Sector F-10, Islamabad | Tel: +92 51 2345678">
+          <label for="settingSchoolAddress" class="form-label">Campus Address</label>
+          <input type="text" id="settingSchoolAddress" class="form-input" placeholder="e.g. Main Boulevard, Campus 1">
+        </div>
+        <div class="form-group">
+          <label for="settingSchoolPhone" class="form-label">School Phone / WhatsApp</label>
+          <input type="text" id="settingSchoolPhone" class="form-input" placeholder="e.g. +92 51 1234567">
         </div>
         <div class="form-row">
           <div class="form-col">
             <label for="settingPrincipalName" class="form-label">Principal / Head Name</label>
-            <input type="text" id="settingPrincipalName" class="form-input" value="Mrs. Nasreen Akhtar">
+            <input type="text" id="settingPrincipalName" class="form-input" placeholder="Principal name">
           </div>
           <div class="form-col">
             <label for="settingAcademicYear" class="form-label">Academic Session</label>
@@ -1285,6 +1319,35 @@
         <div class="modal-footer">
           <button type="button" class="btn btn-subtle" id="btnCancelSchoolModal">Cancel</button>
           <button type="submit" class="btn btn-primary">Save Branding</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- One-Time School Onboarding Modal for Users without a schoolId -->
+  <div class="modal-overlay hidden" id="schoolOnboardModal" style="z-index: 9999;">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 class="modal-title">🏫 Welcome to SchoolSteps!</h3>
+      </div>
+      <form id="schoolOnboardForm" class="modal-body" novalidate>
+        <p class="modal-intro">
+          Welcome! Enter your School Name to set up your account and generate your unique School Code.
+        </p>
+        <div class="form-group">
+          <label for="onboardSchoolName" class="form-label required">School Name</label>
+          <input type="text" id="onboardSchoolName" class="form-input" placeholder="e.g. Crescent Public Academy" required>
+        </div>
+        <div class="form-group">
+          <label for="onboardSchoolAddress" class="form-label">School Address (Optional)</label>
+          <input type="text" id="onboardSchoolAddress" class="form-input" placeholder="e.g. Main Boulevard, Campus 1">
+        </div>
+        <div class="form-group">
+          <label for="onboardSchoolPhone" class="form-label">School Phone (Optional)</label>
+          <input type="text" id="onboardSchoolPhone" class="form-input" placeholder="e.g. +92 51 1234567">
+        </div>
+        <div class="modal-footer">
+          <button type="submit" class="btn btn-primary btn-block" id="btnSubmitOnboard">Set Up My School</button>
         </div>
       </form>
     </div>

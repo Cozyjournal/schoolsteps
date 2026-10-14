@@ -1,10 +1,73 @@
 /**
- * SchoolSteps — Phase 1 Pilot Core Engine
- * Modules:
- *  - M1: Student & Parent Database (localStorage)
- *  - M2: Smart Attendance + Parent WhatsApp Message Preview & wa.me Links
- *  - M3: Subject Test Marks Entry + Printable School-Branded Report Cards
- * Design: HomeSteps brand family (warm cream/peach, friendly, mobile-first)
+ * SchoolSteps — Multi-Tenant SaaS Platform Engine
+ * Modules: M1–M6 (Students, Attendance, Marks & Reports, Auto-Delivery, PTMs, Comms)
+ * 
+ * =========================================================================
+ * Cloud Firestore Multi-Tenant Security Rules (Reference: firestore.rules)
+ * =========================================================================
+ * rules_version = '2';
+ * service cloud.firestore {
+ *   match /databases/{database}/documents {
+ *     function getUserSchoolId() {
+ *       return get(/databases/$(database)/documents/users/$(request.auth.token.email.lower())).data.schoolId;
+ *     }
+ *     function isSameSchool() {
+ *       return request.auth != null && resource.data.schoolId == getUserSchoolId();
+ *     }
+ *     function isWritingSameSchool() {
+ *       return request.auth != null && request.resource.data.schoolId == getUserSchoolId();
+ *     }
+ *     match /schools/{schoolId} {
+ *       allow read: if true;
+ *       allow create: if true;
+ *       allow update, delete: if request.auth != null && (resource.data.schoolId == getUserSchoolId() || schoolId == getUserSchoolId());
+ *     }
+ *     match /users/{userEmail} {
+ *       allow read: if request.auth != null && (request.auth.token.email.lower() == userEmail.lower() || resource.data.schoolId == getUserSchoolId());
+ *       allow create, update: if request.auth != null && (request.auth.token.email.lower() == userEmail.lower() || request.resource.data.schoolId == getUserSchoolId());
+ *       allow delete: if request.auth != null && request.auth.token.email.lower() == userEmail.lower();
+ *     }
+ *     match /students/{studentId} {
+ *       allow read, delete: if isSameSchool();
+ *       allow create: if isWritingSameSchool();
+ *       allow update: if isSameSchool() && isWritingSameSchool();
+ *     }
+ *     match /attendance/{attendanceId} {
+ *       allow read, delete: if isSameSchool();
+ *       allow create: if isWritingSameSchool();
+ *       allow update: if isSameSchool() && isWritingSameSchool();
+ *     }
+ *     match /marks/{markId} {
+ *       allow read, delete: if isSameSchool();
+ *       allow create: if isWritingSameSchool();
+ *       allow update: if isSameSchool() && isWritingSameSchool();
+ *     }
+ *     match /tests/{testId} {
+ *       allow read, delete: if isSameSchool();
+ *       allow create: if isWritingSameSchool();
+ *       allow update: if isSameSchool() && isWritingSameSchool();
+ *     }
+ *     match /dispatches/{dispatchId} {
+ *       allow read, delete: if isSameSchool();
+ *       allow create: if isWritingSameSchool();
+ *       allow update: if isSameSchool() && isWritingSameSchool();
+ *     }
+ *     match /ptms/{ptmId} {
+ *       allow read, delete: if isSameSchool();
+ *       allow create: if isWritingSameSchool();
+ *       allow update: if isSameSchool() && isWritingSameSchool();
+ *     }
+ *     match /calls/{callId} {
+ *       allow read, delete: if isSameSchool();
+ *       allow create: if isWritingSameSchool();
+ *       allow update: if isSameSchool() && isWritingSameSchool();
+ *     }
+ *     match /settings/{docId} {
+ *       allow read, write: if request.auth != null;
+ *     }
+ *   }
+ * }
+ * =========================================================================
  */
 
 (function () {
@@ -60,6 +123,7 @@
   // Storage Keys & Default State
   // ========================================================
   const ROLE_STORAGE_PREFIX = 'schoolsteps_role_';
+  const SCHOOL_STORAGE_PREFIX = 'schoolsteps_school_';
   const STORAGE_KEYS = {
     STUDENTS: 'schoolsteps_students_v1',
     ATTENDANCE: 'schoolsteps_attendance_v1',
@@ -80,513 +144,31 @@
     if (!email) return;
     localStorage.setItem(ROLE_STORAGE_PREFIX + email.toLowerCase(), role);
     if (typeof FirestoreDB !== 'undefined' && FirestoreDB.saveUser) {
-      FirestoreDB.saveUser(email, role, state.profile?.name);
+      FirestoreDB.saveUser(email, role, state.profile?.name, state.currentSchoolId);
     }
   }
 
   const DEFAULT_SCHOOL_PROFILE = {
-    name: 'Beacon Oak Grammar School',
-    motto: 'Knowledge • Character • Excellence',
-    address: 'Plot 14, Main Double Road, Sector F-10, Islamabad | Tel: +92 51 2345678',
-    principal: 'Mrs. Nasreen Akhtar',
+    name: 'SchoolSteps',
+    motto: '',
+    address: '',
+    phone: '',
+    principal: '',
     academicYear: '2026–2027',
     passPercentage: 40
   };
 
-  const SAMPLE_STUDENTS = [
-    {
-      id: 'stud-001',
-      name: 'Ahmed Raza',
-      rollNo: '01',
-      className: 'Class 3',
-      section: 'A',
-      gender: 'Male',
-      dob: '2017-04-12',
-      admissionNo: 'BOGS-2024-089',
-      fatherName: 'Muhammad Raza Khan',
-      motherName: 'Tahira Raza',
-      whatsapp: '+923001234567',
-      emergencyPhone: '+923219876543',
-      address: 'House 42, St 5, F-10/2, Islamabad',
-      status: 'Active',
-      admissionDate: '2024-08-15'
-    },
-    {
-      id: 'stud-002',
-      name: 'Fatima Noor',
-      rollNo: '02',
-      className: 'Class 3',
-      section: 'A',
-      gender: 'Female',
-      dob: '2017-06-21',
-      admissionNo: 'BOGS-2024-090',
-      fatherName: 'Tariq Mehmood',
-      motherName: 'Sadia Tariq',
-      whatsapp: '+923335551234',
-      emergencyPhone: '+923005556789',
-      address: 'Apartment 4B, Silver Heights, F-11, Islamabad',
-      status: 'Active',
-      admissionDate: '2024-08-15'
-    },
-    {
-      id: 'stud-003',
-      name: 'Muhammad Ali',
-      rollNo: '03',
-      className: 'Class 3',
-      section: 'A',
-      gender: 'Male',
-      dob: '2017-01-18',
-      admissionNo: 'BOGS-2024-091',
-      fatherName: 'Ali Asghar',
-      motherName: 'Zainab Ali',
-      whatsapp: '+923458765432',
-      emergencyPhone: '+923331112233',
-      address: 'House 112, St 19, G-10/4, Islamabad',
-      status: 'Active',
-      admissionDate: '2024-08-16'
-    },
-    {
-      id: 'stud-004',
-      name: 'Ayesha Tariq',
-      rollNo: '04',
-      className: 'Class 3',
-      section: 'A',
-      gender: 'Female',
-      dob: '2017-09-05',
-      admissionNo: 'BOGS-2024-092',
-      fatherName: 'Tariq Jameel',
-      motherName: 'Bushra Tariq',
-      whatsapp: '+923129998877',
-      emergencyPhone: '+923014445566',
-      address: 'Sector E-11/3, Islamabad',
-      status: 'Active',
-      admissionDate: '2024-08-18'
-    },
-    {
-      id: 'stud-005',
-      name: 'Bilal Hussain',
-      rollNo: '05',
-      className: 'Class 3',
-      section: 'A',
-      gender: 'Male',
-      dob: '2017-03-30',
-      admissionNo: 'BOGS-2024-093',
-      fatherName: 'Hussain Abbas',
-      motherName: 'Farzana Hussain',
-      whatsapp: '+923224443322',
-      emergencyPhone: '+923002221100',
-      address: 'House 77, St 2, F-10/1, Islamabad',
-      status: 'Active',
-      admissionDate: '2024-08-20'
-    },
-    {
-      id: 'stud-006',
-      name: 'Zainab Bibi',
-      rollNo: '06',
-      className: 'Class 3',
-      section: 'A',
-      gender: 'Female',
-      dob: '2017-11-14',
-      admissionNo: 'BOGS-2024-094',
-      fatherName: 'Abdul Rehman',
-      motherName: 'Kalsoom Bibi',
-      whatsapp: '+923058887766',
-      emergencyPhone: '+923156667788',
-      address: 'House 19, St 8, G-11/2, Islamabad',
-      status: 'Active',
-      admissionDate: '2024-08-22'
-    },
-    {
-      id: 'stud-007',
-      name: 'Hamza Farooq',
-      rollNo: '01',
-      className: 'Class 4',
-      section: 'A',
-      gender: 'Male',
-      dob: '2016-05-19',
-      admissionNo: 'BOGS-2023-045',
-      fatherName: 'Farooq Azam',
-      motherName: 'Nadia Farooq',
-      whatsapp: '+923337778899',
-      emergencyPhone: '+923001112244',
-      address: 'House 31, St 4, F-8/3, Islamabad',
-      status: 'Active',
-      admissionDate: '2023-08-10'
-    },
-    {
-      id: 'stud-008',
-      name: 'Maryam Saeed',
-      rollNo: '02',
-      className: 'Class 4',
-      section: 'A',
-      gender: 'Female',
-      dob: '2016-08-24',
-      admissionNo: 'BOGS-2023-048',
-      fatherName: 'Saeed Anwar',
-      motherName: 'Rubina Saeed',
-      whatsapp: '+923456667788',
-      emergencyPhone: '+923339998822',
-      address: 'House 85, St 12, G-9/1, Islamabad',
-      status: 'Active',
-      admissionDate: '2023-08-11'
-    },
-    {
-      id: 'stud-009',
-      name: 'Usman Khan',
-      rollNo: '01',
-      className: 'Class 2',
-      section: 'A',
-      gender: 'Male',
-      dob: '2018-02-14',
-      admissionNo: 'BOGS-2025-012',
-      fatherName: 'Imran Khan',
-      motherName: 'Amina Khan',
-      whatsapp: '+923135554433',
-      emergencyPhone: '+923023334455',
-      address: 'House 6, St 3, F-10/4, Islamabad',
-      status: 'Active',
-      admissionDate: '2025-08-12'
-    },
-    {
-      id: 'stud-010',
-      name: 'Hafsa Rehan',
-      rollNo: '02',
-      className: 'Class 2',
-      section: 'A',
-      gender: 'Female',
-      dob: '2018-07-09',
-      admissionNo: 'BOGS-2025-015',
-      fatherName: 'Rehan Siddiqui',
-      motherName: 'Mehwish Rehan',
-      whatsapp: '+923348889900',
-      emergencyPhone: '+923214447788',
-      address: 'House 22, St 11, G-10/2, Islamabad',
-      status: 'Active',
-      admissionDate: '2025-08-14'
-    },
-    {
-      id: 'stud-011',
-      name: 'Daniyal Tariq',
-      rollNo: '01',
-      className: 'Class 6',
-      section: 'Blue',
-      gender: 'Male',
-      dob: '2014-03-15',
-      admissionNo: 'BOGS-2021-021',
-      fatherName: 'Tariq Mehmood',
-      motherName: 'Sadia Tariq',
-      whatsapp: '+923001234567',
-      emergencyPhone: '+923219876543',
-      address: 'House 55, St 14, F-7/2, Islamabad',
-      status: 'Active',
-      admissionDate: '2021-08-10'
-    },
-    {
-      id: 'stud-012',
-      name: 'Anum Zahra',
-      rollNo: '01',
-      className: 'Class 7',
-      section: 'Rose',
-      gender: 'Female',
-      dob: '2013-05-18',
-      admissionNo: 'BOGS-2020-034',
-      fatherName: 'Zahid Hussain',
-      motherName: 'Kishwar Zahra',
-      whatsapp: '+923335551234',
-      emergencyPhone: '+923005556789',
-      address: 'House 18, St 9, G-8/1, Islamabad',
-      status: 'Active',
-      admissionDate: '2020-08-12'
-    },
-    {
-      id: 'stud-013',
-      name: 'Saad Arshad',
-      rollNo: '01',
-      className: 'Class 8',
-      section: 'Alif',
-      gender: 'Male',
-      dob: '2012-11-04',
-      admissionNo: 'BOGS-2019-019',
-      fatherName: 'Arshad Malik',
-      motherName: 'Noreen Arshad',
-      whatsapp: '+923458765432',
-      emergencyPhone: '+923331112233',
-      address: 'House 89, St 3, I-8/4, Islamabad',
-      status: 'Active',
-      admissionDate: '2019-08-15'
-    },
-    {
-      id: 'stud-014',
-      name: 'Mahnoor Faisal',
-      rollNo: '01',
-      className: 'Class 9',
-      section: 'Science',
-      gender: 'Female',
-      dob: '2011-08-22',
-      admissionNo: 'BOGS-2018-052',
-      fatherName: 'Faisal Javaid',
-      motherName: 'Hina Faisal',
-      whatsapp: '+923129998877',
-      emergencyPhone: '+923014445566',
-      address: 'House 142, St 22, F-11/3, Islamabad',
-      status: 'Active',
-      admissionDate: '2018-08-16'
-    },
-    {
-      id: 'stud-015',
-      name: 'Zayd Ibrahim (Matric)',
-      rollNo: '01',
-      className: 'Class 10',
-      section: 'Science',
-      gender: 'Male',
-      dob: '2010-09-12',
-      admissionNo: 'BOGS-2017-005',
-      fatherName: 'Ibrahim Khalil',
-      motherName: 'Ayesha Ibrahim',
-      whatsapp: '+923224443322',
-      emergencyPhone: '+923002221100',
-      address: 'House 7, St 1, Sector E-7, Islamabad',
-      status: 'Active',
-      admissionDate: '2017-08-14'
-    },
-    {
-      id: 'stud-016',
-      name: 'Sana Qasim (Matric)',
-      rollNo: '02',
-      className: 'Class 10',
-      section: 'Science',
-      gender: 'Female',
-      dob: '2010-04-05',
-      admissionNo: 'BOGS-2017-009',
-      fatherName: 'Qasim Ali',
-      motherName: 'Uzma Qasim',
-      whatsapp: '+923058887766',
-      emergencyPhone: '+923156667788',
-      address: 'House 26, St 17, Sector F-6/1, Islamabad',
-      status: 'Active',
-      admissionDate: '2017-08-14'
+  /**
+   * Auto-generate a short 6-character alphanumeric School Code (e.g. K7X2P9)
+   */
+  function generateSchoolCode() {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let res = '';
+    for (let i = 0; i < 6; i++) {
+      res += chars.charAt(Math.floor(Math.random() * chars.length));
     }
-  ];
-
-  const SAMPLE_TESTS = [
-    {
-      id: 'test-101',
-      title: 'October Monthly Assessment',
-      className: 'Class 3',
-      section: 'A',
-      subject: 'Mathematics',
-      date: '2026-10-10',
-      maxMarks: 50,
-      passMarks: 20
-    },
-    {
-      id: 'test-102',
-      title: 'October Monthly Assessment',
-      className: 'Class 3',
-      section: 'A',
-      subject: 'English',
-      date: '2026-10-08',
-      maxMarks: 50,
-      passMarks: 20
-    },
-    {
-      id: 'test-103',
-      title: 'October Monthly Assessment',
-      className: 'Class 3',
-      section: 'A',
-      subject: 'Urdu',
-      date: '2026-10-09',
-      maxMarks: 50,
-      passMarks: 20
-    },
-    {
-      id: 'test-104',
-      title: 'October Monthly Assessment',
-      className: 'Class 3',
-      section: 'A',
-      subject: 'General Science',
-      date: '2026-10-11',
-      maxMarks: 50,
-      passMarks: 20
-    },
-    {
-      id: 'test-105',
-      title: 'October Monthly Assessment',
-      className: 'Class 3',
-      section: 'A',
-      subject: 'Islamiat',
-      date: '2026-10-12',
-      maxMarks: 50,
-      passMarks: 20
-    },
-    {
-      id: 'test-106',
-      title: 'October Monthly Assessment',
-      className: 'Class 3',
-      section: 'A',
-      subject: 'Social Studies',
-      date: '2026-10-12',
-      maxMarks: 50,
-      passMarks: 20
-    },
-    {
-      id: 'test-201',
-      title: 'October Monthly Assessment',
-      className: 'Class 10',
-      section: 'Science',
-      subject: 'Mathematics',
-      date: '2026-10-10',
-      maxMarks: 75,
-      passMarks: 30
-    },
-    {
-      id: 'test-202',
-      title: 'October Monthly Assessment',
-      className: 'Class 10',
-      section: 'Science',
-      subject: 'Physics',
-      date: '2026-10-11',
-      maxMarks: 75,
-      passMarks: 30
-    },
-    {
-      id: 'test-203',
-      title: 'October Monthly Assessment',
-      className: 'Class 10',
-      section: 'Science',
-      subject: 'English',
-      date: '2026-10-12',
-      maxMarks: 75,
-      passMarks: 30
-    },
-    {
-      id: 'test-204',
-      title: 'October Monthly Assessment',
-      className: 'Class 10',
-      section: 'Science',
-      subject: 'Computer Science',
-      date: '2026-10-13',
-      maxMarks: 75,
-      passMarks: 30
-    }
-  ];
-
-  const SAMPLE_MARKS = {
-    // test-101 (Mathematics)
-    'test-101_stud-001': { marks: 46, remarks: 'Excellent grasp of geometry & fractions!' },
-    'test-101_stud-002': { marks: 48, remarks: 'Top score, very neat calculation steps.' },
-    'test-101_stud-003': { marks: 39, remarks: 'Good attempt, practice word problems.' },
-    'test-101_stud-004': { marks: 42, remarks: 'Very attentive and accurate.' },
-    'test-101_stud-005': { marks: 34, remarks: 'Passed, focus on times tables.' },
-    'test-101_stud-006': { marks: 45, remarks: 'Consistent improvement.' },
-
-    // test-102 (English)
-    'test-102_stud-001': { marks: 44, remarks: 'Creative comprehension writing.' },
-    'test-102_stud-002': { marks: 45, remarks: 'Outstanding vocabulary and spelling.' },
-    'test-102_stud-003': { marks: 37, remarks: 'Needs attention to grammar tenses.' },
-    'test-102_stud-004': { marks: 44, remarks: 'Good handwriting and expression.' },
-    'test-102_stud-005': { marks: 36, remarks: 'Passes, practice punctuation.' },
-    'test-102_stud-006': { marks: 43, remarks: 'Very expressive reading voice.' },
-
-    // test-103 (Urdu)
-    'test-103_stud-001': { marks: 45, remarks: 'Khush-khati bohat achi hai.' },
-    'test-103_stud-002': { marks: 47, remarks: 'Imla aur jumlay behtareen hain.' },
-    'test-103_stud-003': { marks: 40, remarks: 'Acha kaam, imla per tawajjo dain.' },
-    'test-103_stud-004': { marks: 43, remarks: 'Sabaq ki samajh bohot achi hai.' },
-    'test-103_stud-005': { marks: 38, remarks: 'Mehnat jari rakhain.' },
-    'test-103_stud-006': { marks: 44, remarks: 'Nazam zabani achi tarah yaad ki.' },
-
-    // test-104 (General Science)
-    'test-104_stud-001': { marks: 45, remarks: 'Understands scientific experiments.' },
-    'test-104_stud-002': { marks: 46, remarks: 'Clear diagrams and labeling.' },
-    'test-104_stud-003': { marks: 38, remarks: 'Good interest in living things.' },
-    'test-104_stud-004': { marks: 41, remarks: 'Well-prepared and inquisitive.' },
-    'test-104_stud-005': { marks: 35, remarks: 'Satisfactory effort.' },
-    'test-104_stud-006': { marks: 43, remarks: 'Very proactive in project work.' },
-
-    // test-105 (Islamiat)
-    'test-105_stud-001': { marks: 46, remarks: 'Duas and Kalimas recitation clear.' },
-    'test-105_stud-002': { marks: 47, remarks: 'Respectful and attentive student.' },
-    'test-105_stud-003': { marks: 41, remarks: 'Good memorization of Surahs.' },
-    'test-105_stud-004': { marks: 45, remarks: 'Polite manners and good marks.' },
-    'test-105_stud-005': { marks: 39, remarks: 'Good progress.' },
-    'test-105_stud-006': { marks: 44, remarks: 'Active learner.' },
-
-    // test-106 (Social Studies)
-    'test-106_stud-001': { marks: 42, remarks: 'Good map skills and civic knowledge.' },
-    'test-106_stud-002': { marks: 46, remarks: 'Excellent understanding of history.' },
-    'test-106_stud-003': { marks: 36, remarks: 'Passes, review Pakistan geography.' },
-    'test-106_stud-004': { marks: 43, remarks: 'Enthusiastic and knowledgeable.' },
-    'test-106_stud-005': { marks: 37, remarks: 'Fair effort, keep practicing.' },
-    'test-106_stud-006': { marks: 42, remarks: 'Good neatness and presentation.' },
-
-    // test-201 (Class 10 Science - Mathematics)
-    'test-201_stud-015': { marks: 71, remarks: 'Outstanding algebra and theorem proofs.' },
-    'test-201_stud-016': { marks: 68, remarks: 'Excellent trigonometry calculations.' },
-
-    // test-202 (Class 10 Science - Physics)
-    'test-202_stud-015': { marks: 69, remarks: 'Strong theoretical conceptual grasp.' },
-    'test-202_stud-016': { marks: 66, remarks: 'Neat numerical and circuit diagrams.' },
-
-    // test-203 (Class 10 Science - English)
-    'test-203_stud-015': { marks: 68, remarks: 'High vocabulary and essay writing.' },
-    'test-203_stud-016': { marks: 72, remarks: 'Flawless comprehension and grammar.' },
-
-    // test-204 (Class 10 Science - Computer Science)
-    'test-204_stud-015': { marks: 73, remarks: 'Top programmer, accurate C/algorithms.' },
-    'test-204_stud-016': { marks: 70, remarks: 'Excellent database and logic models.' }
-  };
-
-  // ========================================================
-  // Phase 2 Sample Data & Templates (M4, M5, M6)
-  // ========================================================
-  const SAMPLE_PTM_EVENTS = [
-    {
-      id: 'ptm-001',
-      title: 'Term 1 Parent-Teacher Meeting (PTM)',
-      date: '2026-10-25',
-      startTime: '09:00',
-      endTime: '13:00',
-      classes: ['Class 3', 'Class 4'],
-      venue: 'Main Campus & Classrooms',
-      notes: 'Please bring student diary and arrive 5 minutes before your slot.',
-      rsvps: {
-        'stud-001': 'Yes',
-        'stud-002': 'Yes',
-        'stud-003': 'Maybe',
-        'stud-004': 'Pending',
-        'stud-005': 'No',
-        'stud-006': 'Yes'
-      }
-    }
-  ];
-
-  const SAMPLE_CALL_LOGS = [
-    {
-      id: 'call-001',
-      studentId: 'stud-002',
-      studentName: 'Fatima Noor',
-      className: 'Class 3',
-      parentName: 'Tariq Mehmood',
-      phone: '+923335551234',
-      date: '2026-10-12 11:30',
-      reason: 'Academic Performance',
-      outcome: 'Resolved',
-      notes: 'Discussed Fatima\'s exceptional test marks in Mathematics (48/50). Father was very pleased.'
-    },
-    {
-      id: 'call-002',
-      studentId: 'stud-003',
-      studentName: 'Muhammad Ali',
-      className: 'Class 3',
-      parentName: 'Ali Asghar',
-      phone: '+923458765432',
-      date: '2026-10-10 14:15',
-      reason: 'Attendance / Absences',
-      outcome: 'Follow-up Required',
-      notes: 'Informed father regarding 2 consecutive absences this week. Father explained seasonal flu; medical note expected.'
-    }
-  ];
+    return res;
+  }
 
   const BROADCAST_TEMPLATES = {
     fee_reminder: "Assalam-o-Alaikum {parent_name},\nThis is a gentle reminder from {school_name} regarding the monthly tuition fee voucher for {student_name} ({class}). Kindly submit the fee by the 10th of the month. Thank you for your cooperation!\n— {school_name}",
@@ -599,6 +181,8 @@
   // Application State
   // ========================================================
   const state = {
+    currentSchoolId: null,
+    currentSchool: null,
     students: [],
     attendance: {}, // { 'YYYY-MM-DD_Class 3_A': { 'stud-id': { status: 'Present'|'Absent'|'Late', time: '08:15 AM' } } }
     tests: [],
@@ -619,11 +203,17 @@
   };
 
   // ========================================================
-  // Storage Helper Functions
+  // Storage Helper Functions (Scoped per School Tenant)
   // ========================================================
+  function getScopedKey(key) {
+    if (!state.currentSchoolId) return key;
+    return `${key}_${state.currentSchoolId}`;
+  }
+
   function loadStorage(key, fallback) {
     try {
-      const data = localStorage.getItem(key);
+      const scopedKey = getScopedKey(key);
+      const data = localStorage.getItem(scopedKey);
       return data ? JSON.parse(data) : fallback;
     } catch (e) {
       console.warn('Storage read failed for ' + key, e);
@@ -633,13 +223,96 @@
 
   function saveStorage(key, val) {
     try {
-      localStorage.setItem(key, JSON.stringify(val));
+      const scopedKey = getScopedKey(key);
+      localStorage.setItem(scopedKey, JSON.stringify(val));
     } catch (e) {
       console.error('Storage save failed for ' + key, e);
     }
   }
 
-  // ========================================================
+  /**
+   * One-time School Setup Modal for users without a schoolId (Migration)
+   */
+  function promptSchoolOnboarding(currentUser) {
+    return new Promise((resolve) => {
+      const modal = document.getElementById('schoolOnboardModal');
+      const form = document.getElementById('schoolOnboardForm');
+      const nameInput = document.getElementById('onboardSchoolName');
+      const addrInput = document.getElementById('onboardSchoolAddress');
+      const phoneInput = document.getElementById('onboardSchoolPhone');
+
+      if (!modal || !form) {
+        resolve(null);
+        return;
+      }
+
+      modal.classList.remove('hidden');
+      if (nameInput) {
+        nameInput.value = '';
+        nameInput.focus();
+      }
+
+      const handleSubmit = async (e) => {
+        e.preventDefault();
+        const schoolName = (nameInput?.value || '').trim();
+        const schoolAddress = (addrInput?.value || '').trim();
+        const schoolPhone = (phoneInput?.value || '').trim();
+
+        if (!schoolName) {
+          showToast('Please enter your school name.', 'error');
+          nameInput?.focus();
+          return;
+        }
+
+        const schoolId = 'school_' + Date.now().toString(36) + '_' + Math.random().toString(36).substring(2, 7);
+        const schoolCode = generateSchoolCode();
+        const newSchool = {
+          schoolId,
+          name: schoolName,
+          address: schoolAddress,
+          phone: schoolPhone,
+          schoolCode,
+          createdAt: new Date().toISOString(),
+          plan: 'trial'
+        };
+
+        try {
+          if (db) {
+            await db.collection('schools').doc(schoolId).set(newSchool);
+            const emailLower = currentUser.email.toLowerCase();
+            await db.collection('users').doc(emailLower).set({
+              email: emailLower,
+              role: getUserRole(emailLower) || 'Admin',
+              schoolId: schoolId,
+              schoolName: schoolName
+            }, { merge: true });
+          }
+
+          state.currentSchoolId = schoolId;
+          state.currentSchool = newSchool;
+          localStorage.setItem(SCHOOL_STORAGE_PREFIX + currentUser.email.toLowerCase(), schoolId);
+          state.profile = {
+            ...DEFAULT_SCHOOL_PROFILE,
+            name: schoolName,
+            address: schoolAddress,
+            phone: schoolPhone
+          };
+          saveStorage(STORAGE_KEYS.PROFILE, state.profile);
+
+          modal.classList.add('hidden');
+          form.removeEventListener('submit', handleSubmit);
+          showToast(`Welcome! ${schoolName} is set up successfully.`, 'success');
+          resolve(newSchool);
+        } catch (err) {
+          console.error('Error during school onboarding:', err);
+          showToast('Error setting up school. Please try again.', 'error');
+        }
+      };
+
+      form.addEventListener('submit', handleSubmit);
+    });
+  }
+
   // Cloud Firestore Database Service & Auto-Migration Layer
   // Collections:
   //  - students:    { name, class, section, parentName, parentPhone, admissionNo }
@@ -753,270 +426,74 @@
         throw new Error('FIRESTORE_UNAVAILABLE');
       }
 
-      // Sync user profile & role in users collection
-      if (currentUser && currentUser.email) {
-        const emailLower = currentUser.email.toLowerCase();
+      if (!currentUser || !currentUser.email) {
+        return;
+      }
+
+      const emailLower = currentUser.email.toLowerCase();
+
+      // Look up user document in users collection
+      let userData = null;
+      try {
+        const userDocRef = db.collection('users').doc(emailLower);
+        const userSnap = await userDocRef.get();
+        if (userSnap.exists) {
+          userData = userSnap.data();
+          if (userData.role) {
+            localStorage.setItem(ROLE_STORAGE_PREFIX + emailLower, userData.role);
+          }
+        }
+      } catch (err) {
+        console.warn('User record lookup warning:', err);
+      }
+
+      // Check for schoolId on user document
+      if (!userData || !userData.schoolId) {
+        console.log('User has no schoolId — triggering onboarding migration modal');
+        const onboardedSchool = await promptSchoolOnboarding(currentUser);
+        if (!onboardedSchool) {
+          return;
+        }
+      } else {
+        state.currentSchoolId = userData.schoolId;
+        localStorage.setItem(SCHOOL_STORAGE_PREFIX + emailLower, state.currentSchoolId);
+      }
+
+      // Fetch School details
+      if (state.currentSchoolId) {
         try {
-          const userDocRef = db.collection('users').doc(emailLower);
-          const userSnap = await userDocRef.get();
-          if (userSnap.exists) {
-            const userData = userSnap.data();
-            if (userData.role) {
-              localStorage.setItem(ROLE_STORAGE_PREFIX + emailLower, userData.role);
-            }
-          } else {
-            const currentRole = getUserRole(emailLower);
-            await userDocRef.set({
-              email: emailLower,
-              role: currentRole,
-              schoolName: state.profile.name || DEFAULT_SCHOOL_PROFILE.name
-            }, { merge: true });
+          const schoolSnap = await db.collection('schools').doc(state.currentSchoolId).get();
+          if (schoolSnap.exists) {
+            state.currentSchool = schoolSnap.data();
+            state.profile = {
+              ...DEFAULT_SCHOOL_PROFILE,
+              name: state.currentSchool.name || DEFAULT_SCHOOL_PROFILE.name,
+              address: state.currentSchool.address || '',
+              phone: state.currentSchool.phone || '',
+              motto: state.currentSchool.motto || '',
+              principal: state.currentSchool.principal || '',
+              academicYear: state.currentSchool.academicYear || '2026–2027',
+              passPercentage: state.currentSchool.passPercentage || 40
+            };
+            saveStorage(STORAGE_KEYS.PROFILE, state.profile);
           }
         } catch (err) {
-          console.warn('User record sync warning:', err);
+          console.warn('School profile fetch warning:', err);
         }
       }
 
-      // Check if Firestore students collection is empty
-      let isFirestoreEmpty = false;
-      try {
-        const testSnap = await db.collection('students').limit(1).get();
-        isFirestoreEmpty = testSnap.empty;
-      } catch (err) {
-        console.warn('Firestore initial check error, checking cache/offline:', err);
-        throw err;
-      }
-
-      if (isFirestoreEmpty) {
-        // Auto-migration path: if localStorage has data + Firestore empty -> auto-migrate
-        await FirestoreDB.autoMigrate(currentUser, showOverlay);
-      } else {
-        // Firestore has data: Firestore = source of truth, localStorage = read cache only
-        await FirestoreDB.loadAllFromFirestore(showOverlay);
-      }
+      // Load all data scoped by schoolId from Firestore
+      await FirestoreDB.loadAllFromFirestore(showOverlay);
     },
-
-    async autoMigrate(currentUser, showOverlay = false) {
-      if (showOverlay) {
-        FirestoreDB.showSyncOverlay(
-          'Migrating to Cloud Firestore',
-          'Transferring existing school database from device to Cloud Firestore (asia-south1)...',
-          true,
-          10
-        );
-      }
-
-      try {
-        // Make sure local state is loaded
-        initData();
-
-        const userEmail = currentUser?.email || 'Admin';
-
-      // 1. Migrate Students (20%)
-      FirestoreDB.setSyncProgress(20, 'Migrating student directory to Cloud Firestore...');
-      const studentBatch = db.batch();
-      (state.students || []).forEach(s => {
-        const docRef = db.collection('students').doc(s.id);
-        studentBatch.set(docRef, {
-          id: s.id,
-          name: s.name || '',
-          class: s.className || s.class || '',
-          className: s.className || s.class || '',
-          section: s.section || 'A',
-          parentName: s.fatherName || s.parentName || s.motherName || '',
-          fatherName: s.fatherName || s.parentName || '',
-          motherName: s.motherName || '',
-          parentPhone: s.whatsapp || s.parentPhone || '',
-          whatsapp: s.whatsapp || s.parentPhone || '',
-          emergencyPhone: s.emergencyPhone || '',
-          admissionNo: s.admissionNo || '',
-          rollNo: s.rollNo || '',
-          gender: s.gender || 'Male',
-          dob: s.dob || '',
-          address: s.address || '',
-          status: s.status || 'Active',
-          admissionDate: s.admissionDate || getTodayISO()
-        }, { merge: true });
-      });
-      await studentBatch.commit();
-
-      // 2. Migrate Tests & Marks (45%)
-      FirestoreDB.setSyncProgress(45, 'Migrating tests and subject mark records...');
-      const testsBatch = db.batch();
-      (state.tests || []).forEach(t => {
-        const docRef = db.collection('tests').doc(t.id);
-        testsBatch.set(docRef, {
-          id: t.id,
-          title: t.title || '',
-          className: t.className || '',
-          section: t.section || '',
-          subject: t.subject || '',
-          date: t.date || '',
-          maxMarks: t.maxMarks || 100,
-          passMarks: t.passMarks || 40
-        }, { merge: true });
-      });
-      await testsBatch.commit();
-
-      const marksEntries = Object.entries(state.marks || {});
-      const marksBatches = [];
-      let currentBatch = db.batch();
-      let count = 0;
-      marksEntries.forEach(([key, val]) => {
-        const parts = key.split('_');
-        const testId = parts[0];
-        const studentId = parts[1];
-        const testObj = (state.tests || []).find(t => t.id === testId) || {};
-
-        const docRef = db.collection('marks').doc(key);
-        currentBatch.set(docRef, {
-          studentId: studentId || '',
-          testId: testId || '',
-          subject: testObj.subject || '',
-          term: testObj.title || 'Term Assessment',
-          obtained: val.marks != null ? val.marks : 0,
-          total: testObj.maxMarks || 100,
-          marks: val.marks != null ? val.marks : 0,
-          remarks: val.remarks || '',
-          className: testObj.className || '',
-          section: testObj.section || ''
-        }, { merge: true });
-        count++;
-        if (count % 400 === 0) {
-          marksBatches.push(currentBatch.commit());
-          currentBatch = db.batch();
-        }
-      });
-      if (count % 400 !== 0) {
-        marksBatches.push(currentBatch.commit());
-      }
-      await Promise.all(marksBatches);
-
-      // 3. Migrate Attendance (65%)
-      FirestoreDB.setSyncProgress(65, 'Migrating daily attendance records...');
-      const attBatches = [];
-      let attBatch = db.batch();
-      let attCount = 0;
-      Object.entries(state.attendance || {}).forEach(([recordKey, studentMap]) => {
-        const [dateStr, className, section] = recordKey.split('_');
-        Object.entries(studentMap || {}).forEach(([studId, attData]) => {
-          const docId = `${dateStr}_${studId}`;
-          const docRef = db.collection('attendance').doc(docId);
-          attBatch.set(docRef, {
-            date: dateStr,
-            studentId: studId,
-            class: className || 'Class 3',
-            className: className || 'Class 3',
-            section: section || 'A',
-            status: attData.status || 'Present',
-            time: attData.time || '',
-            markedBy: userEmail
-          }, { merge: true });
-          attCount++;
-          if (attCount % 400 === 0) {
-            attBatches.push(attBatch.commit());
-            attBatch = db.batch();
-          }
-        });
-      });
-      if (attCount % 400 !== 0) {
-        attBatches.push(attBatch.commit());
-      }
-      await Promise.all(attBatches);
-
-      // 4. Migrate Dispatches, PTMs, Call Logs (85%)
-      FirestoreDB.setSyncProgress(85, 'Migrating dispatches, PTM scheduler, and call logs...');
-      const commsBatch = db.batch();
-
-      // Dispatches
-      Object.entries(state.dispatchLogs || {}).forEach(([logKey, dispatchData]) => {
-        const parts = logKey.split('_');
-        const month = parts[0] || 'Monthly Assessment';
-        const className = parts[1] || 'Class 3';
-        const studentId = parts[2] || '';
-        const cleanDocId = `${month.replace(/[^a-zA-Z0-9]/g, '_')}_${className.replace(/[^a-zA-Z0-9]/g, '_')}_${studentId}`;
-        const docRef = db.collection('dispatches').doc(cleanDocId);
-        commsBatch.set(docRef, {
-          class: className,
-          className: className,
-          month: month,
-          studentId: studentId,
-          status: dispatchData.status || 'Pending',
-          sentAt: dispatchData.sentAt || ''
-        }, { merge: true });
-      });
-
-      // PTMs
-      (state.ptmEvents || []).forEach(ptm => {
-        const docRef = db.collection('ptms').doc(ptm.id);
-        commsBatch.set(docRef, {
-          id: ptm.id,
-          title: ptm.title || '',
-          date: ptm.date || '',
-          timeSlots: ptm.timeSlots || `${ptm.startTime || '09:00'} - ${ptm.endTime || '13:00'}`,
-          startTime: ptm.startTime || '09:00',
-          endTime: ptm.endTime || '13:00',
-          classes: ptm.classes || [],
-          venue: ptm.venue || '',
-          notes: ptm.notes || '',
-          invites: Object.keys(ptm.rsvps || {}).map(sId => ({
-            studentId: sId,
-            status: ptm.rsvps[sId]
-          })),
-          rsvps: ptm.rsvps || {}
-        }, { merge: true });
-      });
-
-      // Call logs
-      (state.callLogs || []).forEach(call => {
-        const docRef = db.collection('calls').doc(call.id);
-        commsBatch.set(docRef, {
-          id: call.id,
-          studentId: call.studentId || '',
-          date: call.date || '',
-          reason: call.reason || '',
-          outcome: call.outcome || '',
-          studentName: call.studentName || '',
-          className: call.className || '',
-          parentName: call.parentName || '',
-          phone: call.phone || '',
-          notes: call.notes || ''
-        }, { merge: true });
-      });
-
-      // Settings/Profile
-      const profileRef = db.collection('settings').doc('profile');
-      commsBatch.set(profileRef, state.profile || DEFAULT_SCHOOL_PROFILE, { merge: true });
-
-      // User record
-      if (currentUser && currentUser.email) {
-        const emailLower = currentUser.email.toLowerCase();
-        const userRef = db.collection('users').doc(emailLower);
-        commsBatch.set(userRef, {
-          email: emailLower,
-          role: getUserRole(emailLower),
-          schoolName: state.profile.name || DEFAULT_SCHOOL_PROFILE.name
-        }, { merge: true });
-      }
-
-      await commsBatch.commit();
-
-      FirestoreDB.setSyncProgress(100, 'Migration completed successfully!');
-      localStorage.setItem('schoolsteps_migrated_v1', 'true');
-      showToast('Successfully migrated all school data to Cloud Firestore!', 'success');
-    } catch (err) {
-      console.warn('Error during autoMigrate to Firestore, falling back to local storage:', err);
-      initData();
-      if (showOverlay) FirestoreDB.hideSyncOverlay();
-      throw err;
-    } finally {
-      if (showOverlay) FirestoreDB.hideSyncOverlay();
-    }
-  },
 
     async loadAllFromFirestore(showOverlay = false) {
       if (showOverlay) {
         FirestoreDB.showSyncOverlay('Loading SchoolSteps', 'Syncing latest school records from Cloud Firestore...');
+      }
+
+      if (!state.currentSchoolId) {
+        if (showOverlay) FirestoreDB.hideSyncOverlay();
+        return;
       }
 
       try {
@@ -1028,114 +505,122 @@
           dispatchSnap,
           ptmSnap,
           callSnap,
-          profileSnap
+          schoolSnap
         ] = await Promise.all([
-          db.collection('students').get(),
-          db.collection('tests').get(),
-          db.collection('marks').get(),
-          db.collection('attendance').get(),
-          db.collection('dispatches').get(),
-          db.collection('ptms').get(),
-          db.collection('calls').get(),
-          db.collection('settings').doc('profile').get()
+          db.collection('students').where('schoolId', '==', state.currentSchoolId).get(),
+          db.collection('tests').where('schoolId', '==', state.currentSchoolId).get(),
+          db.collection('marks').where('schoolId', '==', state.currentSchoolId).get(),
+          db.collection('attendance').where('schoolId', '==', state.currentSchoolId).get(),
+          db.collection('dispatches').where('schoolId', '==', state.currentSchoolId).get(),
+          db.collection('ptms').where('schoolId', '==', state.currentSchoolId).get(),
+          db.collection('calls').where('schoolId', '==', state.currentSchoolId).get(),
+          db.collection('schools').doc(state.currentSchoolId).get()
         ]);
 
         // 1. Students
-        if (!studentsSnap.empty) {
-          state.students = studentsSnap.docs.map(doc => {
-            const data = doc.data();
-            return {
-              id: doc.id,
-              ...data,
-              className: data.className || data.class || 'Class 3',
-              section: data.section || 'A',
-              fatherName: data.fatherName || data.parentName || '',
-              whatsapp: data.whatsapp || data.parentPhone || ''
-            };
-          });
-          state.students.sort((a, b) => (parseInt(a.rollNo, 10) || 0) - (parseInt(b.rollNo, 10) || 0));
-          saveStorage(STORAGE_KEYS.STUDENTS, state.students);
-        }
+        state.students = studentsSnap.docs.map(doc => {
+          const data = doc.data();
+          return {
+            id: data.id || doc.id.replace(`${state.currentSchoolId}_`, ''),
+            ...data,
+            className: data.className || data.class || 'Class 3',
+            section: data.section || 'A',
+            fatherName: data.fatherName || data.parentName || '',
+            whatsapp: data.whatsapp || data.parentPhone || ''
+          };
+        });
+        state.students.sort((a, b) => (parseInt(a.rollNo, 10) || 0) - (parseInt(b.rollNo, 10) || 0));
+        saveStorage(STORAGE_KEYS.STUDENTS, state.students);
 
         // 2. Tests
-        if (!testsSnap.empty) {
-          state.tests = testsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-          saveStorage(STORAGE_KEYS.TESTS, state.tests);
-        }
+        state.tests = testsSnap.docs.map(doc => {
+          const data = doc.data();
+          return {
+            id: data.id || doc.id.replace(`${state.currentSchoolId}_`, ''),
+            ...data
+          };
+        });
+        saveStorage(STORAGE_KEYS.TESTS, state.tests);
 
         // 3. Marks
-        if (!marksSnap.empty) {
-          state.marks = {};
-          marksSnap.docs.forEach(doc => {
-            const d = doc.data();
-            const key = d.testId && d.studentId ? `${d.testId}_${d.studentId}` : doc.id;
-            state.marks[key] = {
-              marks: d.obtained != null ? d.obtained : (d.marks != null ? d.marks : 0),
-              remarks: d.remarks || ''
-            };
-          });
-          saveStorage(STORAGE_KEYS.MARKS, state.marks);
-        }
+        state.marks = {};
+        marksSnap.docs.forEach(doc => {
+          const d = doc.data();
+          const key = d.testId && d.studentId ? `${d.testId}_${d.studentId}` : doc.id.replace(`${state.currentSchoolId}_`, '');
+          state.marks[key] = {
+            marks: d.obtained != null ? d.obtained : (d.marks != null ? d.marks : 0),
+            remarks: d.remarks || ''
+          };
+        });
+        saveStorage(STORAGE_KEYS.MARKS, state.marks);
 
         // 4. Attendance
-        if (!attSnap.empty) {
-          state.attendance = {};
-          attSnap.docs.forEach(doc => {
-            const d = doc.data();
-            const key = `${d.date}_${d.className || d.class || 'Class 3'}_${d.section || 'A'}`;
-            state.attendance[key] = state.attendance[key] || {};
-            state.attendance[key][d.studentId] = {
-              status: d.status || 'Present',
-              time: d.time || ''
-            };
-          });
-          saveStorage(STORAGE_KEYS.ATTENDANCE, state.attendance);
-        }
+        state.attendance = {};
+        attSnap.docs.forEach(doc => {
+          const d = doc.data();
+          const key = `${d.date}_${d.className || d.class || 'Class 3'}_${d.section || 'A'}`;
+          state.attendance[key] = state.attendance[key] || {};
+          state.attendance[key][d.studentId] = {
+            status: d.status || 'Present',
+            time: d.time || ''
+          };
+        });
+        saveStorage(STORAGE_KEYS.ATTENDANCE, state.attendance);
 
         // 5. Dispatches
-        if (!dispatchSnap.empty) {
-          state.dispatchLogs = {};
-          dispatchSnap.docs.forEach(doc => {
-            const d = doc.data();
-            const key = `${d.month}_${d.className || d.class}_${d.studentId}`;
-            state.dispatchLogs[key] = {
-              status: d.status || 'Pending',
-              sentAt: d.sentAt || ''
-            };
-          });
-          saveStorage(STORAGE_KEYS.DISPATCH_LOG, state.dispatchLogs);
-        }
+        state.dispatchLogs = {};
+        dispatchSnap.docs.forEach(doc => {
+          const d = doc.data();
+          const key = `${d.month}_${d.className || d.class}_${d.studentId}`;
+          state.dispatchLogs[key] = {
+            status: d.status || 'Pending',
+            sentAt: d.sentAt || ''
+          };
+        });
+        saveStorage(STORAGE_KEYS.DISPATCH_LOG, state.dispatchLogs);
 
         // 6. PTMs
-        if (!ptmSnap.empty) {
-          state.ptmEvents = ptmSnap.docs.map(doc => {
-            const d = doc.data();
-            let rsvps = d.rsvps || {};
-            if (Array.isArray(d.invites) && Object.keys(rsvps).length === 0) {
-              d.invites.forEach(inv => {
-                if (inv && inv.studentId) rsvps[inv.studentId] = inv.status;
-              });
-            }
-            return {
-              id: doc.id,
-              ...d,
-              rsvps
-            };
-          });
-          state.activePtmId = state.ptmEvents[0]?.id || null;
-          saveStorage(STORAGE_KEYS.PTM_EVENTS, state.ptmEvents);
-        }
+        state.ptmEvents = ptmSnap.docs.map(doc => {
+          const d = doc.data();
+          let rsvps = d.rsvps || {};
+          if (Array.isArray(d.invites) && Object.keys(rsvps).length === 0) {
+            d.invites.forEach(inv => {
+              if (inv && inv.studentId) rsvps[inv.studentId] = inv.status;
+            });
+          }
+          return {
+            id: d.id || doc.id.replace(`${state.currentSchoolId}_`, ''),
+            ...d,
+            rsvps
+          };
+        });
+        state.activePtmId = state.ptmEvents[0]?.id || null;
+        saveStorage(STORAGE_KEYS.PTM_EVENTS, state.ptmEvents);
 
         // 7. Calls
-        if (!callSnap.empty) {
-          state.callLogs = callSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-          state.callLogs.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
-          saveStorage(STORAGE_KEYS.CALL_LOGS, state.callLogs);
-        }
+        state.callLogs = callSnap.docs.map(doc => {
+          const data = doc.data();
+          return {
+            id: data.id || doc.id.replace(`${state.currentSchoolId}_`, ''),
+            ...data
+          };
+        });
+        state.callLogs.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+        saveStorage(STORAGE_KEYS.CALL_LOGS, state.callLogs);
 
-        // 8. Profile
-        if (profileSnap.exists) {
-          state.profile = { ...DEFAULT_SCHOOL_PROFILE, ...profileSnap.data() };
+        // 8. School Profile
+        if (schoolSnap.exists) {
+          state.currentSchool = schoolSnap.data();
+          state.profile = {
+            ...DEFAULT_SCHOOL_PROFILE,
+            name: state.currentSchool.name || DEFAULT_SCHOOL_PROFILE.name,
+            address: state.currentSchool.address || '',
+            phone: state.currentSchool.phone || '',
+            motto: state.currentSchool.motto || '',
+            principal: state.currentSchool.principal || '',
+            academicYear: state.currentSchool.academicYear || '2026–2027',
+            passPercentage: state.currentSchool.passPercentage || 40
+          };
           saveStorage(STORAGE_KEYS.PROFILE, state.profile);
         }
 
@@ -1149,12 +634,15 @@
       }
     },
 
-    // --- Direct CRUD Mutation Methods ---
+    // --- Direct CRUD Mutation Methods (Scoped by School Tenant) ---
     async saveStudent(student) {
+      if (!state.currentSchoolId) return false;
       return this.writeWithRetry(`Save Student (${student.name})`, async () => {
-        const docRef = db.collection('students').doc(student.id);
+        const docId = `${state.currentSchoolId}_${student.id}`;
+        const docRef = db.collection('students').doc(docId);
         await docRef.set({
           id: student.id,
+          schoolId: state.currentSchoolId,
           name: student.name || '',
           class: student.className || student.class || '',
           className: student.className || student.class || '',
@@ -1177,17 +665,21 @@
     },
 
     async deleteStudent(id) {
+      if (!state.currentSchoolId) return false;
       return this.writeWithRetry(`Delete Student`, async () => {
-        await db.collection('students').doc(id).delete();
+        const docId = `${state.currentSchoolId}_${id}`;
+        await db.collection('students').doc(docId).delete().catch(() => db.collection('students').doc(id).delete());
       });
     },
 
     async saveAttendanceRecord(dateStr, className, section, studentId, status, timeStr = '', markedBy = '') {
+      if (!state.currentSchoolId) return false;
       return this.writeWithRetry(`Attendance for ${studentId}`, async () => {
-        const docId = `${dateStr}_${studentId}`;
+        const docId = `${state.currentSchoolId}_${dateStr}_${studentId}`;
         await db.collection('attendance').doc(docId).set({
           date: dateStr,
           studentId,
+          schoolId: state.currentSchoolId,
           class: className,
           className,
           section,
@@ -1199,14 +691,16 @@
     },
 
     async saveAttendanceBatch(records) {
+      if (!state.currentSchoolId) return false;
       return this.writeWithRetry(`Save Attendance Batch`, async () => {
         const batch = db.batch();
         records.forEach(r => {
-          const docId = `${r.date}_${r.studentId}`;
+          const docId = `${state.currentSchoolId}_${r.date}_${r.studentId}`;
           const ref = db.collection('attendance').doc(docId);
           batch.set(ref, {
             date: r.date,
             studentId: r.studentId,
+            schoolId: state.currentSchoolId,
             class: r.className || r.class,
             className: r.className || r.class,
             section: r.section,
@@ -1220,9 +714,12 @@
     },
 
     async saveTest(test) {
+      if (!state.currentSchoolId) return false;
       return this.writeWithRetry(`Save Test (${test.title})`, async () => {
-        await db.collection('tests').doc(test.id).set({
+        const docId = `${state.currentSchoolId}_${test.id}`;
+        await db.collection('tests').doc(docId).set({
           id: test.id,
+          schoolId: state.currentSchoolId,
           title: test.title || '',
           className: test.className || '',
           section: test.section || '',
@@ -1235,14 +732,16 @@
     },
 
     async saveMarksBatch(test, marksList) {
+      if (!state.currentSchoolId) return false;
       return this.writeWithRetry(`Save Marks (${test.subject})`, async () => {
         const batch = db.batch();
         marksList.forEach(m => {
-          const docId = `${test.id}_${m.studentId}`;
+          const docId = `${state.currentSchoolId}_${test.id}_${m.studentId}`;
           const ref = db.collection('marks').doc(docId);
           batch.set(ref, {
             studentId: m.studentId,
             testId: test.id,
+            schoolId: state.currentSchoolId,
             subject: test.subject || '',
             term: test.title || 'Assessment',
             obtained: m.marks != null ? m.marks : 0,
@@ -1259,21 +758,26 @@
 
     async saveProfile(profile) {
       return this.writeWithRetry(`Save School Profile`, async () => {
-        await db.collection('settings').doc('profile').set({
-          name: profile.name || '',
-          motto: profile.motto || '',
-          address: profile.address || '',
-          principal: profile.principal || '',
-          academicYear: profile.academicYear || '',
-          passPercentage: profile.passPercentage || 40
-        }, { merge: true });
+        if (state.currentSchoolId) {
+          await db.collection('schools').doc(state.currentSchoolId).set({
+            name: profile.name || '',
+            motto: profile.motto || '',
+            address: profile.address || '',
+            phone: profile.phone || '',
+            principal: profile.principal || '',
+            academicYear: profile.academicYear || '',
+            passPercentage: profile.passPercentage || 40
+          }, { merge: true });
+        }
       });
     },
 
     async saveDispatch(month, className, studentId, status, sentAt) {
+      if (!state.currentSchoolId) return false;
       return this.writeWithRetry(`Dispatch for ${studentId}`, async () => {
-        const cleanDocId = `${month.replace(/[^a-zA-Z0-9]/g, '_')}_${className.replace(/[^a-zA-Z0-9]/g, '_')}_${studentId}`;
+        const cleanDocId = `${state.currentSchoolId}_${month.replace(/[^a-zA-Z0-9]/g, '_')}_${className.replace(/[^a-zA-Z0-9]/g, '_')}_${studentId}`;
         await db.collection('dispatches').doc(cleanDocId).set({
+          schoolId: state.currentSchoolId,
           class: className,
           className,
           month,
@@ -1285,12 +789,14 @@
     },
 
     async saveDispatchBatch(month, className, students, status, sentAt) {
+      if (!state.currentSchoolId) return false;
       return this.writeWithRetry(`Batch Dispatch for ${className}`, async () => {
         const batch = db.batch();
         students.forEach(s => {
-          const cleanDocId = `${month.replace(/[^a-zA-Z0-9]/g, '_')}_${className.replace(/[^a-zA-Z0-9]/g, '_')}_${s.id}`;
+          const cleanDocId = `${state.currentSchoolId}_${month.replace(/[^a-zA-Z0-9]/g, '_')}_${className.replace(/[^a-zA-Z0-9]/g, '_')}_${s.id}`;
           const ref = db.collection('dispatches').doc(cleanDocId);
           batch.set(ref, {
+            schoolId: state.currentSchoolId,
             class: className,
             className,
             month,
@@ -1304,10 +810,11 @@
     },
 
     async resetDispatchBatch(month, className, students) {
+      if (!state.currentSchoolId) return false;
       return this.writeWithRetry(`Reset Dispatch for ${className}`, async () => {
         const batch = db.batch();
         students.forEach(s => {
-          const cleanDocId = `${month.replace(/[^a-zA-Z0-9]/g, '_')}_${className.replace(/[^a-zA-Z0-9]/g, '_')}_${s.id}`;
+          const cleanDocId = `${state.currentSchoolId}_${month.replace(/[^a-zA-Z0-9]/g, '_')}_${className.replace(/[^a-zA-Z0-9]/g, '_')}_${s.id}`;
           const ref = db.collection('dispatches').doc(cleanDocId);
           batch.delete(ref);
         });
@@ -1316,9 +823,12 @@
     },
 
     async savePtm(ptm) {
+      if (!state.currentSchoolId) return false;
       return this.writeWithRetry(`Save PTM (${ptm.title})`, async () => {
-        await db.collection('ptms').doc(ptm.id).set({
+        const docId = `${state.currentSchoolId}_${ptm.id}`;
+        await db.collection('ptms').doc(docId).set({
           id: ptm.id,
+          schoolId: state.currentSchoolId,
           title: ptm.title || '',
           date: ptm.date || '',
           timeSlots: ptm.timeSlots || `${ptm.startTime || '09:00'} - ${ptm.endTime || '13:00'}`,
@@ -1337,24 +847,32 @@
     },
 
     async deletePtm(id) {
+      if (!state.currentSchoolId) return false;
       return this.writeWithRetry(`Delete PTM`, async () => {
-        await db.collection('ptms').doc(id).delete();
+        const docId = `${state.currentSchoolId}_${id}`;
+        await db.collection('ptms').doc(docId).delete().catch(() => db.collection('ptms').doc(id).delete());
       });
     },
 
     async updatePtmRsvp(ptmId, studentId, rsvpVal) {
+      if (!state.currentSchoolId) return false;
       return this.writeWithRetry(`RSVP for ${studentId}`, async () => {
-        const ptmRef = db.collection('ptms').doc(ptmId);
+        const docId = `${state.currentSchoolId}_${ptmId}`;
+        const ptmRef = db.collection('ptms').doc(docId);
         await ptmRef.set({
+          schoolId: state.currentSchoolId,
           rsvps: { [studentId]: rsvpVal }
         }, { merge: true });
       });
     },
 
     async saveCallLog(call) {
+      if (!state.currentSchoolId) return false;
       return this.writeWithRetry(`Save Call Log`, async () => {
-        await db.collection('calls').doc(call.id).set({
+        const docId = `${state.currentSchoolId}_${call.id}`;
+        await db.collection('calls').doc(docId).set({
           id: call.id,
+          schoolId: state.currentSchoolId,
           studentId: call.studentId || '',
           date: call.date || '',
           reason: call.reason || '',
@@ -1369,191 +887,38 @@
     },
 
     async deleteCallLog(id) {
+      if (!state.currentSchoolId) return false;
       return this.writeWithRetry(`Delete Call Log`, async () => {
-        await db.collection('calls').doc(id).delete();
+        const docId = `${state.currentSchoolId}_${id}`;
+        await db.collection('calls').doc(docId).delete().catch(() => db.collection('calls').doc(id).delete());
       });
     },
 
-    async saveUser(email, role, schoolName) {
+    async saveUser(email, role, schoolName, schoolId) {
       if (!email || !db) return;
       return this.writeWithRetry(`Save User Role`, async () => {
         await db.collection('users').doc(email.toLowerCase()).set({
           email: email.toLowerCase(),
           role: role || 'Teacher',
-          schoolName: schoolName || state.profile.name || DEFAULT_SCHOOL_PROFILE.name
+          schoolName: schoolName || state.profile.name || '',
+          schoolId: schoolId || state.currentSchoolId || ''
         }, { merge: true });
       });
-    },
-
-    async resetToDemoData(userEmail) {
-      if (!db) return;
-      FirestoreDB.showSyncOverlay('Reloading Demo Data', 'Updating Cloud Firestore with sample school dataset...', true, 20);
-
-      try {
-        await FirestoreDB.autoMigrate({ email: userEmail }, true);
-      } catch (e) {
-        console.error('Error resetting demo data in Firestore:', e);
-      } finally {
-        FirestoreDB.hideSyncOverlay();
-      }
     }
   };
 
   function initData() {
     state.profile = Object.assign({}, DEFAULT_SCHOOL_PROFILE, loadStorage(STORAGE_KEYS.PROFILE, DEFAULT_SCHOOL_PROFILE));
-    state.students = loadStorage(STORAGE_KEYS.STUDENTS, null);
-    state.tests = loadStorage(STORAGE_KEYS.TESTS, null);
-    state.marks = loadStorage(STORAGE_KEYS.MARKS, null);
+    state.students = loadStorage(STORAGE_KEYS.STUDENTS, []);
+    state.tests = loadStorage(STORAGE_KEYS.TESTS, []);
+    state.marks = loadStorage(STORAGE_KEYS.MARKS, {});
     state.attendance = loadStorage(STORAGE_KEYS.ATTENDANCE, {});
     state.dispatchLogs = loadStorage(STORAGE_KEYS.DISPATCH_LOG, {});
-    state.ptmEvents = loadStorage(STORAGE_KEYS.PTM_EVENTS, null);
-    state.callLogs = loadStorage(STORAGE_KEYS.CALL_LOGS, null);
-
-    // Seed defaults if empty
-    if (!state.students || !Array.isArray(state.students) || state.students.length === 0) {
-      state.students = [...SAMPLE_STUDENTS];
-      saveStorage(STORAGE_KEYS.STUDENTS, state.students);
-    }
-
-    if (!state.tests || !Array.isArray(state.tests) || state.tests.length === 0) {
-      state.tests = [...SAMPLE_TESTS];
-      saveStorage(STORAGE_KEYS.TESTS, state.tests);
-    }
-
-    if (!state.marks || typeof state.marks !== 'object' || Object.keys(state.marks).length === 0) {
-      state.marks = { ...SAMPLE_MARKS };
-      saveStorage(STORAGE_KEYS.MARKS, state.marks);
-    }
-
-    if (!state.attendance || typeof state.attendance !== 'object') {
-      state.attendance = {};
-    }
-
-    if (!state.dispatchLogs || typeof state.dispatchLogs !== 'object') {
-      state.dispatchLogs = {};
-    }
-
-    if (!state.ptmEvents || !Array.isArray(state.ptmEvents) || state.ptmEvents.length === 0) {
-      state.ptmEvents = JSON.parse(JSON.stringify(SAMPLE_PTM_EVENTS));
-      saveStorage(STORAGE_KEYS.PTM_EVENTS, state.ptmEvents);
-    }
-    if (state.ptmEvents.length > 0 && !state.activePtmId) {
-      state.activePtmId = state.ptmEvents[0].id;
-    }
-
-    if (!state.callLogs || !Array.isArray(state.callLogs) || state.callLogs.length === 0) {
-      state.callLogs = JSON.parse(JSON.stringify(SAMPLE_CALL_LOGS));
-      saveStorage(STORAGE_KEYS.CALL_LOGS, state.callLogs);
-    }
-
-    // Seed sample attendance for today for Class 3-A if none exists
-    const todayStr = getTodayISO();
-    const todayKey = `${todayStr}_Class 3_A`;
-    if (!state.attendance[todayKey]) {
-      const initialAtt = {
-        'stud-001': { status: 'Present', time: '' },
-        'stud-002': { status: 'Present', time: '' },
-        'stud-003': { status: 'Absent', time: '' },
-        'stud-004': { status: 'Present', time: '' },
-        'stud-005': { status: 'Late', time: '08:20 AM' },
-        'stud-006': { status: 'Present', time: '' }
-      };
-      state.attendance[todayKey] = initialAtt;
-      saveStorage(STORAGE_KEYS.ATTENDANCE, state.attendance);
-    }
-
-    const todayMatricKey = `${todayStr}_Class 10_Science`;
-    if (!state.attendance[todayMatricKey]) {
-      state.attendance[todayMatricKey] = {
-        'stud-015': { status: 'Present', time: '' },
-        'stud-016': { status: 'Present', time: '' }
-      };
-      saveStorage(STORAGE_KEYS.ATTENDANCE, state.attendance);
-    }
-
-    // Ensure all sample students (including Matric/Class 6-10) exist in state
-    if (state.students && Array.isArray(state.students)) {
-      let added = false;
-      SAMPLE_STUDENTS.forEach(s => {
-        if (!state.students.some(cur => cur.id === s.id)) {
-          state.students.push({ ...s });
-          added = true;
-        }
-      });
-      if (added) saveStorage(STORAGE_KEYS.STUDENTS, state.students);
-    }
-
-    // Ensure sample tests for Class 10 exist in state
-    if (state.tests && Array.isArray(state.tests)) {
-      let added = false;
-      SAMPLE_TESTS.forEach(t => {
-        if (!state.tests.some(cur => cur.id === t.id)) {
-          state.tests.push({ ...t });
-          added = true;
-        }
-      });
-      if (added) saveStorage(STORAGE_KEYS.TESTS, state.tests);
-    }
-
-    // Ensure sample marks for Class 10 exist in state
-    if (state.marks) {
-      let added = false;
-      Object.keys(SAMPLE_MARKS).forEach(k => {
-        if (!state.marks[k]) {
-          state.marks[k] = SAMPLE_MARKS[k];
-          added = true;
-        }
-      });
-      if (added) saveStorage(STORAGE_KEYS.MARKS, state.marks);
-    }
-  }
-
-  function resetToDemoData() {
-    state.profile = { ...DEFAULT_SCHOOL_PROFILE };
-    state.students = JSON.parse(JSON.stringify(SAMPLE_STUDENTS));
-    state.tests = JSON.parse(JSON.stringify(SAMPLE_TESTS));
-    state.marks = JSON.parse(JSON.stringify(SAMPLE_MARKS));
-    state.attendance = {};
-    state.dispatchLogs = {};
-    state.ptmEvents = JSON.parse(JSON.stringify(SAMPLE_PTM_EVENTS));
+    state.ptmEvents = loadStorage(STORAGE_KEYS.PTM_EVENTS, []);
+    state.callLogs = loadStorage(STORAGE_KEYS.CALL_LOGS, []);
     state.activePtmId = state.ptmEvents[0]?.id || null;
-    state.callLogs = JSON.parse(JSON.stringify(SAMPLE_CALL_LOGS));
-
-    const todayStr = getTodayISO();
-    const todayKey = `${todayStr}_Class 3_A`;
-    state.attendance[todayKey] = {
-      'stud-001': { status: 'Present', time: '' },
-      'stud-002': { status: 'Present', time: '' },
-      'stud-003': { status: 'Absent', time: '' },
-      'stud-004': { status: 'Present', time: '' },
-      'stud-005': { status: 'Late', time: '08:20 AM' },
-      'stud-006': { status: 'Present', time: '' }
-    };
-    const todayMatricKey = `${todayStr}_Class 10_Science`;
-    state.attendance[todayMatricKey] = {
-      'stud-015': { status: 'Present', time: '' },
-      'stud-016': { status: 'Present', time: '' }
-    };
-
-    saveStorage(STORAGE_KEYS.PROFILE, state.profile);
-    saveStorage(STORAGE_KEYS.STUDENTS, state.students);
-    saveStorage(STORAGE_KEYS.TESTS, state.tests);
-    saveStorage(STORAGE_KEYS.MARKS, state.marks);
-    saveStorage(STORAGE_KEYS.ATTENDANCE, state.attendance);
-    saveStorage(STORAGE_KEYS.DISPATCH_LOG, state.dispatchLogs);
-    saveStorage(STORAGE_KEYS.PTM_EVENTS, state.ptmEvents);
-    saveStorage(STORAGE_KEYS.CALL_LOGS, state.callLogs);
-    if (FirestoreDB.isReady()) {
-      FirestoreDB.resetToDemoData(auth?.currentUser?.email || 'Teacher');
-    } else {
-      showToast('Demo data reloaded successfully!', 'success');
-      renderApp();
-    }
   }
 
-  // ========================================================
-  // Utilities: Dates, Phone, Grades
-  // ========================================================
   function getTodayISO() {
     const d = new Date();
     const year = d.getFullYear();
@@ -2911,31 +2276,87 @@ ${student.name} (${classLabel}) is marked PRESENT today (${formattedDate}).
   // School Settings & Branding Modal
   // ========================================================
   function openSchoolSettingsModal() {
+    const codeDisplay = document.getElementById('settingSchoolCodeDisplay');
+    if (codeDisplay) {
+      codeDisplay.textContent = (state.currentSchool && state.currentSchool.schoolCode) ? state.currentSchool.schoolCode : '------';
+    }
     document.getElementById('settingSchoolName').value = state.profile.name || '';
     document.getElementById('settingSchoolMotto').value = state.profile.motto || '';
     document.getElementById('settingSchoolAddress').value = state.profile.address || '';
+    const phoneInput = document.getElementById('settingSchoolPhone');
+    if (phoneInput) {
+      phoneInput.value = state.profile.phone || (state.currentSchool && state.currentSchool.phone) || '';
+    }
     document.getElementById('settingPrincipalName').value = state.profile.principal || '';
-    document.getElementById('settingAcademicYear').value = state.profile.academicYear || '';
+    document.getElementById('settingAcademicYear').value = state.profile.academicYear || '2026–2027';
     document.getElementById('schoolSettingsModal').classList.remove('hidden');
+  }
+
+  function copySchoolCodeToClipboard() {
+    const code = (state.currentSchool && state.currentSchool.schoolCode) ? state.currentSchool.schoolCode : '';
+    if (!code || code === '------') {
+      showToast('No School Code available to copy.', 'warn');
+      return;
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(code).then(() => {
+        showToast(`School Code "${code}" copied to clipboard!`, 'success');
+      }).catch(() => {
+        fallbackCopyText(code);
+      });
+    } else {
+      fallbackCopyText(code);
+    }
+  }
+
+  function fallbackCopyText(text) {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+      document.execCommand('copy');
+      showToast(`School Code "${text}" copied to clipboard!`, 'success');
+    } catch (err) {
+      showToast(`School Code: ${text}`, 'info');
+    }
+    document.body.removeChild(ta);
   }
 
   function handleSaveSchoolSettings(e) {
     e.preventDefault();
+    const newName = document.getElementById('settingSchoolName').value.trim() || 'SchoolSteps';
+    const newMotto = document.getElementById('settingSchoolMotto').value.trim();
+    const newAddr = document.getElementById('settingSchoolAddress').value.trim();
+    const newPhone = (document.getElementById('settingSchoolPhone')?.value || '').trim();
+    const newPrincipal = document.getElementById('settingPrincipalName').value.trim();
+    const newYear = document.getElementById('settingAcademicYear').value.trim();
+
     state.profile = {
-      name: document.getElementById('settingSchoolName').value.trim() || 'SchoolSteps Pilot School',
-      motto: document.getElementById('settingSchoolMotto').value.trim(),
-      address: document.getElementById('settingSchoolAddress').value.trim(),
-      principal: document.getElementById('settingPrincipalName').value.trim(),
-      academicYear: document.getElementById('settingAcademicYear').value.trim(),
+      name: newName,
+      motto: newMotto,
+      address: newAddr,
+      phone: newPhone,
+      principal: newPrincipal,
+      academicYear: newYear,
       passPercentage: 40
     };
+
+    if (state.currentSchool) {
+      state.currentSchool.name = newName;
+      state.currentSchool.address = newAddr;
+      state.currentSchool.phone = newPhone;
+    }
 
     saveStorage(STORAGE_KEYS.PROFILE, state.profile);
     if (FirestoreDB.isReady()) {
       FirestoreDB.saveProfile(state.profile);
     }
     document.getElementById('schoolSettingsModal').classList.add('hidden');
-    document.getElementById('headerSchoolName').textContent = state.profile.name;
+    const headerSchoolName = document.getElementById('headerSchoolName');
+    if (headerSchoolName) headerSchoolName.textContent = state.profile.name;
     showToast('School profile & branding updated successfully!', 'success');
 
     // Refresh views that use school branding
@@ -2944,7 +2365,7 @@ ${student.name} (${classLabel}) is marked PRESENT today (${formattedDate}).
   }
 
   // ========================================================
-  // MODULE 4: Monthly Result Auto-Delivery (M4)
+    // MODULE 4: Monthly Result Auto-Delivery (M4)
   // ========================================================
   function calculateStudentFullResults(student, monthTerm) {
     const tests = state.tests.filter(t => t.className === student.className && (t.section === student.section || !t.section));
@@ -3225,8 +2646,12 @@ Status: ${res.anyFailed ? 'PROMOTED ON TRIAL' : 'PASSED'}
     if (!select) return;
 
     if (!state.ptmEvents || state.ptmEvents.length === 0) {
-      state.ptmEvents = JSON.parse(JSON.stringify(SAMPLE_PTM_EVENTS));
-      saveStorage(STORAGE_KEYS.PTM_EVENTS, state.ptmEvents);
+      select.innerHTML = '<option value="">No PTM Events Scheduled</option>';
+      const titleEl = document.getElementById('ptmActiveTitle');
+      if (titleEl) titleEl.textContent = 'No PTM Events Scheduled';
+      const container = document.getElementById('ptmSlotsContainer');
+      if (container) container.innerHTML = '<div class="empty-state"><p>No PTM meetings scheduled yet. Click "+ Create PTM Event" to set up a meeting.</p></div>';
+      return;
     }
 
     // Populate PTM select dropdown
@@ -3723,13 +3148,8 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
   // ========================================================
   function bindEvents() {
     // Top actions
-    document.getElementById('btnDemoData')?.addEventListener('click', () => {
-      if (confirm('Reload realistic pilot demo data? This resets current records to sample school state.')) {
-        resetToDemoData();
-      }
-    });
-
     document.getElementById('btnSchoolSettings')?.addEventListener('click', openSchoolSettingsModal);
+    document.getElementById('btnCopySchoolCode')?.addEventListener('click', copySchoolCodeToClipboard);
     document.getElementById('btnCloseSchoolModal')?.addEventListener('click', () => {
       document.getElementById('schoolSettingsModal').classList.add('hidden');
     });
@@ -3740,7 +3160,6 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
 
     // M1 Students
     document.getElementById('btnOpenAddStudent')?.addEventListener('click', openAddStudentModal);
-    document.getElementById('btnLoadDemoFromEmpty')?.addEventListener('click', resetToDemoData);
     document.getElementById('btnCloseStudentModal')?.addEventListener('click', closeStudentModal);
     document.getElementById('btnCancelStudentModal')?.addEventListener('click', closeStudentModal);
     document.getElementById('studentForm')?.addEventListener('submit', handleSaveStudent);
@@ -4034,6 +3453,24 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
     }
   }
 
+  function updateSignupSchoolFieldsVisibility() {
+    const adminFields = document.getElementById('signupAdminFields');
+    const teacherFields = document.getElementById('signupTeacherFields');
+    if (currentAuthMode !== 'signup') {
+      adminFields?.classList.add('hidden');
+      teacherFields?.classList.add('hidden');
+      return;
+    }
+    const selectedRole = document.querySelector('input[name="authRole"]:checked')?.value || 'Teacher';
+    if (selectedRole === 'Admin') {
+      adminFields?.classList.remove('hidden');
+      teacherFields?.classList.add('hidden');
+    } else {
+      adminFields?.classList.add('hidden');
+      teacherFields?.classList.remove('hidden');
+    }
+  }
+
   function setAuthMode(mode) {
     currentAuthMode = mode;
     hideAuthError();
@@ -4060,6 +3497,8 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
       if (switchPromptText) switchPromptText.textContent = "Don't have an account?";
       if (switchLink) switchLink.textContent = 'Create an account';
     }
+
+    updateSignupSchoolFieldsVisibility();
   }
 
   function updateUserHeader(email, role) {
@@ -4109,12 +3548,128 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
 
     try {
       if (currentAuthMode === 'signup') {
-        const userCredential = await auth.createUserWithEmailAndPassword(email, password);
-        if (userCredential && userCredential.user) {
-          setUserRole(userCredential.user.email, selectedRole);
-          showToast(`Account created! Welcome, ${selectedRole}.`, 'success');
+        const emailLower = email.toLowerCase();
+
+        if (selectedRole === 'Admin') {
+          // Admin signup: new school registration
+          const schoolNameInput = document.getElementById('authSchoolName');
+          const schoolAddressInput = document.getElementById('authSchoolAddress');
+          const schoolPhoneInput = document.getElementById('authSchoolPhone');
+
+          const schoolName = (schoolNameInput?.value || '').trim();
+          const schoolAddress = (schoolAddressInput?.value || '').trim();
+          const schoolPhone = (schoolPhoneInput?.value || '').trim();
+
+          if (!schoolName) {
+            showAuthError('Please enter your school name.');
+            schoolNameInput?.focus();
+            setAuthLoading(false);
+            return;
+          }
+
+          const schoolId = 'school_' + Date.now().toString(36) + '_' + Math.random().toString(36).substring(2, 7);
+          const schoolCode = generateSchoolCode();
+          const newSchool = {
+            schoolId,
+            name: schoolName,
+            address: schoolAddress,
+            phone: schoolPhone,
+            schoolCode,
+            createdAt: new Date().toISOString(),
+            plan: 'trial'
+          };
+
+          // Requirement 3: FIRST create a new school document... THEN create user
+          if (db) {
+            await db.collection('schools').doc(schoolId).set(newSchool);
+          }
+
+          const userCredential = await auth.createUserWithEmailAndPassword(email, password);
+          if (userCredential && userCredential.user) {
+            setUserRole(emailLower, 'Admin');
+            localStorage.setItem(SCHOOL_STORAGE_PREFIX + emailLower, schoolId);
+
+            if (db) {
+              await db.collection('users').doc(emailLower).set({
+                email: emailLower,
+                role: 'Admin',
+                schoolId: schoolId,
+                schoolName: schoolName
+              }, { merge: true });
+            }
+
+            state.currentSchoolId = schoolId;
+            state.currentSchool = newSchool;
+            state.profile = {
+              ...DEFAULT_SCHOOL_PROFILE,
+              name: schoolName,
+              address: schoolAddress,
+              phone: schoolPhone
+            };
+            saveStorage(STORAGE_KEYS.PROFILE, state.profile);
+            showToast(`Account created! Welcome, Admin of ${schoolName}.`, 'success');
+          }
+
+        } else {
+          // Teacher signup: join existing school via 6-character School Code
+          const schoolCodeInput = document.getElementById('authSchoolCode');
+          const enteredCode = (schoolCodeInput?.value || '').trim().toUpperCase();
+
+          if (!enteredCode) {
+            showAuthError('Please enter your 6-character School Code.');
+            schoolCodeInput?.focus();
+            setAuthLoading(false);
+            return;
+          }
+
+          if (!db) {
+            showAuthError('Database connection unavailable. Please check your internet connection.');
+            setAuthLoading(false);
+            return;
+          }
+
+          // Requirement 4: Validate code against schools collection
+          const schoolQuerySnap = await db.collection('schools').where('schoolCode', '==', enteredCode).limit(1).get();
+          if (schoolQuerySnap.empty) {
+            showAuthError('Invalid School Code. Please ask your school admin for the correct code.');
+            schoolCodeInput?.focus();
+            setAuthLoading(false);
+            return;
+          }
+
+          const matchedSchoolDoc = schoolQuerySnap.docs[0];
+          const matchedSchool = matchedSchoolDoc.data();
+          const schoolId = matchedSchool.schoolId || matchedSchoolDoc.id;
+
+          const userCredential = await auth.createUserWithEmailAndPassword(email, password);
+          if (userCredential && userCredential.user) {
+            setUserRole(emailLower, 'Teacher');
+            localStorage.setItem(SCHOOL_STORAGE_PREFIX + emailLower, schoolId);
+
+            if (db) {
+              await db.collection('users').doc(emailLower).set({
+                email: emailLower,
+                role: 'Teacher',
+                schoolId: schoolId,
+                schoolName: matchedSchool.name || ''
+              }, { merge: true });
+            }
+
+            state.currentSchoolId = schoolId;
+            state.currentSchool = matchedSchool;
+            state.profile = {
+              ...DEFAULT_SCHOOL_PROFILE,
+              name: matchedSchool.name || DEFAULT_SCHOOL_PROFILE.name,
+              address: matchedSchool.address || '',
+              phone: matchedSchool.phone || ''
+            };
+            saveStorage(STORAGE_KEYS.PROFILE, state.profile);
+            showToast(`Account created! Joined ${matchedSchool.name || 'School'}.`, 'success');
+          }
         }
+
       } else {
+        // Sign In
         const userCredential = await auth.signInWithEmailAndPassword(email, password);
         if (userCredential && userCredential.user) {
           setUserRole(userCredential.user.email, selectedRole);
@@ -4158,6 +3713,7 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
         if (radio) radio.checked = true;
         roleCards.forEach(c => c.classList.remove('active'));
         card.classList.add('active');
+        updateSignupSchoolFieldsVisibility();
       });
     });
 
@@ -4171,6 +3727,7 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
           if (radio) {
             radio.checked = true;
             roleCards.forEach(card => card.classList.toggle('active', card.contains(radio)));
+            updateSignupSchoolFieldsVisibility();
           }
         }
       }
@@ -4232,7 +3789,7 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
     showSyncIndicator();
 
     const syncTimeoutPromise = new Promise((_, reject) => {
-      setTimeout(() => reject(new Error('SYNC_TIMEOUT')), 10000);
+      setTimeout(() => reject(new Error('SYNC_TIMEOUT')), 15000);
     });
 
     try {
@@ -4324,10 +3881,19 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
 
     auth.onAuthStateChanged((user) => {
       if (user) {
+        const emailLower = user.email.toLowerCase();
+        const cachedRole = getUserRole(emailLower);
+        const cachedSchoolId = localStorage.getItem(SCHOOL_STORAGE_PREFIX + emailLower);
+        if (cachedSchoolId) {
+          state.currentSchoolId = cachedSchoolId;
+        }
+
         // FIRST line: hide login, show app. Nothing before it.
         authScreen?.classList.add('hidden');
         appContainer?.classList.remove('hidden');
         mobileBottomBar?.classList.remove('hidden');
+
+        updateUserHeader(user.email, cachedRole);
 
         // THEN: setTimeout(() => { try { initData(); renderApp(); } catch(e) { console.error(e); } }, 500);
         setTimeout(() => {
@@ -4349,6 +3915,9 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
         appContainer?.classList.add('hidden');
         mobileBottomBar?.classList.add('hidden');
 
+        state.currentSchoolId = null;
+        state.currentSchool = null;
+
         const pwField = document.getElementById('authPassword');
         if (pwField) pwField.value = '';
         hideAuthError();
@@ -4358,13 +3927,13 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
   }
 
   // ========================================================
-  // App Render & Startup
+    // App Render & Startup
   // ========================================================
   function renderApp() {
     try {
       const headerSchoolName = document.getElementById('headerSchoolName');
       if (headerSchoolName) {
-        headerSchoolName.textContent = (state.profile && state.profile.name) ? state.profile.name : DEFAULT_SCHOOL_PROFILE.name;
+        headerSchoolName.textContent = (state.profile && state.profile.name) ? state.profile.name : 'SchoolSteps';
       }
     } catch (e) {
       console.warn('headerSchoolName render warning:', e);

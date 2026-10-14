@@ -1,9 +1,90 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // SchoolSteps Phase 1 & 2 Pilot Rules
-    // Authenticated users can read and write all pilot collections
-    match /{document=**} {
+
+    // Helper: Retrieve the authenticated user's schoolId from their user document
+    function getUserSchoolId() {
+      return get(/databases/$(database)/documents/users/$(request.auth.token.email.lower())).data.schoolId;
+    }
+
+    // Tenant Scoping checks
+    function isSameSchool() {
+      return request.auth != null && resource.data.schoolId == getUserSchoolId();
+    }
+
+    function isWritingSameSchool() {
+      return request.auth != null && request.resource.data.schoolId == getUserSchoolId();
+    }
+
+    // Schools Collection:
+    // Anyone can read school profiles to validate 6-character School Codes during teacher signup.
+    // Unauthenticated or newly signing-up Admins can create a school document.
+    // Only school members can update their school profile.
+    match /schools/{schoolId} {
+      allow read: if true;
+      allow create: if true;
+      allow update, delete: if request.auth != null && (resource.data.schoolId == getUserSchoolId() || schoolId == getUserSchoolId());
+    }
+
+    // Users Collection:
+    // Users can read/write their own document, or view colleagues belonging to the same school.
+    match /users/{userEmail} {
+      allow read: if request.auth != null && (
+        request.auth.token.email.lower() == userEmail.lower() ||
+        resource.data.schoolId == getUserSchoolId()
+      );
+      allow create, update: if request.auth != null && (
+        request.auth.token.email.lower() == userEmail.lower() ||
+        request.resource.data.schoolId == getUserSchoolId()
+      );
+      allow delete: if request.auth != null && request.auth.token.email.lower() == userEmail.lower();
+    }
+
+    // Tenant-isolated Data Collections:
+    // Every document must have a schoolId field matching the caller's schoolId.
+    match /students/{studentId} {
+      allow read, delete: if isSameSchool();
+      allow create: if isWritingSameSchool();
+      allow update: if isSameSchool() && isWritingSameSchool();
+    }
+
+    match /attendance/{attendanceId} {
+      allow read, delete: if isSameSchool();
+      allow create: if isWritingSameSchool();
+      allow update: if isSameSchool() && isWritingSameSchool();
+    }
+
+    match /marks/{markId} {
+      allow read, delete: if isSameSchool();
+      allow create: if isWritingSameSchool();
+      allow update: if isSameSchool() && isWritingSameSchool();
+    }
+
+    match /tests/{testId} {
+      allow read, delete: if isSameSchool();
+      allow create: if isWritingSameSchool();
+      allow update: if isSameSchool() && isWritingSameSchool();
+    }
+
+    match /dispatches/{dispatchId} {
+      allow read, delete: if isSameSchool();
+      allow create: if isWritingSameSchool();
+      allow update: if isSameSchool() && isWritingSameSchool();
+    }
+
+    match /ptms/{ptmId} {
+      allow read, delete: if isSameSchool();
+      allow create: if isWritingSameSchool();
+      allow update: if isSameSchool() && isWritingSameSchool();
+    }
+
+    match /calls/{callId} {
+      allow read, delete: if isSameSchool();
+      allow create: if isWritingSameSchool();
+      allow update: if isSameSchool() && isWritingSameSchool();
+    }
+
+    match /settings/{docId} {
       allow read, write: if request.auth != null;
     }
   }

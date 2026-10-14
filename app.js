@@ -746,11 +746,11 @@
       return false;
     },
 
-    async syncAndLoad(currentUser) {
+    async syncAndLoad(currentUser, showOverlay = false) {
       if (!db) {
         console.warn('Firestore is not available; falling back to local storage.');
         initData();
-        return;
+        throw new Error('FIRESTORE_UNAVAILABLE');
       }
 
       // Sync user profile & role in users collection
@@ -784,24 +784,27 @@
         isFirestoreEmpty = testSnap.empty;
       } catch (err) {
         console.warn('Firestore initial check error, checking cache/offline:', err);
+        throw err;
       }
 
       if (isFirestoreEmpty) {
         // Auto-migration path: if localStorage has data + Firestore empty -> auto-migrate
-        await FirestoreDB.autoMigrate(currentUser);
+        await FirestoreDB.autoMigrate(currentUser, showOverlay);
       } else {
         // Firestore has data: Firestore = source of truth, localStorage = read cache only
-        await FirestoreDB.loadAllFromFirestore();
+        await FirestoreDB.loadAllFromFirestore(showOverlay);
       }
     },
 
-    async autoMigrate(currentUser) {
-      FirestoreDB.showSyncOverlay(
-        'Migrating to Cloud Firestore',
-        'Transferring existing school database from device to Cloud Firestore (asia-south1)...',
-        true,
-        10
-      );
+    async autoMigrate(currentUser, showOverlay = false) {
+      if (showOverlay) {
+        FirestoreDB.showSyncOverlay(
+          'Migrating to Cloud Firestore',
+          'Transferring existing school database from device to Cloud Firestore (asia-south1)...',
+          true,
+          10
+        );
+      }
 
       try {
         // Make sure local state is loaded
@@ -1004,14 +1007,17 @@
     } catch (err) {
       console.warn('Error during autoMigrate to Firestore, falling back to local storage:', err);
       initData();
-      FirestoreDB.hideSyncOverlay();
+      if (showOverlay) FirestoreDB.hideSyncOverlay();
+      throw err;
     } finally {
-      FirestoreDB.hideSyncOverlay();
+      if (showOverlay) FirestoreDB.hideSyncOverlay();
     }
   },
 
-    async loadAllFromFirestore() {
-      FirestoreDB.showSyncOverlay('Loading SchoolSteps', 'Syncing latest school records from Cloud Firestore...');
+    async loadAllFromFirestore(showOverlay = false) {
+      if (showOverlay) {
+        FirestoreDB.showSyncOverlay('Loading SchoolSteps', 'Syncing latest school records from Cloud Firestore...');
+      }
 
       try {
         const [
@@ -1136,9 +1142,10 @@
       } catch (err) {
         console.warn('Error loading from Firestore, using offline cache:', err);
         initData();
-        FirestoreDB.hideSyncOverlay();
+        if (showOverlay) FirestoreDB.hideSyncOverlay();
+        throw err;
       } finally {
-        FirestoreDB.hideSyncOverlay();
+        if (showOverlay) FirestoreDB.hideSyncOverlay();
       }
     },
 
@@ -1383,7 +1390,7 @@
       FirestoreDB.showSyncOverlay('Reloading Demo Data', 'Updating Cloud Firestore with sample school dataset...', true, 20);
 
       try {
-        await FirestoreDB.autoMigrate({ email: userEmail });
+        await FirestoreDB.autoMigrate({ email: userEmail }, true);
       } catch (e) {
         console.error('Error resetting demo data in Firestore:', e);
       } finally {
@@ -4165,6 +4172,93 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
     document.getElementById('btnLogout')?.addEventListener('click', handleLogout);
   }
 
+  let isBackgroundSyncing = false;
+  let backgroundSyncTimer = null;
+
+  function showSyncIndicator() {
+    const badge = document.getElementById('syncStatusBadge');
+    if (badge) badge.classList.remove('hidden');
+
+    const container = document.getElementById('toastContainer');
+    if (container && !document.getElementById('syncIndicatorToast')) {
+      const toast = document.createElement('div');
+      toast.id = 'syncIndicatorToast';
+      toast.className = 'toast toast-warn';
+      toast.innerHTML = '<span>⚡</span><span>Syncing...</span>';
+      container.appendChild(toast);
+    }
+  }
+
+  function hideSyncIndicator() {
+    const badge = document.getElementById('syncStatusBadge');
+    if (badge) badge.classList.add('hidden');
+
+    const toast = document.getElementById('syncIndicatorToast');
+    if (toast) {
+      toast.style.opacity = '0';
+      toast.style.transform = 'translateY(10px)';
+      toast.style.transition = 'all 0.2s ease-out';
+      setTimeout(() => {
+        try { toast.remove(); } catch (e) {}
+      }, 200);
+    }
+  }
+
+  function stopBackgroundSync() {
+    if (backgroundSyncTimer) {
+      clearTimeout(backgroundSyncTimer);
+      backgroundSyncTimer = null;
+    }
+    isBackgroundSyncing = false;
+    hideSyncIndicator();
+  }
+
+  async function startBackgroundSync(user, isRetry = false) {
+    if (!user || isBackgroundSyncing) return;
+    if (backgroundSyncTimer) {
+      clearTimeout(backgroundSyncTimer);
+      backgroundSyncTimer = null;
+    }
+
+    isBackgroundSyncing = true;
+    showSyncIndicator();
+
+    const syncTimeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('SYNC_TIMEOUT')), 10000);
+    });
+
+    try {
+      await Promise.race([
+        FirestoreDB.syncAndLoad(user, false),
+        syncTimeoutPromise
+      ]);
+
+      hideSyncIndicator();
+      isBackgroundSyncing = false;
+
+      // Re-render silently with merged cloud data
+      renderApp();
+      console.log('Firestore background sync completed successfully.');
+    } catch (err) {
+      console.warn('Firestore background sync warning/timeout:', err);
+      hideSyncIndicator();
+      isBackgroundSyncing = false;
+
+      // Show offline toast on initial sync failure/timeout
+      if (!isRetry) {
+        showToast('Offline mode — using local data', 'warn');
+      }
+
+      // App keeps working fully on localStorage. Retry sync silently every 60s.
+      if (backgroundSyncTimer) clearTimeout(backgroundSyncTimer);
+      backgroundSyncTimer = setTimeout(() => {
+        if (auth && auth.currentUser) {
+          startBackgroundSync(auth.currentUser, true);
+        }
+      }, 60000);
+    }
+  }
+
   function initAuthGating() {
     const authScreen = document.getElementById('authScreen');
     const appContainer = document.getElementById('appContainer');
@@ -4176,39 +4270,15 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
       return;
     }
 
-    auth.onAuthStateChanged(async (user) => {
+    auth.onAuthStateChanged((user) => {
       if (user) {
+        // 1. Hide login screen, IMMEDIATELY show appContainer + mobileBottomBar
         authScreen?.classList.add('hidden');
-
-        // Show sync & migration loader
-        FirestoreDB.showSyncOverlay(
-          'Connecting to Cloud Firestore',
-          'Synchronizing school database with Cloud Firestore (asia-south1)...'
-        );
-
-        const syncTimeoutPromise = new Promise((_, reject) => {
-          setTimeout(() => reject(new Error('SYNC_TIMEOUT')), 15000);
-        });
-
-        try {
-          await Promise.race([
-            FirestoreDB.syncAndLoad(user),
-            syncTimeoutPromise
-          ]);
-        } catch (err) {
-          console.warn('Firestore sync error/timeout on login:', err);
-          if (err && err.message === 'SYNC_TIMEOUT') {
-            showToast('Sync timed out, using offline data', 'warn');
-          } else {
-            showToast('Loaded local offline cache. Changes will sync when connected.', 'warn');
-          }
-          initData();
-        } finally {
-          FirestoreDB.hideSyncOverlay();
-        }
-
         appContainer?.classList.remove('hidden');
         mobileBottomBar?.classList.remove('hidden');
+
+        // Immediately initialize with LOCAL data (localStorage) — usable within 1s
+        initData();
 
         const role = getUserRole(user.email);
         updateUserHeader(user.email, role);
@@ -4219,7 +4289,11 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
           isAppInitialized = true;
         }
         renderApp();
+
+        // 2. Start Firestore sync in the BACKGROUND (do NOT await it, no blocking overlay)
+        startBackgroundSync(user);
       } else {
+        stopBackgroundSync();
         FirestoreDB.hideSyncOverlay();
         authScreen?.classList.remove('hidden');
         appContainer?.classList.add('hidden');
@@ -4256,6 +4330,9 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
     isAppInitialized = true;
   }
   window.__initSchoolSteps = initApp;
+  window.__showSyncIndicator = showSyncIndicator;
+  window.__hideSyncIndicator = hideSyncIndicator;
+  window.__startBackgroundSync = startBackgroundSync;
 
   function start() {
     bindAuthEvents();

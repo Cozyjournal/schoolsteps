@@ -2,90 +2,155 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper: Retrieve the authenticated user's schoolId from their user document
+    // -------------------------------------------------------------
+    // Helper Functions
+    // -------------------------------------------------------------
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function userEmail() {
+      return request.auth.token.email.lower();
+    }
+
+    function userDocPath() {
+      return /databases/$(database)/documents/users/$(userEmail());
+    }
+
+    function userDocExists() {
+      return exists(userDocPath());
+    }
+
+    function getUserDoc() {
+      return get(userDocPath()).data;
+    }
+
     function getUserSchoolId() {
-      return get(/databases/$(database)/documents/users/$(request.auth.token.email.lower())).data.schoolId;
+      return userDocExists() && 'schoolId' in getUserDoc() ? getUserDoc().schoolId : null;
     }
 
-    // Tenant Scoping checks
-    function isSameSchool() {
-      return request.auth != null && resource.data.schoolId == getUserSchoolId();
+    function hasSchool() {
+      return isSignedIn() && getUserSchoolId() != null;
     }
 
-    function isWritingSameSchool() {
-      return request.auth != null && request.resource.data.schoolId == getUserSchoolId();
-    }
-
-    // Schools Collection:
-    // Anyone can read school profiles to validate 6-character School Codes during teacher signup.
-    // Unauthenticated or newly signing-up Admins can create a school document.
-    // Only school members can update their school profile.
+    // -------------------------------------------------------------
+    // 1. Schools Collection
+    // -------------------------------------------------------------
     match /schools/{schoolId} {
-      allow read: if true;
-      allow create: if true;
-      allow update, delete: if request.auth != null && (resource.data.schoolId == getUserSchoolId() || schoolId == getUserSchoolId());
-    }
-
-    // Users Collection:
-    // Users can read/write their own document, or view colleagues belonging to the same school.
-    match /users/{userEmail} {
-      allow read: if request.auth != null && (
-        request.auth.token.email.lower() == userEmail.lower() ||
-        resource.data.schoolId == getUserSchoolId()
+      // 2. TEACHER CODE READ: A signed-in user with NO schoolId yet CAN read a SINGLE
+      // schools document by its document ID (to validate a School Code) — but CANNOT list/query ALL schools.
+      // Once assigned to a school, a user can only read their own school doc.
+      allow get: if isSignedIn() && (
+        !hasSchool() ||
+        resource.data.schoolId == getUserSchoolId() ||
+        schoolId == getUserSchoolId()
       );
-      allow create, update: if request.auth != null && (
-        request.auth.token.email.lower() == userEmail.lower() ||
-        request.resource.data.schoolId == getUserSchoolId()
+
+      // Listing or querying all schools is NOT allowed (only allowed for matching schoolId if already member)
+      allow list: if hasSchool() && resource.data.schoolId == getUserSchoolId();
+
+      // 1. BOOTSTRAP EXCEPTION: A signed-in user with NO schoolId yet CAN create ONE schools document
+      // (with their own UID as creator).
+      allow create: if isSignedIn() && (
+        !hasSchool() && (
+          request.resource.data.creatorUid == request.auth.uid ||
+          request.resource.data.createdBy == request.auth.uid
+        )
       );
-      allow delete: if request.auth != null && request.auth.token.email.lower() == userEmail.lower();
+
+      // 3. & 5. Only school members can update/delete their own school
+      allow update, delete: if hasSchool() && (
+        resource.data.schoolId == getUserSchoolId() ||
+        schoolId == getUserSchoolId()
+      );
     }
 
-    // Tenant-isolated Data Collections:
-    // Every document must have a schoolId field matching the caller's schoolId.
-    match /students/{studentId} {
-      allow read, delete: if isSameSchool();
-      allow create: if isWritingSameSchool();
-      allow update: if isSameSchool() && isWritingSameSchool();
+    // -------------------------------------------------------------
+    // 2. Users Collection
+    // -------------------------------------------------------------
+    match /users/{userEmailDoc} {
+      // 4. OWN PROFILE: Every signed-in user can ALWAYS read their OWN users document.
+      // Colleagues in the same school can also read user profiles in their school.
+      allow get: if isSignedIn() && (
+        userEmailDoc.lower() == userEmail() ||
+        (hasSchool() && resource.data.schoolId == getUserSchoolId())
+      );
+
+      allow list: if hasSchool() && resource.data.schoolId == getUserSchoolId();
+
+      // 1. BOOTSTRAP EXCEPTION: A signed-in user can create their OWN users document
+      // (keyed by their lowercased email).
+      allow create: if isSignedIn() && (
+        userEmailDoc.lower() == userEmail() &&
+        request.resource.data.email.lower() == userEmail()
+      );
+
+      // Users can update their own profile, or admins can update user profiles in the same school
+      allow update: if isSignedIn() && (
+        userEmailDoc.lower() == userEmail() ||
+        (hasSchool() && resource.data.schoolId == getUserSchoolId() && request.resource.data.schoolId == getUserSchoolId())
+      );
+
+      allow delete: if isSignedIn() && (
+        userEmailDoc.lower() == userEmail() ||
+        (hasSchool() && resource.data.schoolId == getUserSchoolId())
+      );
     }
 
-    match /attendance/{attendanceId} {
-      allow read, delete: if isSameSchool();
-      allow create: if isWritingSameSchool();
-      allow update: if isSameSchool() && isWritingSameSchool();
+    // -------------------------------------------------------------
+    // 3. Tenant-Isolated Data Collections
+    // (students, attendance, marks, tests, dispatches, ptms, calls)
+    // -------------------------------------------------------------
+    // 3. CREATE vs READ: On CREATE, check request.resource.data.schoolId;
+    // on READ/UPDATE/DELETE, check resource.data.schoolId matches caller's schoolId.
+    // 5. School A can NEVER read/write School B's data.
+
+    match /students/{docId} {
+      allow read, delete: if hasSchool() && resource.data.schoolId == getUserSchoolId();
+      allow create: if hasSchool() && request.resource.data.schoolId == getUserSchoolId();
+      allow update: if hasSchool() && resource.data.schoolId == getUserSchoolId() && request.resource.data.schoolId == getUserSchoolId();
     }
 
-    match /marks/{markId} {
-      allow read, delete: if isSameSchool();
-      allow create: if isWritingSameSchool();
-      allow update: if isSameSchool() && isWritingSameSchool();
+    match /attendance/{docId} {
+      allow read, delete: if hasSchool() && resource.data.schoolId == getUserSchoolId();
+      allow create: if hasSchool() && request.resource.data.schoolId == getUserSchoolId();
+      allow update: if hasSchool() && resource.data.schoolId == getUserSchoolId() && request.resource.data.schoolId == getUserSchoolId();
     }
 
-    match /tests/{testId} {
-      allow read, delete: if isSameSchool();
-      allow create: if isWritingSameSchool();
-      allow update: if isSameSchool() && isWritingSameSchool();
+    match /marks/{docId} {
+      allow read, delete: if hasSchool() && resource.data.schoolId == getUserSchoolId();
+      allow create: if hasSchool() && request.resource.data.schoolId == getUserSchoolId();
+      allow update: if hasSchool() && resource.data.schoolId == getUserSchoolId() && request.resource.data.schoolId == getUserSchoolId();
     }
 
-    match /dispatches/{dispatchId} {
-      allow read, delete: if isSameSchool();
-      allow create: if isWritingSameSchool();
-      allow update: if isSameSchool() && isWritingSameSchool();
+    match /tests/{docId} {
+      allow read, delete: if hasSchool() && resource.data.schoolId == getUserSchoolId();
+      allow create: if hasSchool() && request.resource.data.schoolId == getUserSchoolId();
+      allow update: if hasSchool() && resource.data.schoolId == getUserSchoolId() && request.resource.data.schoolId == getUserSchoolId();
     }
 
-    match /ptms/{ptmId} {
-      allow read, delete: if isSameSchool();
-      allow create: if isWritingSameSchool();
-      allow update: if isSameSchool() && isWritingSameSchool();
+    match /dispatches/{docId} {
+      allow read, delete: if hasSchool() && resource.data.schoolId == getUserSchoolId();
+      allow create: if hasSchool() && request.resource.data.schoolId == getUserSchoolId();
+      allow update: if hasSchool() && resource.data.schoolId == getUserSchoolId() && request.resource.data.schoolId == getUserSchoolId();
     }
 
-    match /calls/{callId} {
-      allow read, delete: if isSameSchool();
-      allow create: if isWritingSameSchool();
-      allow update: if isSameSchool() && isWritingSameSchool();
+    match /ptms/{docId} {
+      allow read, delete: if hasSchool() && resource.data.schoolId == getUserSchoolId();
+      allow create: if hasSchool() && request.resource.data.schoolId == getUserSchoolId();
+      allow update: if hasSchool() && resource.data.schoolId == getUserSchoolId() && request.resource.data.schoolId == getUserSchoolId();
+    }
+
+    match /calls/{docId} {
+      allow read, delete: if hasSchool() && resource.data.schoolId == getUserSchoolId();
+      allow create: if hasSchool() && request.resource.data.schoolId == getUserSchoolId();
+      allow update: if hasSchool() && resource.data.schoolId == getUserSchoolId() && request.resource.data.schoolId == getUserSchoolId();
     }
 
     match /settings/{docId} {
-      allow read, write: if request.auth != null;
+      allow read, write: if isSignedIn() && hasSchool() && (
+        !('schoolId' in resource.data) || resource.data.schoolId == getUserSchoolId()
+      );
     }
   }
 }

@@ -1408,7 +1408,7 @@
       section,
       gender: document.getElementById('studGender').value,
       dob: document.getElementById('studDob').value,
-      admissionNo: document.getElementById('studAdmissionNo').value.trim() || `BOGS-${new Date().getFullYear()}-${rollNo}`,
+      admissionNo: document.getElementById('studAdmissionNo').value.trim() || `ADM-${new Date().getFullYear()}-${rollNo}`,
       status: document.getElementById('studStatus').value,
       fatherName,
       motherName: document.getElementById('parentMother').value.trim(),
@@ -1990,6 +1990,7 @@ ${student.name} (${classLabel}) is marked PRESENT today (${formattedDate}).
 
     const cards = document.querySelectorAll('.mark-item-card');
     let savedCount = 0;
+    const marksList = [];
 
     cards.forEach(card => {
       const studentId = card.getAttribute('data-student-id');
@@ -2000,34 +2001,25 @@ ${student.name} (${classLabel}) is marked PRESENT today (${formattedDate}).
 
       const key = `${testId}_${studentId}`;
       if (val !== '') {
+        const numVal = parseFloat(val);
         state.marks[key] = {
-          marks: parseFloat(val),
+          marks: numVal,
           remarks: remarks
         };
         savedCount++;
+        marksList.push({
+          studentId: studentId,
+          marks: numVal,
+          remarks: remarks
+        });
       } else {
         delete state.marks[key];
       }
     });
 
     saveStorage(STORAGE_KEYS.MARKS, state.marks);
-    if (FirestoreDB.isReady()) {
-      const marksList = [];
-      inputs.forEach(inp => {
-        const sId = inp.dataset.studentId;
-        const val = inp.value.trim();
-        if (val !== '' && sId) {
-          const remInput = document.querySelector(`.mark-remarks-input[data-student-id="${sId}"]`);
-          marksList.push({
-            studentId: sId,
-            marks: parseFloat(val),
-            remarks: remInput ? remInput.value.trim() : ''
-          });
-        }
-      });
-      if (marksList.length > 0) {
-        FirestoreDB.saveMarksBatch(test, marksList);
-      }
+    if (FirestoreDB.isReady() && marksList.length > 0) {
+      FirestoreDB.saveMarksBatch(test, marksList);
     }
     showToast(`Saved marks for ${savedCount} students in ${test.subject}!`, 'success');
     renderMarksEntrySheet();
@@ -2189,7 +2181,7 @@ ${student.name} (${classLabel}) is marked PRESENT today (${formattedDate}).
     document.getElementById('repFatherName').textContent = student.fatherName || 'Not recorded';
     document.getElementById('repRollNo').textContent = student.rollNo || '-';
     document.getElementById('repClassSection').textContent = `${student.className} - ${student.section || 'A'}`;
-    document.getElementById('repAdmissionNo').textContent = student.admissionNo || `BOGS-2024-${student.rollNo}`;
+    document.getElementById('repAdmissionNo').textContent = student.admissionNo || `ADM-${student.rollNo}`;
 
     const attRate = calculateStudentAttendanceRate(student.id, student.className, student.section);
     document.getElementById('repAttendanceRate').textContent = attRate.label;
@@ -3419,8 +3411,15 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
         return 'Email and password sign-in is not enabled. Please contact support.';
       case 'auth/user-disabled':
         return 'This account has been disabled. Please contact your administrator.';
-      default:
+      case 'permission-denied':
+        return 'Invalid School Code. Please check and try again.';
+      default: {
+        const msg = (error.message || '').toLowerCase();
+        if (msg.includes('permission') || msg.includes('insufficient permissions')) {
+          return 'Invalid School Code. Please check and try again.';
+        }
         return error.message || 'Authentication failed. Please verify your details and try again.';
+      }
     }
   }
 
@@ -3569,27 +3568,35 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
 
           const schoolId = 'school_' + Date.now().toString(36) + '_' + Math.random().toString(36).substring(2, 7);
           const schoolCode = generateSchoolCode();
-          const newSchool = {
-            schoolId,
-            name: schoolName,
-            address: schoolAddress,
-            phone: schoolPhone,
-            schoolCode,
-            createdAt: new Date().toISOString(),
-            plan: 'trial'
-          };
-
-          // Requirement 3: FIRST create a new school document... THEN create user
-          if (db) {
-            await db.collection('schools').doc(schoolId).set(newSchool);
-          }
 
           const userCredential = await auth.createUserWithEmailAndPassword(email, password);
           if (userCredential && userCredential.user) {
+            const creatorUid = userCredential.user.uid;
+            const newSchool = {
+              schoolId,
+              name: schoolName,
+              address: schoolAddress,
+              phone: schoolPhone,
+              schoolCode,
+              createdAt: new Date().toISOString(),
+              plan: 'trial',
+              creatorUid,
+              createdBy: creatorUid
+            };
+
             setUserRole(emailLower, 'Admin');
             localStorage.setItem(SCHOOL_STORAGE_PREFIX + emailLower, schoolId);
 
             if (db) {
+              await db.collection('schools').doc(schoolId).set(newSchool);
+              if (schoolCode && schoolCode !== schoolId) {
+                try {
+                  await db.collection('schools').doc(schoolCode).set(newSchool);
+                } catch (codeErr) {
+                  console.warn('School code document mapping warning:', codeErr);
+                }
+              }
+
               await db.collection('users').doc(emailLower).set({
                 email: emailLower,
                 role: 'Admin',
@@ -3628,44 +3635,82 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
             return;
           }
 
-          // Requirement 4: Validate code against schools collection
-          const schoolQuerySnap = await db.collection('schools').where('schoolCode', '==', enteredCode).limit(1).get();
-          if (schoolQuerySnap.empty) {
-            showAuthError('Invalid School Code. Please ask your school admin for the correct code.');
+          // Authenticate user first so they are a signed-in user reading by single document ID
+          let userCredential = null;
+          try {
+            userCredential = await auth.createUserWithEmailAndPassword(email, password);
+          } catch (authErr) {
+            console.error('Teacher signup auth error:', authErr);
+            showAuthError(getFriendlyAuthErrorMessage(authErr));
+            setAuthLoading(false);
+            return;
+          }
+
+          let matchedSchool = null;
+          let matchedSchoolId = null;
+
+          try {
+            // Requirement 2: Read single document by document ID (supports schoolCode as doc ID)
+            const codeDocSnap = await db.collection('schools').doc(enteredCode).get();
+            if (codeDocSnap.exists) {
+              matchedSchool = codeDocSnap.data();
+              matchedSchoolId = matchedSchool.schoolId || codeDocSnap.id;
+            } else {
+              // Fallback query if rule permits
+              try {
+                const schoolQuerySnap = await db.collection('schools').where('schoolCode', '==', enteredCode).limit(1).get();
+                if (!schoolQuerySnap.empty) {
+                  const doc = schoolQuerySnap.docs[0];
+                  matchedSchool = doc.data();
+                  matchedSchoolId = matchedSchool.schoolId || doc.id;
+                }
+              } catch (qErr) {
+                console.warn('Teacher query by schoolCode check:', qErr);
+              }
+            }
+          } catch (readErr) {
+            console.warn('Teacher school code read error:', readErr);
+          }
+
+          if (!matchedSchool) {
+            // Invalid code. Clean up created auth user so email isn't consumed
+            if (userCredential && userCredential.user) {
+              try {
+                await userCredential.user.delete();
+              } catch (delErr) {
+                try { await auth.signOut(); } catch (sErr) {}
+              }
+            }
+            showAuthError('Invalid School Code. Please check and try again.');
             schoolCodeInput?.focus();
             setAuthLoading(false);
             return;
           }
 
-          const matchedSchoolDoc = schoolQuerySnap.docs[0];
-          const matchedSchool = matchedSchoolDoc.data();
-          const schoolId = matchedSchool.schoolId || matchedSchoolDoc.id;
+          // Valid school code matched!
+          const schoolId = matchedSchoolId;
+          setUserRole(emailLower, 'Teacher');
+          localStorage.setItem(SCHOOL_STORAGE_PREFIX + emailLower, schoolId);
 
-          const userCredential = await auth.createUserWithEmailAndPassword(email, password);
-          if (userCredential && userCredential.user) {
-            setUserRole(emailLower, 'Teacher');
-            localStorage.setItem(SCHOOL_STORAGE_PREFIX + emailLower, schoolId);
-
-            if (db) {
-              await db.collection('users').doc(emailLower).set({
-                email: emailLower,
-                role: 'Teacher',
-                schoolId: schoolId,
-                schoolName: matchedSchool.name || ''
-              }, { merge: true });
-            }
-
-            state.currentSchoolId = schoolId;
-            state.currentSchool = matchedSchool;
-            state.profile = {
-              ...DEFAULT_SCHOOL_PROFILE,
-              name: matchedSchool.name || DEFAULT_SCHOOL_PROFILE.name,
-              address: matchedSchool.address || '',
-              phone: matchedSchool.phone || ''
-            };
-            saveStorage(STORAGE_KEYS.PROFILE, state.profile);
-            showToast(`Account created! Joined ${matchedSchool.name || 'School'}.`, 'success');
+          if (db) {
+            await db.collection('users').doc(emailLower).set({
+              email: emailLower,
+              role: 'Teacher',
+              schoolId: schoolId,
+              schoolName: matchedSchool.name || ''
+            }, { merge: true });
           }
+
+          state.currentSchoolId = schoolId;
+          state.currentSchool = matchedSchool;
+          state.profile = {
+            ...DEFAULT_SCHOOL_PROFILE,
+            name: matchedSchool.name || DEFAULT_SCHOOL_PROFILE.name,
+            address: matchedSchool.address || '',
+            phone: matchedSchool.phone || ''
+          };
+          saveStorage(STORAGE_KEYS.PROFILE, state.profile);
+          showToast(`Account created! Joined ${matchedSchool.name || 'School'}.`, 'success');
         }
 
       } else {
@@ -3911,6 +3956,7 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
         stopBackgroundSync();
         FirestoreDB.hideSyncOverlay();
         hideDataLoadError();
+        document.getElementById('schoolOnboardModal')?.classList.add('hidden');
         authScreen?.classList.remove('hidden');
         appContainer?.classList.add('hidden');
         mobileBottomBar?.classList.add('hidden');

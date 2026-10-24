@@ -3382,3 +3382,351 @@ h1, h2, h3, h4, h5, h6 {
   height: 100%;
   object-fit: contain;
 }
+
+
+/* ========================================================
+   Subscription & Billing System Styles
+   ======================================================== */
+
+/* Top Slim Subscription Status Banner */
+.subscription-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 16px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  line-height: 1.4;
+  transition: all 0.2s ease;
+  flex-wrap: wrap;
+}
+
+.subscription-banner.sub-banner-trial {
+  background: #F0FDFA;
+  border-bottom: 1px solid #99F6E4;
+  color: #0F766E;
+}
+
+.subscription-banner.sub-banner-grace {
+  background: #FFFBEB;
+  border-bottom: 1px solid #FDE68A;
+  color: #B45309;
+}
+
+.subscription-banner.sub-banner-expired {
+  background: #FEF2F2;
+  border-bottom: 1px solid #FECACA;
+  color: #B91C1C;
+}
+
+.sub-banner-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 220px;
+}
+
+.sub-banner-icon {
+  font-size: 1.1rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.sub-banner-message {
+  font-weight: 600;
+}
+
+.sub-banner-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.sub-banner-btn {
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  border: none;
+  transition: opacity 0.15s ease;
+}
+
+.sub-banner-trial .sub-banner-btn {
+  background: #0D9488;
+  color: #FFFFFF;
+}
+
+.sub-banner-grace .sub-banner-btn {
+  background: #D97706;
+  color: #FFFFFF;
+}
+
+.sub-banner-expired .sub-banner-btn {
+  background: #DC2626;
+  color: #FFFFFF;
+}
+
+.sub-banner-btn:hover {
+  opacity: 0.9;
+}
+
+.btn-sub-dismiss {
+  background: none;
+  border: none;
+  font-size: 1.1rem;
+  cursor: pointer;
+  color: inherit;
+  opacity: 0.7;
+  padding: 0 4px;
+  line-height: 1;
+}
+
+.btn-sub-dismiss:hover {
+  opacity: 1;
+}
+
+/* Plan Badges */
+.badge-plan-basic {
+  background: #E2E8F0;
+  color: #334155;
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 0.7rem;
+  padding: 2px 7px;
+  border-radius: 9999px;
+}
+
+.badge-plan-pro {
+  background: #F3E8FF;
+  color: #7E22CE;
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 0.7rem;
+  padding: 2px 7px;
+  border-radius: 9999px;
+}
+
+.badge-sub-trial {
+  background: #CCFBF1;
+  color: #0F766E;
+  font-weight: 700;
+  font-size: 0.7rem;
+  padding: 2px 7px;
+  border-radius: 9999px;
+}
+
+.badge-sub-active {
+  background: #DCFCE7;
+  color: #15803D;
+  font-weight: 700;
+  font-size: 0.7rem;
+  padding: 2px 7px;
+  border-radius: 9999px;
+}
+
+.badge-sub-grace {
+  background: #FEF3C7;
+  color: #B45309;
+  font-weight: 700;
+  font-size: 0.7rem;
+  padding: 2px 7px;
+  border-radius: 9999px;
+}
+
+.badge-sub-expired {
+  background: #FEE2E2;
+  color: #B91C1C;
+  font-weight: 700;
+  font-size: 0.7rem;
+  padding: 2px 7px;
+  border-radius: 9999px;
+}
+
+/* Pro Feature Lock Screen */
+.pro-feature-lock-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 16px;
+  width: 100%;
+}
+
+.pro-lock-card {
+  background: #FFFFFF;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  padding: 32px 24px;
+  max-width: 520px;
+  width: 100%;
+  text-align: center;
+}
+
+.pro-lock-icon {
+  font-size: 2.8rem;
+  margin-bottom: 12px;
+  display: inline-block;
+}
+
+.pro-lock-title {
+  font-family: var(--font-heading);
+  font-size: 1.35rem;
+  font-weight: 800;
+  color: var(--text-heading);
+  margin-bottom: 8px;
+}
+
+.pro-lock-desc {
+  font-size: 0.9rem;
+  color: var(--text-body);
+  line-height: 1.5;
+  margin-bottom: 20px;
+}
+
+.pro-lock-benefits {
+  background: #F8FAFC;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  padding: 14px 16px;
+  text-align: left;
+  margin-bottom: 24px;
+  font-size: 0.85rem;
+}
+
+.pro-lock-benefits li {
+  margin-bottom: 6px;
+  color: var(--text-heading);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pro-lock-benefits li:last-child {
+  margin-bottom: 0;
+}
+
+/* Subscription Modal Layout */
+.plan-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+.sub-plan-choice-card {
+  border: 2px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  background: #FFFFFF;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  position: relative;
+}
+
+.sub-plan-choice-card:hover {
+  border-color: #94A3B8;
+}
+
+.sub-plan-choice-card.selected {
+  border-color: var(--primary);
+  background: #F0FDFA;
+}
+
+.sub-plan-price {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: var(--text-heading);
+  margin: 6px 0;
+}
+
+.payment-instructions-box {
+  background: #F8FAFC;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  padding: 14px 16px;
+  margin-bottom: 20px;
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.payment-channel-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 0.8rem;
+  margin-right: 6px;
+}
+
+.payment-channel-jazzcash {
+  background: #FEF3C7;
+  color: #92400E;
+}
+
+.payment-channel-easypaisa {
+  background: #DCFCE7;
+  color: #166534;
+}
+
+/* Platform Super Admin Screen */
+.platform-container {
+  padding: 8px 0;
+}
+
+.platform-header-box {
+  background: #FFFFFF;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  padding: 18px 20px;
+  margin-bottom: 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+
+.platform-table-wrap {
+  background: #FFFFFF;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.platform-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+  min-width: 650px;
+}
+
+.platform-table th {
+  background: #F8FAFC;
+  padding: 10px 14px;
+  text-align: left;
+  font-weight: 700;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.platform-table td {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border-soft);
+  color: var(--text-heading);
+  vertical-align: middle;
+}
+
+.platform-table tr:last-child td {
+  border-bottom: none;
+}
+
+.platform-table tr:hover {
+  background: #F8FAFC;
+}

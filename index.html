@@ -192,6 +192,10 @@
           <span class="tab-icon">📢</span>
           <span class="tab-text">Comms</span>
         </button>
+        <button class="tab-btn hidden" id="tabBtnPlatform" data-tab="tab-platform" role="tab" aria-selected="false">
+          <span class="tab-icon">🛠</span>
+          <span class="tab-text">Platform</span>
+        </button>
       </nav>
 
       <!-- Section Suggestions Datalists (Fix 3: Customizable section names) -->
@@ -215,6 +219,18 @@
         <option value="Science">Section Science</option>
       </datalist>
     </header>
+
+    <!-- Subscription Status Banner (Slim top banner) -->
+    <div id="subscriptionBanner" class="subscription-banner hidden" role="region" aria-label="Subscription Status">
+      <div class="sub-banner-content">
+        <span class="sub-banner-icon" id="subBannerIcon">⏳</span>
+        <span class="sub-banner-message" id="subBannerMessage"></span>
+      </div>
+      <div class="sub-banner-actions">
+        <button type="button" class="btn btn-sm sub-banner-btn" id="btnSubBannerAction">Upgrade</button>
+        <button type="button" class="btn-sub-dismiss" id="btnSubBannerDismiss" aria-label="Dismiss banner" title="Dismiss">✕</button>
+      </div>
+    </div>
 
     <!-- App Data Load Error Box (shown at top of app if data loading fails) -->
     <div id="dataLoadErrorBox" class="auth-error-box hidden" style="margin: 12px 14px 0;" role="alert">
@@ -643,6 +659,27 @@
            MODULE 4: Monthly Result Auto-Delivery
            ============================================== -->
       <section id="tab-dispatch" class="tab-panel">
+        <!-- Pro Feature Lock Screen -->
+        <div id="lockTabDispatch" class="pro-feature-lock-container hidden">
+          <div class="pro-lock-card">
+            <span class="pro-lock-icon">🔒</span>
+            <span class="badge badge-plan-pro" style="margin-bottom: 8px;">Pro Plan Required</span>
+            <h3 class="pro-lock-title">This is a Pro feature</h3>
+            <p class="pro-lock-desc">Upgrade to Pro (Rs 5,000/month) to use Monthly Result WhatsApp Auto-Delivery.</p>
+            <div class="pro-lock-benefits">
+              <strong style="display:block; margin-bottom:8px; color:var(--text-heading);">Included with Pro:</strong>
+              <ul style="list-style:none; padding:0; margin:0;">
+                <li><span>✅</span> WhatsApp Monthly Result Auto-Dispatch</li>
+                <li><span>✅</span> Parent-Teacher Meeting (PTM) Scheduler & RSVPs</li>
+                <li><span>✅</span> School-wide Broadcasts & Detailed Parent Call Logs</li>
+              </ul>
+            </div>
+            <button type="button" class="btn btn-primary" onclick="window.__openSubscriptionModal && window.__openSubscriptionModal('pro')">
+              Upgrade to Pro (Rs 5,000/month)
+            </button>
+          </div>
+        </div>
+        <div id="contentTabDispatch">
         <div class="panel-header-wrap">
           <div>
             <h2 class="panel-title">🚀 Monthly Result Auto-Delivery (M4)</h2>
@@ -752,12 +789,34 @@
             </table>
           </div>
         </div>
+        </div>
       </section>
 
       <!-- ==============================================
            MODULE 5: PTM Scheduler
            ============================================== -->
       <section id="tab-ptm" class="tab-panel">
+        <!-- Pro Feature Lock Screen -->
+        <div id="lockTabPtm" class="pro-feature-lock-container hidden">
+          <div class="pro-lock-card">
+            <span class="pro-lock-icon">🔒</span>
+            <span class="badge badge-plan-pro" style="margin-bottom: 8px;">Pro Plan Required</span>
+            <h3 class="pro-lock-title">This is a Pro feature</h3>
+            <p class="pro-lock-desc">Upgrade to Pro (Rs 5,000/month) to use the Parent-Teacher Meeting Scheduler and RSVP Manager.</p>
+            <div class="pro-lock-benefits">
+              <strong style="display:block; margin-bottom:8px; color:var(--text-heading);">Included with Pro:</strong>
+              <ul style="list-style:none; padding:0; margin:0;">
+                <li><span>✅</span> WhatsApp Monthly Result Auto-Dispatch</li>
+                <li><span>✅</span> Parent-Teacher Meeting (PTM) Scheduler & RSVPs</li>
+                <li><span>✅</span> School-wide Broadcasts & Detailed Parent Call Logs</li>
+              </ul>
+            </div>
+            <button type="button" class="btn btn-primary" onclick="window.__openSubscriptionModal && window.__openSubscriptionModal('pro')">
+              Upgrade to Pro (Rs 5,000/month)
+            </button>
+          </div>
+        </div>
+        <div id="contentTabPtm">
         <div class="panel-header-wrap">
           <div>
             <h2 class="panel-title">🤝 Parent-Teacher Meeting (PTM) Scheduler (M5)</h2>
@@ -897,6 +956,27 @@
            MODULE 6: Communication Hub
            ============================================== -->
       <section id="tab-comms" class="tab-panel">
+        <!-- Pro Feature Lock Screen -->
+        <div id="lockTabComms" class="pro-feature-lock-container hidden">
+          <div class="pro-lock-card">
+            <span class="pro-lock-icon">🔒</span>
+            <span class="badge badge-plan-pro" style="margin-bottom: 8px;">Pro Plan Required</span>
+            <h3 class="pro-lock-title">This is a Pro feature</h3>
+            <p class="pro-lock-desc">Upgrade to Pro (Rs 5,000/month) to use School Communications, Broadcasts, and Call Logs.</p>
+            <div class="pro-lock-benefits">
+              <strong style="display:block; margin-bottom:8px; color:var(--text-heading);">Included with Pro:</strong>
+              <ul style="list-style:none; padding:0; margin:0;">
+                <li><span>✅</span> WhatsApp Monthly Result Auto-Dispatch</li>
+                <li><span>✅</span> Parent-Teacher Meeting (PTM) Scheduler & RSVPs</li>
+                <li><span>✅</span> School-wide Broadcasts & Detailed Parent Call Logs</li>
+              </ul>
+            </div>
+            <button type="button" class="btn btn-primary" onclick="window.__openSubscriptionModal && window.__openSubscriptionModal('pro')">
+              Upgrade to Pro (Rs 5,000/month)
+            </button>
+          </div>
+        </div>
+        <div id="contentTabComms">
         <div class="panel-header-wrap">
           <div>
             <h2 class="panel-title">📢 Communication Hub (M6)</h2>
@@ -1057,6 +1137,87 @@
             </div>
           </div>
         </div>
+        </div>
+      </section>
+      <!-- ==============================================
+           PLATFORM SUPER ADMIN MODULE
+           ============================================== -->
+      <section id="tab-platform" class="tab-panel">
+        <div class="platform-container">
+          <div class="platform-header-box">
+            <div>
+              <h2 style="font-family: var(--font-heading); font-size: 1.35rem; font-weight: 800; color: var(--text-heading); margin: 0 0 4px;">🛠 Platform Administration</h2>
+              <p style="font-size: 0.85rem; color: var(--text-muted); margin: 0;">Multi-school management and manual payment request confirmations.</p>
+            </div>
+            <div style="display: flex; gap: 8px;">
+              <button type="button" class="btn btn-sm btn-primary" id="btnPlatformTabSchools">Schools</button>
+              <button type="button" class="btn btn-sm btn-subtle" id="btnPlatformTabRequests">Payment Requests <span id="platformPendingBadge" class="badge badge-amber" style="margin-left: 4px; display: none;">0</span></button>
+            </div>
+          </div>
+
+          <!-- Platform: All Schools Panel -->
+          <div id="platformSchoolsPanel">
+            <div class="card" style="padding: 16px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 10px;">
+                <h3 style="font-size: 1rem; font-weight: 700; margin: 0;">All Onboarded Schools (<span id="platformSchoolsCount">0</span>)</h3>
+                <button type="button" class="btn btn-subtle btn-sm" id="btnRefreshPlatformSchools">🔄 Refresh</button>
+              </div>
+              <div class="platform-table-wrap">
+                <table class="platform-table">
+                  <thead>
+                    <tr>
+                      <th>School Name</th>
+                      <th>Code</th>
+                      <th>Plan</th>
+                      <th>Status</th>
+                      <th>Key Date</th>
+                      <th>Students</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody id="platformSchoolsTableBody">
+                    <tr><td colspan="7" style="text-align: center; color: var(--text-muted); padding: 20px;">Loading schools...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- Platform: Payment Requests Panel -->
+          <div id="platformRequestsPanel" class="hidden">
+            <div class="card" style="padding: 16px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 10px;">
+                <h3 style="font-size: 1rem; font-weight: 700; margin: 0;">Manual Payment Requests</h3>
+                <div style="display: flex; gap: 8px;">
+                  <select id="platformRequestFilter" class="form-select" style="font-size: 0.8rem; padding: 4px 8px;">
+                    <option value="pending">Pending Only</option>
+                    <option value="all">All Requests</option>
+                  </select>
+                  <button type="button" class="btn btn-subtle btn-sm" id="btnRefreshPlatformRequests">🔄 Refresh</button>
+                </div>
+              </div>
+              <div class="platform-table-wrap">
+                <table class="platform-table">
+                  <thead>
+                    <tr>
+                      <th>School</th>
+                      <th>Plan / Amount</th>
+                      <th>Method</th>
+                      <th>Sender Info</th>
+                      <th>Txn ID</th>
+                      <th>Date</th>
+                      <th>Status</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody id="platformRequestsTableBody">
+                    <tr><td colspan="8" style="text-align: center; color: var(--text-muted); padding: 20px;">Loading requests...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
       </section>
     </main>
 
@@ -1094,6 +1255,10 @@
       <button class="mobile-tab-btn" data-tab="tab-comms">
         <span class="icon">📢</span>
         <span class="label">Comms</span>
+      </button>
+      <button class="mobile-tab-btn hidden" id="mobileTabBtnPlatform" data-tab="tab-platform">
+        <span class="icon">🛠</span>
+        <span class="label">Platform</span>
       </button>
     </nav>
   </div>
@@ -1304,6 +1469,16 @@
             <span class="icon">📋</span>
             <span>Copy Code</span>
           </button>
+        </div>
+
+        <!-- Subscription Overview & Manage Link -->
+        <div class="form-group" style="background: #F8FAFC; border: 1px solid var(--border-soft); border-radius: var(--radius-md); padding: 12px; margin-bottom: 16px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+            <label class="form-label" style="margin: 0; font-weight: 700;">Subscription & Plan</label>
+            <span id="settingSubBadge" class="badge-sub-trial">Trial (14 days left)</span>
+          </div>
+          <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 10px;" id="settingSubKeyDate">Trial ends in 14 days</div>
+          <button type="button" class="btn btn-secondary btn-sm" id="btnOpenSubscriptionFromSettings" style="width: 100%;">💳 Manage Subscription & Billing</button>
         </div>
 
         <div class="form-group">
@@ -1562,5 +1737,157 @@
 
   <!-- Scripts -->
   <script src="app.js"></script>
+
+  <!-- Subscription & Billing Modal -->
+  <div class="modal-overlay hidden" id="subscriptionModal">
+    <div class="modal-card" style="max-width: 650px;">
+      <div class="modal-header">
+        <h3 class="modal-title">💳 School Subscription & Billing</h3>
+        <button class="btn-close" id="btnCloseSubscriptionModal">✕</button>
+      </div>
+      <div class="modal-body">
+        <!-- Current Status Overview -->
+        <div style="background: #F8FAFC; border: 1px solid var(--border-soft); border-radius: var(--radius-md); padding: 14px 16px; margin-bottom: 20px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+            <div>
+              <span style="font-size: 0.72rem; text-transform: uppercase; font-weight: 700; color: var(--text-muted); display: block;">Current Plan</span>
+              <div style="display: flex; align-items: center; gap: 8px; margin-top: 2px;">
+                <span id="subModalPlanBadge" class="badge-plan-pro">Pro Plan</span>
+                <span id="subModalStatusBadge" class="badge-sub-trial">Trial</span>
+              </div>
+            </div>
+            <div style="text-align: right;">
+              <span style="font-size: 0.72rem; text-transform: uppercase; font-weight: 700; color: var(--text-muted); display: block;" id="subModalKeyDateLabel">Trial Ends</span>
+              <div id="subModalKeyDateValue" style="font-weight: 700; color: var(--text-heading); font-size: 0.95rem;">--</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Plan Choices -->
+        <div style="margin-bottom: 16px;">
+          <h4 style="font-size: 0.95rem; font-weight: 700; color: var(--text-heading); margin: 0 0 10px;">Select Plan</h4>
+          <div class="plan-cards-grid">
+            <div class="sub-plan-choice-card" id="planCardBasic" data-plan="basic">
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span class="badge-plan-basic">Basic</span>
+                <span style="font-size: 0.75rem; color: var(--text-muted);">Standard</span>
+              </div>
+              <div class="sub-plan-price">Rs 2,500 <span style="font-size: 0.75rem; font-weight: 400; color: var(--text-muted);">/ month</span></div>
+              <p style="font-size: 0.78rem; color: var(--text-muted); margin: 0 0 10px;">Core school management essentials.</p>
+              <ul style="font-size: 0.75rem; padding-left: 16px; margin: 0; color: var(--text-body);">
+                <li>Student & Parent database</li>
+                <li>Daily Attendance tracking</li>
+                <li>Test Marks entry</li>
+                <li>Basic Report Cards</li>
+              </ul>
+            </div>
+
+            <div class="sub-plan-choice-card selected" id="planCardPro" data-plan="pro">
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span class="badge-plan-pro">Pro</span>
+                <span style="font-size: 0.75rem; color: #7E22CE; font-weight: 700;">★ Recommended</span>
+              </div>
+              <div class="sub-plan-price">Rs 5,000 <span style="font-size: 0.75rem; font-weight: 400; color: var(--text-muted);">/ month</span></div>
+              <p style="font-size: 0.78rem; color: var(--text-muted); margin: 0 0 10px;">Full automation & parent engagement.</p>
+              <ul style="font-size: 0.75rem; padding-left: 16px; margin: 0; color: var(--text-body);">
+                <li>Everything in Basic</li>
+                <li>Monthly Result WhatsApp Auto-Delivery</li>
+                <li>PTM Scheduling & RSVP Management</li>
+                <li>Broadcasts & Parent Call Logs</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <!-- Payment Instructions Box -->
+        <div class="payment-instructions-box">
+          <div style="font-weight: 700; margin-bottom: 6px; color: var(--text-heading); font-size: 0.9rem;">
+            💸 Manual Payment Instructions (Pakistan)
+          </div>
+          <div style="margin-bottom: 8px;">
+            Transfer your subscription fee to either account below:
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px;">
+            <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 6px;">
+              <span class="payment-channel-badge payment-channel-jazzcash">JazzCash</span>
+              <strong id="payInstrJazzcashNumber">[ADD NUMBER]</strong>
+              <span style="color: var(--text-muted); font-size: 0.8rem;">(Title: <span id="payInstrJazzcashTitle">[ADD NAME]</span>)</span>
+            </div>
+            <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 6px;">
+              <span class="payment-channel-badge payment-channel-easypaisa">Easypaisa</span>
+              <strong id="payInstrEasypaisaNumber">[ADD NUMBER]</strong>
+              <span style="color: var(--text-muted); font-size: 0.8rem;">(Title: <span id="payInstrEasypaisaTitle">[ADD NAME]</span>)</span>
+            </div>
+          </div>
+          <div style="font-size: 0.78rem; color: var(--text-muted);">
+            After transferring the fee, submit the "I Have Paid" confirmation below. The platform owner will confirm your payment within 24 hours.
+          </div>
+        </div>
+
+        <!-- "I Have Paid" Form -->
+        <form id="paymentClaimForm" style="background: #FFFFFF; border: 1px solid var(--border-soft); border-radius: var(--radius-md); padding: 16px; margin-bottom: 20px;">
+          <h4 style="font-size: 0.95rem; font-weight: 700; color: var(--text-heading); margin: 0 0 12px;">I Have Paid Confirmation</h4>
+          <input type="hidden" id="claimSelectedPlan" value="pro">
+
+          <div class="form-row">
+            <div class="form-col">
+              <label for="claimMethod" class="form-label">Payment Method Used *</label>
+              <select id="claimMethod" class="form-select" required>
+                <option value="JazzCash">JazzCash</option>
+                <option value="Easypaisa">Easypaisa</option>
+              </select>
+            </div>
+            <div class="form-col">
+              <label for="claimAmount" class="form-label">Amount Paid (PKR) *</label>
+              <input type="text" id="claimAmount" class="form-input" value="Rs 5,000" readonly style="background: #F1F5F9; font-weight: 700;">
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-col">
+              <label for="claimSenderInfo" class="form-label">Sender Account / Mobile Number *</label>
+              <input type="text" id="claimSenderInfo" class="form-input" placeholder="e.g. 0300 1234567 or Account Title" required>
+            </div>
+            <div class="form-col">
+              <label for="claimTxnId" class="form-label">Transaction ID (TID) (Optional)</label>
+              <input type="text" id="claimTxnId" class="form-input" placeholder="e.g. 018293849182">
+            </div>
+          </div>
+
+          <div style="margin-top: 14px; display: flex; justify-content: flex-end;">
+            <button type="submit" class="btn btn-primary" id="btnSubmitPaymentClaim">
+              Submit "I Have Paid"
+            </button>
+          </div>
+        </form>
+
+        <!-- Payment History for this School -->
+        <div>
+          <h4 style="font-size: 0.9rem; font-weight: 700; color: var(--text-heading); margin: 0 0 8px;">Your Payment Requests History</h4>
+          <div class="platform-table-wrap">
+            <table class="platform-table">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Plan</th>
+                  <th>Amount</th>
+                  <th>Method</th>
+                  <th>Sender Info</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="schoolPaymentHistoryTableBody">
+                <tr><td colspan="6" style="text-align: center; color: var(--text-muted); padding: 14px;">No payment requests submitted yet.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" id="btnCancelSubscriptionModal">Close</button>
+      </div>
+    </div>
+  </div>
+
 </body>
 </html>

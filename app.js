@@ -298,11 +298,32 @@
   };
 
   // ========================================================
+  // Subscription & Manual Pakistan Billing Config
+  // ========================================================
+  const PLATFORM_PAYMENT = {
+    jazzcashNumber: '[ADD NUMBER]',
+    easypaisaNumber: '[ADD NUMBER]',
+    accountTitle: '[ADD NAME]'
+  };
+
+  // ========================================================
   // Application State
   // ========================================================
   const state = {
     currentSchoolId: null,
     currentSchool: null,
+    subscription: {
+      plan: 'pro',
+      status: 'trial',
+      subStatus: 'trial',
+      daysLeft: 14,
+      keyDateStr: '',
+      keyDateLabel: 'Trial ends'
+    },
+    isPlatformAdmin: false,
+    paymentRequests: [],
+    platformSchools: [],
+    platformPaymentRequests: [],
     students: [],
     attendance: {}, // { 'YYYY-MM-DD_Class 3_A': { 'stud-id': { status: 'Present'|'Absent'|'Late', time: '08:15 AM' } } }
     tests: [],
@@ -425,14 +446,19 @@
         const creatorUid = currentUser?.uid || (auth && auth.currentUser ? auth.currentUser.uid : '');
         const schoolId = 'school_' + Date.now().toString(36) + '_' + Math.random().toString(36).substring(2, 7);
         const schoolCode = generateSchoolCode();
+        const now = new Date();
+        const trialEndsAt = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000).toISOString();
         const newSchool = {
           schoolId,
           name: schoolName,
           address: schoolAddress,
           phone: schoolPhone,
           schoolCode,
-          createdAt: new Date().toISOString(),
-          plan: 'trial',
+          createdAt: now.toISOString(),
+          plan: 'pro',
+          subStatus: 'trial',
+          trialEndsAt: trialEndsAt,
+          paidUntil: null,
           creatorUid: creatorUid,
           createdBy: creatorUid
         };
@@ -442,7 +468,18 @@
             await db.collection('schools').doc(schoolId).set(newSchool);
             if (schoolCode && schoolCode !== schoolId) {
               try {
-                await db.collection('schools').doc(schoolCode).set(newSchool);
+                // Mirror doc has name/branding only; billing fields live ONLY on main schools/{schoolId} doc
+                const mirrorSchool = {
+                  schoolId,
+                  name: schoolName,
+                  address: schoolAddress,
+                  phone: schoolPhone,
+                  schoolCode,
+                  createdAt: newSchool.createdAt,
+                  creatorUid: creatorUid,
+                  createdBy: creatorUid
+                };
+                await db.collection('schools').doc(schoolCode).set(mirrorSchool);
               } catch (codeErr) {
                 console.warn('School code document mapping warning:', codeErr);
               }
@@ -481,6 +518,703 @@
 
       form.addEventListener('submit', handleSubmit);
     });
+  }
+
+  // ========================================================
+  // Subscription, Billing & Platform Admin Module
+  // ========================================================
+
+  function computeSubscriptionStatus(school) {
+    if (!school) {
+      return {
+        plan: 'pro',
+        status: 'trial',
+        subStatus: 'trial',
+        daysLeft: 14,
+        keyDateStr: '',
+        keyDateLabel: 'Trial ends'
+      };
+    }
+
+    const plan = school.plan === 'basic' ? 'basic' : 'pro';
+    const now = new Date();
+    const todayMs = now.getTime();
+
+    const paidUntilMs = school.paidUntil ? new Date(school.paidUntil).getTime() : null;
+    const trialEndsAtMs = school.trialEndsAt ? new Date(school.trialEndsAt).getTime() : null;
+
+    let status = 'trial';
+    let keyDateMs = trialEndsAtMs;
+    let keyDateLabel = 'Trial ends';
+
+    if (paidUntilMs && todayMs <= paidUntilMs) {
+      status = 'active';
+      keyDateMs = paidUntilMs;
+      keyDateLabel = 'Paid until';
+    } else if (trialEndsAtMs && todayMs <= trialEndsAtMs) {
+      status = 'trial';
+      keyDateMs = trialEndsAtMs;
+      keyDateLabel = 'Trial ends';
+    } else {
+      const baseMs = paidUntilMs || trialEndsAtMs || todayMs;
+      const graceEndMs = baseMs + 7 * 24 * 60 * 60 * 1000;
+      if (todayMs <= graceEndMs) {
+        status = 'grace';
+        keyDateMs = baseMs;
+        keyDateLabel = 'Ended on';
+      } else {
+        status = 'expired';
+        keyDateMs = baseMs;
+        keyDateLabel = 'Expired on';
+      }
+    }
+
+    let daysLeft = 0;
+    if (keyDateMs) {
+      daysLeft = Math.max(0, Math.ceil((keyDateMs - todayMs) / (24 * 60 * 60 * 1000)));
+    }
+
+    const keyDateStr = keyDateMs
+      ? new Date(keyDateMs).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+      : '';
+
+    return {
+      plan,
+      status,
+      subStatus: status,
+      keyDateMs,
+      keyDateLabel,
+      keyDateStr,
+      daysLeft
+    };
+  }
+
+  function add30Days(currentPaidUntil) {
+    const now = new Date();
+    let baseDate = now;
+    if (currentPaidUntil) {
+      const existingDate = new Date(currentPaidUntil);
+      if (!isNaN(existingDate.getTime()) && existingDate > now) {
+        baseDate = existingDate;
+      }
+    }
+    return new Date(baseDate.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
+  }
+
+  function updateSubscriptionState(school) {
+    state.subscription = computeSubscriptionStatus(school);
+    renderSubscriptionBanner();
+    renderProFeatureLock();
+    updateSubscriptionSettingsUI();
+  }
+
+  function renderSubscriptionBanner() {
+    const banner = document.getElementById('subscriptionBanner');
+    const msgEl = document.getElementById('subBannerMessage');
+    const iconEl = document.getElementById('subBannerIcon');
+    const actionBtn = document.getElementById('btnSubBannerAction');
+    const dismissBtn = document.getElementById('btnSubBannerDismiss');
+
+    if (!banner || !msgEl || !actionBtn) return;
+
+    const sub = state.subscription;
+    if (!sub) {
+      banner.classList.add('hidden');
+      return;
+    }
+
+    // Reset base classes
+    banner.className = 'subscription-banner';
+
+    if (sub.status === 'trial') {
+      const isDismissed = sessionStorage.getItem('ss_trial_banner_dismissed') === 'true';
+      if (isDismissed) {
+        banner.classList.add('hidden');
+        return;
+      }
+      banner.classList.add('sub-banner-trial');
+      if (iconEl) iconEl.textContent = '⏳';
+      msgEl.textContent = `Trial: ${sub.daysLeft} days left (Pro features unlocked)`;
+      actionBtn.textContent = 'Upgrade Plan';
+      if (dismissBtn) dismissBtn.style.display = 'block';
+      banner.classList.remove('hidden');
+
+    } else if (sub.status === 'active') {
+      // Active plan: full access, hide nagging banner unless < 3 days left
+      if (sub.daysLeft <= 3 && sub.daysLeft > 0) {
+        banner.classList.add('sub-banner-trial');
+        if (iconEl) iconEl.textContent = '⏳';
+        msgEl.textContent = `Subscription renewing soon: ${sub.daysLeft} days remaining (${sub.plan.toUpperCase()} Plan)`;
+        actionBtn.textContent = 'Renew Now';
+        if (dismissBtn) dismissBtn.style.display = 'block';
+        banner.classList.remove('hidden');
+      } else {
+        banner.classList.add('hidden');
+      }
+
+    } else if (sub.status === 'grace') {
+      banner.classList.add('sub-banner-grace');
+      if (iconEl) iconEl.textContent = '⚠️';
+      msgEl.textContent = `Your subscription ended on ${sub.keyDateStr}. Please renew within the grace period to avoid interruption.`;
+      actionBtn.textContent = 'Renew Now';
+      if (dismissBtn) dismissBtn.style.display = 'none'; // Persistent per spec
+      banner.classList.remove('hidden');
+
+    } else if (sub.status === 'expired') {
+      banner.classList.add('sub-banner-expired');
+      if (iconEl) iconEl.textContent = '🔒';
+      msgEl.textContent = `Subscription expired — Your account is in read-only mode. Renew to continue adding and editing records.`;
+      actionBtn.textContent = 'Renew Subscription';
+      if (dismissBtn) dismissBtn.style.display = 'none'; // Persistent per spec
+      banner.classList.remove('hidden');
+    }
+  }
+
+  function renderProFeatureLock() {
+    const sub = state.subscription;
+    const isProLocked = sub && sub.plan === 'basic' && sub.status !== 'trial' && sub.status !== 'grace';
+
+    const lockDispatch = document.getElementById('lockTabDispatch');
+    const contentDispatch = document.getElementById('contentTabDispatch');
+    if (lockDispatch && contentDispatch) {
+      lockDispatch.classList.toggle('hidden', !isProLocked);
+      contentDispatch.classList.toggle('hidden', isProLocked);
+    }
+
+    const lockPtm = document.getElementById('lockTabPtm');
+    const contentPtm = document.getElementById('contentTabPtm');
+    if (lockPtm && contentPtm) {
+      lockPtm.classList.toggle('hidden', !isProLocked);
+      contentPtm.classList.toggle('hidden', isProLocked);
+    }
+
+    const lockComms = document.getElementById('lockTabComms');
+    const contentComms = document.getElementById('contentTabComms');
+    if (lockComms && contentComms) {
+      lockComms.classList.toggle('hidden', !isProLocked);
+      contentComms.classList.toggle('hidden', isProLocked);
+    }
+  }
+
+  function updateSubscriptionSettingsUI() {
+    const sub = state.subscription;
+    if (!sub) return;
+
+    const settingBadge = document.getElementById('settingSubBadge');
+    const settingKeyDate = document.getElementById('settingSubKeyDate');
+    if (settingBadge) {
+      settingBadge.className = `badge-sub-${sub.status}`;
+      settingBadge.textContent = `${sub.plan.toUpperCase()} • ${sub.status.toUpperCase()} (${sub.daysLeft}d)`;
+    }
+    if (settingKeyDate) {
+      settingKeyDate.textContent = `${sub.keyDateLabel}: ${sub.keyDateStr || '—'} (${sub.daysLeft} days remaining)`;
+    }
+  }
+
+  function checkSubscriptionWritable(actionName = '') {
+    if (state.subscription && state.subscription.status === 'expired') {
+      showToast('Subscription expired — renew to continue editing.', 'error');
+      openSubscriptionModal();
+      return false;
+    }
+    return true;
+  }
+
+  function openSubscriptionModal(preferredPlan = 'pro') {
+    const modal = document.getElementById('subscriptionModal');
+    if (!modal) return;
+
+    // Populate payment instruction numbers from config
+    const jcNum = document.getElementById('payInstrJazzcashNumber');
+    const jcTitle = document.getElementById('payInstrJazzcashTitle');
+    const epNum = document.getElementById('payInstrEasypaisaNumber');
+    const epTitle = document.getElementById('payInstrEasypaisaTitle');
+
+    if (jcNum) jcNum.textContent = PLATFORM_PAYMENT.jazzcashNumber;
+    if (jcTitle) jcTitle.textContent = PLATFORM_PAYMENT.accountTitle;
+    if (epNum) epNum.textContent = PLATFORM_PAYMENT.easypaisaNumber;
+    if (epTitle) epTitle.textContent = PLATFORM_PAYMENT.accountTitle;
+
+    // Update current status overview
+    const sub = state.subscription;
+    const planBadge = document.getElementById('subModalPlanBadge');
+    const statusBadge = document.getElementById('subModalStatusBadge');
+    const keyDateLabel = document.getElementById('subModalKeyDateLabel');
+    const keyDateValue = document.getElementById('subModalKeyDateValue');
+
+    if (planBadge) {
+      planBadge.className = `badge-plan-${sub.plan}`;
+      planBadge.textContent = `${sub.plan.toUpperCase()} PLAN`;
+    }
+    if (statusBadge) {
+      statusBadge.className = `badge-sub-${sub.status}`;
+      statusBadge.textContent = sub.status.toUpperCase();
+    }
+    if (keyDateLabel) keyDateLabel.textContent = sub.keyDateLabel;
+    if (keyDateValue) keyDateValue.textContent = `${sub.keyDateStr || '—'} (${sub.daysLeft} days left)`;
+
+    // Select preferred plan
+    selectPlanChoice(preferredPlan || sub.plan || 'pro');
+
+    // Load payment history
+    loadSchoolPaymentRequests();
+
+    modal.classList.remove('hidden');
+  }
+
+  function closeSubscriptionModal() {
+    const modal = document.getElementById('subscriptionModal');
+    if (modal) modal.classList.add('hidden');
+  }
+
+  function selectPlanChoice(plan) {
+    const cardBasic = document.getElementById('planCardBasic');
+    const cardPro = document.getElementById('planCardPro');
+    const inputPlan = document.getElementById('claimSelectedPlan');
+    const inputAmount = document.getElementById('claimAmount');
+
+    if (plan === 'basic') {
+      cardBasic?.classList.add('selected');
+      cardPro?.classList.remove('selected');
+      if (inputPlan) inputPlan.value = 'basic';
+      if (inputAmount) inputAmount.value = 'Rs 2,500';
+    } else {
+      cardPro?.classList.add('selected');
+      cardBasic?.classList.remove('selected');
+      if (inputPlan) inputPlan.value = 'pro';
+      if (inputAmount) inputAmount.value = 'Rs 5,000';
+    }
+  }
+
+  async function loadSchoolPaymentRequests() {
+    const tbody = document.getElementById('schoolPaymentHistoryTableBody');
+    if (!tbody || !state.currentSchoolId || !db) return;
+
+    try {
+      const snap = await db.collection('paymentRequests')
+        .where('schoolId', '==', state.currentSchoolId)
+        .get();
+
+      if (snap.empty) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--text-muted); padding: 14px;">No payment requests submitted yet.</td></tr>';
+        return;
+      }
+
+      const reqs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      reqs.sort((a, b) => new Date(b.claimedAt || 0) - new Date(a.claimedAt || 0));
+
+      tbody.innerHTML = reqs.map(r => {
+        const dateStr = r.claimedAt ? new Date(r.claimedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
+        const stClass = r.status === 'approved' ? 'badge-sub-active' : (r.status === 'rejected' ? 'badge-sub-expired' : 'badge-sub-grace');
+        return `
+          <tr>
+            <td>${dateStr}</td>
+            <td><span class="badge-plan-${r.plan}">${(r.plan || 'pro').toUpperCase()}</span></td>
+            <td><strong>Rs ${(r.amount || 5000).toLocaleString()}</strong></td>
+            <td>${r.method || 'JazzCash'}</td>
+            <td>${r.senderInfo || '—'} ${r.txnId ? `<br><small style="color:var(--text-muted); font-family:monospace;">${r.txnId}</small>` : ''}</td>
+            <td><span class="${stClass}">${(r.status || 'pending').toUpperCase()}</span></td>
+          </tr>
+        `;
+      }).join('');
+    } catch (err) {
+      console.warn('Error loading school payment requests:', err);
+    }
+  }
+
+  async function handlePaymentClaimSubmit(e) {
+    if (e) e.preventDefault();
+    if (!state.currentSchoolId) {
+      showToast('Please sign in to submit a payment claim.', 'error');
+      return;
+    }
+
+    const plan = document.getElementById('claimSelectedPlan')?.value || 'pro';
+    const method = document.getElementById('claimMethod')?.value || 'JazzCash';
+    const senderInfo = (document.getElementById('claimSenderInfo')?.value || '').trim();
+    const txnId = (document.getElementById('claimTxnId')?.value || '').trim();
+
+    if (!senderInfo) {
+      showToast('Please enter your sender account number or title.', 'error');
+      document.getElementById('claimSenderInfo')?.focus();
+      return;
+    }
+
+    const submitBtn = document.getElementById('btnSubmitPaymentClaim');
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Submitting...';
+    }
+
+    const requestData = {
+      schoolId: state.currentSchoolId,
+      schoolName: state.currentSchool?.name || state.profile?.name || 'School',
+      schoolCode: state.currentSchool?.schoolCode || '',
+      plan: plan,
+      amount: plan === 'basic' ? 2500 : 5000,
+      method: method,
+      senderInfo: senderInfo,
+      txnId: txnId,
+      claimedAt: new Date().toISOString(),
+      status: 'pending'
+    };
+
+    try {
+      if (db) {
+        await db.collection('paymentRequests').add(requestData);
+      }
+      showToast('Payment request sent. It will be confirmed within 24 hours.', 'success');
+      document.getElementById('claimSenderInfo').value = '';
+      if (document.getElementById('claimTxnId')) document.getElementById('claimTxnId').value = '';
+      loadSchoolPaymentRequests();
+    } catch (err) {
+      console.error('Error submitting payment claim:', err);
+      showToast('Could not submit payment request. Please try again.', 'error');
+    } finally {
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Submit "I Have Paid"';
+      }
+    }
+  }
+
+  // ========================================================
+  // Platform Owner (Super Admin) Features
+  // ========================================================
+
+  async function checkPlatformAdmin(user) {
+    if (!user || !user.email) {
+      state.isPlatformAdmin = false;
+      document.getElementById('tabBtnPlatform')?.classList.add('hidden');
+      document.getElementById('mobileTabBtnPlatform')?.classList.add('hidden');
+      return;
+    }
+
+    const emailLower = user.email.toLowerCase();
+    try {
+      if (db) {
+        const adminDoc = await db.collection('platformAdmins').doc(emailLower).get();
+        state.isPlatformAdmin = adminDoc.exists;
+      } else {
+        state.isPlatformAdmin = false;
+      }
+    } catch (err) {
+      console.warn('Platform admin check warning:', err);
+      state.isPlatformAdmin = false;
+    }
+
+    const tabBtn = document.getElementById('tabBtnPlatform');
+    const mobileBtn = document.getElementById('mobileTabBtnPlatform');
+    if (state.isPlatformAdmin) {
+      tabBtn?.classList.remove('hidden');
+      mobileBtn?.classList.remove('hidden');
+    } else {
+      tabBtn?.classList.add('hidden');
+      mobileBtn?.classList.add('hidden');
+      if (state.activeTab === 'tab-platform') {
+        switchTab('tab-students');
+      }
+    }
+  }
+
+  async function loadPlatformSchools() {
+    const tbody = document.getElementById('platformSchoolsTableBody');
+    const countEl = document.getElementById('platformSchoolsCount');
+    if (!tbody || !db) return;
+
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: var(--text-muted); padding: 20px;">Syncing schools database...</td></tr>';
+
+    try {
+      const snap = await db.collection('schools').get();
+      // Filter out mirror docs (keyed by schoolCode) by grouping by schoolId
+      const schoolsMap = new Map();
+      snap.docs.forEach(doc => {
+        const d = doc.data();
+        const sId = d.schoolId || doc.id;
+        if (!schoolsMap.has(sId) || doc.id === sId) {
+          schoolsMap.set(sId, { docId: doc.id, ...d });
+        }
+      });
+
+      const schools = Array.from(schoolsMap.values());
+      schools.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+      state.platformSchools = schools;
+
+      if (countEl) countEl.textContent = schools.length;
+
+      if (schools.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: var(--text-muted); padding: 20px;">No schools registered yet.</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = schools.map(s => {
+        const sub = computeSubscriptionStatus(s);
+        const sId = s.schoolId || s.docId;
+        const isCurrent = sId === state.currentSchoolId;
+        return `
+          <tr data-school-id="${sId}">
+            <td>
+              <strong>${s.name || 'Unnamed School'}</strong>
+              ${isCurrent ? '<span class="badge badge-pilot" style="margin-left: 4px;">Current</span>' : ''}
+              ${s.address ? `<div style="font-size: 0.72rem; color: var(--text-muted);">${s.address}</div>` : ''}
+            </td>
+            <td><code style="font-weight: 700; color: var(--primary);">${s.schoolCode || '—'}</code></td>
+            <td>
+              <select class="form-select platform-plan-select" data-school-id="${sId}" style="font-size: 0.75rem; padding: 2px 6px;">
+                <option value="basic" ${sub.plan === 'basic' ? 'selected' : ''}>Basic</option>
+                <option value="pro" ${sub.plan === 'pro' ? 'selected' : ''}>Pro</option>
+              </select>
+            </td>
+            <td><span class="badge-sub-${sub.status}">${sub.status.toUpperCase()}</span></td>
+            <td>
+              <div style="font-size: 0.78rem; font-weight: 600;">${sub.keyDateStr || '—'}</div>
+              <div style="font-size: 0.72rem; color: var(--text-muted);">${sub.keyDateLabel} (${sub.daysLeft}d left)</div>
+            </td>
+            <td><span style="font-size: 0.8rem; color: var(--text-muted);">${isCurrent ? state.students.length : '—'}</span></td>
+            <td>
+              <div style="display: flex; gap: 4px; flex-wrap: wrap;">
+                <button type="button" class="btn btn-sm btn-secondary btn-platform-extend" data-school-id="${sId}" title="Extend subscription by 30 days">
+                  +30 Days
+                </button>
+                <button type="button" class="btn btn-sm btn-subtle btn-platform-save-plan" data-school-id="${sId}" title="Save selected plan">
+                  Save Plan
+                </button>
+              </div>
+            </td>
+          </tr>
+        `;
+      }).join('');
+
+      // Bind per-school action buttons
+      tbody.querySelectorAll('.btn-platform-extend').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const sId = btn.getAttribute('data-school-id');
+          if (sId) extendSchoolPaidPeriod(sId);
+        });
+      });
+
+      tbody.querySelectorAll('.btn-platform-save-plan').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const sId = btn.getAttribute('data-school-id');
+          const select = tbody.querySelector(`.platform-plan-select[data-school-id="${sId}"]`);
+          if (sId && select) changeSchoolPlan(sId, select.value);
+        });
+      });
+
+    } catch (err) {
+      console.error('Error loading platform schools:', err);
+      tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: #DC2626; padding: 20px;">Could not load schools list. Check Firestore permissions.</td></tr>';
+    }
+  }
+
+  async function loadPlatformPaymentRequests() {
+    const tbody = document.getElementById('platformRequestsTableBody');
+    const badge = document.getElementById('platformPendingBadge');
+    const filter = document.getElementById('platformRequestFilter')?.value || 'pending';
+    if (!tbody || !db) return;
+
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: var(--text-muted); padding: 20px;">Loading payment requests...</td></tr>';
+
+    try {
+      const snap = await db.collection('paymentRequests').get();
+      let reqs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      reqs.sort((a, b) => new Date(b.claimedAt || 0) - new Date(a.claimedAt || 0));
+
+      const pendingCount = reqs.filter(r => r.status === 'pending').length;
+      if (badge) {
+        badge.textContent = `${pendingCount} pending`;
+        badge.style.display = pendingCount > 0 ? 'inline-block' : 'none';
+      }
+
+      if (filter === 'pending') {
+        reqs = reqs.filter(r => r.status === 'pending');
+      }
+
+      state.platformPaymentRequests = reqs;
+
+      if (reqs.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-muted); padding: 20px;">No ${filter === 'pending' ? 'pending' : ''} payment requests found.</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = reqs.map(r => {
+        const dateStr = r.claimedAt ? new Date(r.claimedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
+        const stClass = r.status === 'approved' ? 'badge-sub-active' : (r.status === 'rejected' ? 'badge-sub-expired' : 'badge-sub-grace');
+        const isPending = r.status === 'pending';
+
+        return `
+          <tr data-req-id="${r.id}">
+            <td>
+              <strong>${r.schoolName || 'School'}</strong>
+              <div style="font-size: 0.72rem; color: var(--text-muted); font-family: monospace;">${r.schoolCode || r.schoolId}</div>
+            </td>
+            <td>
+              <span class="badge-plan-${r.plan}">${(r.plan || 'pro').toUpperCase()}</span>
+              <div style="font-weight: 700; margin-top: 2px;">Rs ${(r.amount || 5000).toLocaleString()}</div>
+            </td>
+            <td><span class="payment-channel-badge payment-channel-${(r.method || 'JazzCash').toLowerCase()}">${r.method || 'JazzCash'}</span></td>
+            <td>
+              <strong>${r.senderInfo || '—'}</strong>
+            </td>
+            <td><code style="font-size: 0.75rem;">${r.txnId || '—'}</code></td>
+            <td style="font-size: 0.75rem;">${dateStr}</td>
+            <td><span class="${stClass}">${(r.status || 'pending').toUpperCase()}</span></td>
+            <td>
+              ${isPending ? `
+                <div style="display: flex; gap: 4px;">
+                  <button type="button" class="btn btn-sm btn-primary btn-platform-approve" data-req-id="${r.id}" title="Approve payment and extend 30 days">
+                    Approve
+                  </button>
+                  <button type="button" class="btn btn-sm btn-subtle btn-platform-reject" data-req-id="${r.id}" title="Reject payment request">
+                    Reject
+                  </button>
+                </div>
+              ` : `
+                <span style="font-size: 0.72rem; color: var(--text-muted);">
+                  ${r.approvedBy ? `By ${r.approvedBy}` : (r.rejectionReason ? `Reason: ${r.rejectionReason}` : 'Completed')}
+                </span>
+              `}
+            </td>
+          </tr>
+        `;
+      }).join('');
+
+      // Bind approve / reject buttons
+      tbody.querySelectorAll('.btn-platform-approve').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const reqId = btn.getAttribute('data-req-id');
+          if (reqId) approvePaymentRequest(reqId);
+        });
+      });
+
+      tbody.querySelectorAll('.btn-platform-reject').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const reqId = btn.getAttribute('data-req-id');
+          if (reqId) rejectPaymentRequest(reqId);
+        });
+      });
+
+    } catch (err) {
+      console.error('Error loading platform requests:', err);
+      tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: #DC2626; padding: 20px;">Could not load payment requests.</td></tr>';
+    }
+  }
+
+  async function approvePaymentRequest(reqId) {
+    if (!state.isPlatformAdmin || !db) return;
+    const req = (state.platformPaymentRequests || []).find(r => r.id === reqId);
+    if (!req) return;
+
+    try {
+      // 1. Fetch current school record to determine base date for +30 days
+      const schoolRef = db.collection('schools').doc(req.schoolId);
+      const schoolSnap = await schoolRef.get();
+      const schoolData = schoolSnap.data() || {};
+
+      const newPaidUntil = add30Days(schoolData.paidUntil);
+      const newPlan = req.plan || 'pro';
+
+      // 2. Update school document
+      await schoolRef.set({
+        plan: newPlan,
+        paidUntil: newPaidUntil,
+        subStatus: 'active'
+      }, { merge: true });
+
+      // 3. Mark request approved
+      await db.collection('paymentRequests').doc(reqId).set({
+        status: 'approved',
+        approvedAt: new Date().toISOString(),
+        approvedBy: auth.currentUser ? auth.currentUser.email : 'owner'
+      }, { merge: true });
+
+      showToast(`Payment approved! ${req.schoolName} upgraded to ${newPlan.toUpperCase()} and extended by 30 days.`, 'success');
+
+      // If the current logged in school is this school, sync local state
+      if (state.currentSchoolId === req.schoolId) {
+        state.currentSchool.plan = newPlan;
+        state.currentSchool.paidUntil = newPaidUntil;
+        state.currentSchool.subStatus = 'active';
+        updateSubscriptionState(state.currentSchool);
+      }
+
+      loadPlatformPaymentRequests();
+      loadPlatformSchools();
+    } catch (err) {
+      console.error('Error approving payment request:', err);
+      showToast('Failed to approve payment request.', 'error');
+    }
+  }
+
+  async function rejectPaymentRequest(reqId) {
+    if (!state.isPlatformAdmin || !db) return;
+    const req = (state.platformPaymentRequests || []).find(r => r.id === reqId);
+    if (!req) return;
+
+    const reason = prompt('Please enter the reason for rejection (optional):');
+    if (reason === null) return; // User cancelled prompt
+
+    try {
+      await db.collection('paymentRequests').doc(reqId).set({
+        status: 'rejected',
+        rejectedAt: new Date().toISOString(),
+        rejectedBy: auth.currentUser ? auth.currentUser.email : 'owner',
+        rejectionReason: reason.trim() || 'Payment not verified'
+      }, { merge: true });
+
+      showToast('Payment request marked as rejected.', 'info');
+      loadPlatformPaymentRequests();
+    } catch (err) {
+      console.error('Error rejecting payment request:', err);
+      showToast('Failed to reject payment request.', 'error');
+    }
+  }
+
+  async function extendSchoolPaidPeriod(schoolId) {
+    if (!state.isPlatformAdmin || !db) return;
+    try {
+      const schoolRef = db.collection('schools').doc(schoolId);
+      const schoolSnap = await schoolRef.get();
+      const schoolData = schoolSnap.data() || {};
+
+      const newPaidUntil = add30Days(schoolData.paidUntil);
+      await schoolRef.set({
+        paidUntil: newPaidUntil,
+        subStatus: 'active'
+      }, { merge: true });
+
+      const dateStr = new Date(newPaidUntil).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+      showToast(`Extended ${schoolData.name || 'school'} by 30 days (Paid until ${dateStr}).`, 'success');
+
+      if (state.currentSchoolId === schoolId) {
+        state.currentSchool.paidUntil = newPaidUntil;
+        state.currentSchool.subStatus = 'active';
+        updateSubscriptionState(state.currentSchool);
+      }
+
+      loadPlatformSchools();
+    } catch (err) {
+      console.error('Error extending school access:', err);
+      showToast('Failed to extend subscription period.', 'error');
+    }
+  }
+
+  async function changeSchoolPlan(schoolId, newPlan) {
+    if (!state.isPlatformAdmin || !db) return;
+    try {
+      await db.collection('schools').doc(schoolId).set({ plan: newPlan }, { merge: true });
+      showToast(`Plan updated to ${newPlan.toUpperCase()}.`, 'success');
+
+      if (state.currentSchoolId === schoolId) {
+        state.currentSchool.plan = newPlan;
+        updateSubscriptionState(state.currentSchool);
+      }
+
+      loadPlatformSchools();
+    } catch (err) {
+      console.error('Error changing school plan:', err);
+      showToast('Failed to change school plan.', 'error');
+    }
   }
 
   // Cloud Firestore Database Service & Auto-Migration Layer
@@ -629,12 +1363,32 @@
         localStorage.setItem(SCHOOL_STORAGE_PREFIX + emailLower, state.currentSchoolId);
       }
 
-      // Fetch School details
+      // Fetch School details & perform one-time billing migration if needed
       if (state.currentSchoolId) {
         try {
           const schoolSnap = await db.collection('schools').doc(state.currentSchoolId).get();
           if (schoolSnap.exists) {
             state.currentSchool = schoolSnap.data();
+
+            // One-time billing migration for existing schools lacking trialEndsAt
+            if (!state.currentSchool.trialEndsAt) {
+              const now = new Date();
+              const trialEndsAt = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000).toISOString();
+              const billingMigration = {
+                plan: state.currentSchool.plan === 'basic' ? 'basic' : 'pro',
+                subStatus: 'trial',
+                trialEndsAt: trialEndsAt,
+                paidUntil: state.currentSchool.paidUntil || null
+              };
+              Object.assign(state.currentSchool, billingMigration);
+              try {
+                await db.collection('schools').doc(state.currentSchoolId).set(billingMigration, { merge: true });
+                console.log('One-time migration: Initialized trial billing fields for existing school');
+              } catch (migErr) {
+                console.warn('One-time billing migration write warning:', migErr);
+              }
+            }
+
             state.profile = {
               ...DEFAULT_SCHOOL_PROFILE,
               name: state.currentSchool.name || DEFAULT_SCHOOL_PROFILE.name,
@@ -650,6 +1404,7 @@
             };
             saveStorage(STORAGE_KEYS.PROFILE, state.profile);
             applySchoolBranding(state.profile);
+            updateSubscriptionState(state.currentSchool);
           }
         } catch (err) {
           console.warn('School profile fetch warning:', err);
@@ -782,9 +1537,27 @@
         state.callLogs.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
         saveStorage(STORAGE_KEYS.CALL_LOGS, state.callLogs);
 
-        // 8. School Profile
+        // 8. School Profile & Billing Sync
         if (schoolSnap.exists) {
           state.currentSchool = schoolSnap.data();
+
+          if (!state.currentSchool.trialEndsAt) {
+            const now = new Date();
+            const trialEndsAt = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000).toISOString();
+            const billingMigration = {
+              plan: state.currentSchool.plan === 'basic' ? 'basic' : 'pro',
+              subStatus: 'trial',
+              trialEndsAt: trialEndsAt,
+              paidUntil: state.currentSchool.paidUntil || null
+            };
+            Object.assign(state.currentSchool, billingMigration);
+            try {
+              await db.collection('schools').doc(state.currentSchoolId).set(billingMigration, { merge: true });
+            } catch (migErr) {
+              console.warn('One-time billing migration warning:', migErr);
+            }
+          }
+
           state.profile = {
             ...DEFAULT_SCHOOL_PROFILE,
             name: state.currentSchool.name || DEFAULT_SCHOOL_PROFILE.name,
@@ -800,6 +1573,7 @@
           };
           saveStorage(STORAGE_KEYS.PROFILE, state.profile);
           applySchoolBranding(state.profile);
+          updateSubscriptionState(state.currentSchool);
         }
 
       } catch (err) {
@@ -814,6 +1588,7 @@
 
     // --- Direct CRUD Mutation Methods (Scoped by School Tenant) ---
     async saveStudent(student) {
+      if (!checkSubscriptionWritable('Save Student')) return false;
       if (!state.currentSchoolId) return false;
       return this.writeWithRetry(`Save Student (${student.name})`, async () => {
         const docId = `${state.currentSchoolId}_${student.id}`;
@@ -843,6 +1618,7 @@
     },
 
     async deleteStudent(id) {
+      if (!checkSubscriptionWritable('Delete Student')) return false;
       if (!state.currentSchoolId) return false;
       return this.writeWithRetry(`Delete Student`, async () => {
         const docId = `${state.currentSchoolId}_${id}`;
@@ -851,6 +1627,7 @@
     },
 
     async saveAttendanceRecord(dateStr, className, section, studentId, status, timeStr = '', markedBy = '') {
+      if (!checkSubscriptionWritable('Save Attendance')) return false;
       if (!state.currentSchoolId) return false;
       return this.writeWithRetry(`Attendance for ${studentId}`, async () => {
         const docId = `${state.currentSchoolId}_${dateStr}_${studentId}`;
@@ -869,6 +1646,7 @@
     },
 
     async saveAttendanceBatch(records) {
+      if (!checkSubscriptionWritable('Save Attendance Batch')) return false;
       if (!state.currentSchoolId) return false;
       return this.writeWithRetry(`Save Attendance Batch`, async () => {
         const batch = db.batch();
@@ -892,6 +1670,7 @@
     },
 
     async saveTest(test) {
+      if (!checkSubscriptionWritable('Save Test')) return false;
       if (!state.currentSchoolId) return false;
       return this.writeWithRetry(`Save Test (${test.title})`, async () => {
         const docId = `${state.currentSchoolId}_${test.id}`;
@@ -910,6 +1689,7 @@
     },
 
     async saveMarksBatch(test, marksList) {
+      if (!checkSubscriptionWritable('Save Marks')) return false;
       if (!state.currentSchoolId) return false;
       return this.writeWithRetry(`Save Marks (${test.subject})`, async () => {
         const batch = db.batch();
@@ -965,6 +1745,7 @@
     },
 
     async saveDispatch(month, className, studentId, status, sentAt) {
+      if (!checkSubscriptionWritable('Save Dispatch')) return false;
       if (!state.currentSchoolId) return false;
       return this.writeWithRetry(`Dispatch for ${studentId}`, async () => {
         const cleanDocId = `${state.currentSchoolId}_${month.replace(/[^a-zA-Z0-9]/g, '_')}_${className.replace(/[^a-zA-Z0-9]/g, '_')}_${studentId}`;
@@ -1015,6 +1796,7 @@
     },
 
     async savePtm(ptm) {
+      if (!checkSubscriptionWritable('Save PTM')) return false;
       if (!state.currentSchoolId) return false;
       return this.writeWithRetry(`Save PTM (${ptm.title})`, async () => {
         const docId = `${state.currentSchoolId}_${ptm.id}`;
@@ -1059,6 +1841,7 @@
     },
 
     async saveCallLog(call) {
+      if (!checkSubscriptionWritable('Save Call Log')) return false;
       if (!state.currentSchoolId) return false;
       return this.writeWithRetry(`Save Call Log`, async () => {
         const docId = `${state.currentSchoolId}_${call.id}`;
@@ -1213,6 +1996,16 @@
   }
 
   function switchTab(tabId) {
+    if (tabId === 'tab-platform') {
+      if (!state.isPlatformAdmin) {
+        showToast('Access restricted: Platform Super Admin only.', 'error');
+        switchTab('tab-students');
+        return;
+      }
+      loadPlatformSchools();
+      loadPlatformPaymentRequests();
+    }
+
     state.activeTab = tabId;
 
     // Update buttons
@@ -1248,6 +2041,7 @@
     } else if (tabId === 'tab-comms') {
       renderCommsModule();
     }
+    renderProFeatureLock();
   }
 
   // ========================================================
@@ -1553,6 +2347,7 @@
   }
 
   function openAddStudentModal() {
+    if (!checkSubscriptionWritable('Add Student')) return;
     state.editingStudentId = null;
     document.getElementById('studentModalTitle').textContent = 'Add New Student';
     document.getElementById('studentForm').reset();
@@ -3489,6 +4284,62 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
   // Event Bindings
   // ========================================================
   function bindEvents() {
+    // Subscription & Billing Banner & Dialog events
+    document.getElementById('btnSubBannerAction')?.addEventListener('click', () => openSubscriptionModal('pro'));
+    document.getElementById('btnSubBannerDismiss')?.addEventListener('click', () => {
+      sessionStorage.setItem('ss_trial_banner_dismissed', 'true');
+      document.getElementById('subscriptionBanner')?.classList.add('hidden');
+    });
+    document.getElementById('btnOpenSubscriptionFromSettings')?.addEventListener('click', () => {
+      closeSchoolSettingsModal(false);
+      openSubscriptionModal();
+    });
+    document.getElementById('btnCloseSubscriptionModal')?.addEventListener('click', closeSubscriptionModal);
+    document.getElementById('btnCancelSubscriptionModal')?.addEventListener('click', closeSubscriptionModal);
+
+    // Plan choice selection cards
+    document.getElementById('planCardBasic')?.addEventListener('click', () => selectPlanChoice('basic'));
+    document.getElementById('planCardPro')?.addEventListener('click', () => selectPlanChoice('pro'));
+
+    // "I Have Paid" claim submission form
+    document.getElementById('paymentClaimForm')?.addEventListener('submit', handlePaymentClaimSubmit);
+
+    // Platform Super Admin subtabs and refresh actions
+    document.getElementById('btnPlatformTabSchools')?.addEventListener('click', () => {
+      document.getElementById('btnPlatformTabSchools')?.classList.add('btn-primary');
+      document.getElementById('btnPlatformTabSchools')?.classList.remove('btn-subtle');
+      document.getElementById('btnPlatformTabRequests')?.classList.add('btn-subtle');
+      document.getElementById('btnPlatformTabRequests')?.classList.remove('btn-primary');
+      document.getElementById('platformSchoolsPanel')?.classList.remove('hidden');
+      document.getElementById('platformRequestsPanel')?.classList.add('hidden');
+      loadPlatformSchools();
+    });
+
+    document.getElementById('btnPlatformTabRequests')?.addEventListener('click', () => {
+      document.getElementById('btnPlatformTabRequests')?.classList.add('btn-primary');
+      document.getElementById('btnPlatformTabRequests')?.classList.remove('btn-subtle');
+      document.getElementById('btnPlatformTabSchools')?.classList.add('btn-subtle');
+      document.getElementById('btnPlatformTabSchools')?.classList.remove('btn-primary');
+      document.getElementById('platformRequestsPanel')?.classList.remove('hidden');
+      document.getElementById('platformSchoolsPanel')?.classList.add('hidden');
+      loadPlatformPaymentRequests();
+    });
+
+    document.getElementById('btnRefreshPlatformSchools')?.addEventListener('click', loadPlatformSchools);
+    document.getElementById('btnRefreshPlatformRequests')?.addEventListener('click', loadPlatformPaymentRequests);
+    document.getElementById('platformRequestFilter')?.addEventListener('change', loadPlatformPaymentRequests);
+
+    // Escape and backdrop click for Subscription Modal
+    const subModal = document.getElementById('subscriptionModal');
+    subModal?.addEventListener('click', (e) => {
+      if (e.target === subModal) closeSubscriptionModal();
+    });
+    document.addEventListener('keydown', (e) => {
+      if ((e.key === 'Escape' || e.key === 'Esc') && subModal && !subModal.classList.contains('hidden')) {
+        closeSubscriptionModal();
+      }
+    });
+
     // Top actions
     document.getElementById('btnSchoolSettings')?.addEventListener('click', openSchoolSettingsModal);
     document.getElementById('btnCopySchoolCode')?.addEventListener('click', copySchoolCodeToClipboard);
@@ -3942,14 +4793,19 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
           const userCredential = await auth.createUserWithEmailAndPassword(email, password);
           if (userCredential && userCredential.user) {
             const creatorUid = userCredential.user.uid;
+            const now = new Date();
+            const trialEndsAt = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000).toISOString();
             const newSchool = {
               schoolId,
               name: schoolName,
               address: schoolAddress,
               phone: schoolPhone,
               schoolCode,
-              createdAt: new Date().toISOString(),
-              plan: 'trial',
+              createdAt: now.toISOString(),
+              plan: 'pro',
+              subStatus: 'trial',
+              trialEndsAt: trialEndsAt,
+              paidUntil: null,
               creatorUid,
               createdBy: creatorUid
             };
@@ -3957,12 +4813,24 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
             state.currentSchoolId = schoolId;
             state.currentSchool = newSchool;
             localStorage.setItem(SCHOOL_STORAGE_PREFIX + emailLower, schoolId);
+            updateSubscriptionState(newSchool);
 
             if (db) {
               await db.collection('schools').doc(schoolId).set(newSchool);
               if (schoolCode && schoolCode !== schoolId) {
                 try {
-                  await db.collection('schools').doc(schoolCode).set(newSchool);
+                  // Mirror doc has name/branding only; billing fields live ONLY on main schools/{schoolId} doc
+                  const mirrorSchool = {
+                    schoolId,
+                    name: schoolName,
+                    address: schoolAddress,
+                    phone: schoolPhone,
+                    schoolCode,
+                    createdAt: newSchool.createdAt,
+                    creatorUid,
+                    createdBy: creatorUid
+                  };
+                  await db.collection('schools').doc(schoolCode).set(mirrorSchool);
                 } catch (codeErr) {
                   console.warn('School code document mapping warning:', codeErr);
                 }
@@ -4315,6 +5183,7 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
         mobileBottomBar?.classList.remove('hidden');
 
         updateUserHeader(user.email, cachedRole);
+        checkPlatformAdmin(user);
 
         // THEN: setTimeout(() => { try { initData(); renderApp(); } catch(e) { console.error(e); } }, 500);
         setTimeout(() => {
@@ -4344,6 +5213,11 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
 
         state.currentSchoolId = null;
         state.currentSchool = null;
+        state.isPlatformAdmin = false;
+        document.getElementById('tabBtnPlatform')?.classList.add('hidden');
+        document.getElementById('mobileTabBtnPlatform')?.classList.add('hidden');
+        document.getElementById('subscriptionBanner')?.classList.add('hidden');
+        document.getElementById('subscriptionModal')?.classList.add('hidden');
 
         const pwField = document.getElementById('authPassword');
         if (pwField) pwField.value = '';
@@ -4361,6 +5235,11 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
       applySchoolBranding(state.profile);
     } catch (e) {
       console.warn('applySchoolBranding render warning:', e);
+    }
+    try {
+      updateSubscriptionState(state.currentSchool);
+    } catch (e) {
+      console.warn('updateSubscriptionState render warning:', e);
     }
     try {
       if (auth && auth.currentUser) {
@@ -4396,6 +5275,21 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
   window.__promptSchoolOnboarding = promptSchoolOnboarding;
   window.__applySchoolBranding = applySchoolBranding;
   window.__applyThemeBrandColor = applyThemeBrandColor;
+  window.__computeSubscriptionStatus = computeSubscriptionStatus;
+  window.__updateSubscriptionState = updateSubscriptionState;
+  window.__openSubscriptionModal = openSubscriptionModal;
+  window.__closeSubscriptionModal = closeSubscriptionModal;
+  window.__selectPlanChoice = selectPlanChoice;
+  window.__checkSubscriptionWritable = checkSubscriptionWritable;
+  window.__checkPlatformAdmin = checkPlatformAdmin;
+  window.__loadPlatformSchools = loadPlatformSchools;
+  window.__loadPlatformPaymentRequests = loadPlatformPaymentRequests;
+  window.__approvePaymentRequest = approvePaymentRequest;
+  window.__rejectPaymentRequest = rejectPaymentRequest;
+  window.__extendSchoolPaidPeriod = extendSchoolPaidPeriod;
+  window.__changeSchoolPlan = changeSchoolPlan;
+  window.__PLATFORM_PAYMENT = PLATFORM_PAYMENT;
+  window.__state = state;
 
   function start() {
     bindAuthEvents();

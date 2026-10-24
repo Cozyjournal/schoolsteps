@@ -240,10 +240,44 @@
       const nameInput = document.getElementById('onboardSchoolName');
       const addrInput = document.getElementById('onboardSchoolAddress');
       const phoneInput = document.getElementById('onboardSchoolPhone');
+      const closeBtn = document.getElementById('btnCloseOnboardModal');
 
       if (!modal || !form) {
         resolve(null);
         return;
+      }
+
+      let isClosed = false;
+
+      function closeModal(result) {
+        if (isClosed) return;
+        isClosed = true;
+        modal.classList.add('hidden');
+        cleanupListeners();
+        resolve(result);
+      }
+
+      function handleCloseClick() {
+        closeModal(null);
+      }
+
+      function handleBackdropClick(e) {
+        if (e.target === modal) {
+          closeModal(null);
+        }
+      }
+
+      function handleKeyDown(e) {
+        if (e.key === 'Escape' || e.key === 'Esc') {
+          closeModal(null);
+        }
+      }
+
+      function cleanupListeners() {
+        form.removeEventListener('submit', handleSubmit);
+        closeBtn?.removeEventListener('click', handleCloseClick);
+        modal.removeEventListener('click', handleBackdropClick);
+        document.removeEventListener('keydown', handleKeyDown);
       }
 
       modal.classList.remove('hidden');
@@ -252,7 +286,11 @@
         nameInput.focus();
       }
 
-      const handleSubmit = async (e) => {
+      closeBtn?.addEventListener('click', handleCloseClick);
+      modal.addEventListener('click', handleBackdropClick);
+      document.addEventListener('keydown', handleKeyDown);
+
+      async function handleSubmit(e) {
         e.preventDefault();
         const schoolName = (nameInput?.value || '').trim();
         const schoolAddress = (addrInput?.value || '').trim();
@@ -264,6 +302,7 @@
           return;
         }
 
+        const creatorUid = currentUser?.uid || (auth && auth.currentUser ? auth.currentUser.uid : '');
         const schoolId = 'school_' + Date.now().toString(36) + '_' + Math.random().toString(36).substring(2, 7);
         const schoolCode = generateSchoolCode();
         const newSchool = {
@@ -273,19 +312,32 @@
           phone: schoolPhone,
           schoolCode,
           createdAt: new Date().toISOString(),
-          plan: 'trial'
+          plan: 'trial',
+          creatorUid: creatorUid,
+          createdBy: creatorUid
         };
 
         try {
           if (db) {
             await db.collection('schools').doc(schoolId).set(newSchool);
+            if (schoolCode && schoolCode !== schoolId) {
+              try {
+                await db.collection('schools').doc(schoolCode).set(newSchool);
+              } catch (codeErr) {
+                console.warn('School code document mapping warning:', codeErr);
+              }
+            }
+
             const emailLower = currentUser.email.toLowerCase();
-            await db.collection('users').doc(emailLower).set({
+            const userDocData = {
               email: emailLower,
               role: getUserRole(emailLower) || 'Admin',
-              schoolId: schoolId,
               schoolName: schoolName
-            }, { merge: true });
+            };
+            if (schoolId && schoolId.trim() !== '') {
+              userDocData.schoolId = schoolId;
+            }
+            await db.collection('users').doc(emailLower).set(userDocData, { merge: true });
           }
 
           state.currentSchoolId = schoolId;
@@ -299,15 +351,13 @@
           };
           saveStorage(STORAGE_KEYS.PROFILE, state.profile);
 
-          modal.classList.add('hidden');
-          form.removeEventListener('submit', handleSubmit);
-          showToast(`Welcome! ${schoolName} is set up successfully.`, 'success');
-          resolve(newSchool);
+          showToast('Welcome! ' + schoolName + ' is set up successfully.', 'success');
+          closeModal(newSchool);
         } catch (err) {
           console.error('Error during school onboarding:', err);
           showToast('Error setting up school. Please try again.', 'error');
         }
-      };
+      }
 
       form.addEventListener('submit', handleSubmit);
     });
@@ -896,13 +946,21 @@
 
     async saveUser(email, role, schoolName, schoolId) {
       if (!email || !db) return;
-      return this.writeWithRetry(`Save User Role`, async () => {
-        await db.collection('users').doc(email.toLowerCase()).set({
-          email: email.toLowerCase(),
-          role: role || 'Teacher',
-          schoolName: schoolName || state.profile.name || '',
-          schoolId: schoolId || state.currentSchoolId || ''
-        }, { merge: true });
+      return this.writeWithRetry('Save User Role', async () => {
+        const emailLower = email.toLowerCase();
+        const userDocData = {
+          email: emailLower,
+          role: role || 'Teacher'
+        };
+        const sName = schoolName || (state.profile && state.profile.name ? state.profile.name : '');
+        if (sName) {
+          userDocData.schoolName = sName;
+        }
+        const sId = (schoolId || state.currentSchoolId || '').trim();
+        if (sId) {
+          userDocData.schoolId = sId;
+        }
+        await db.collection('users').doc(emailLower).set(userDocData, { merge: true });
       });
     }
   };
@@ -3584,7 +3642,8 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
               createdBy: creatorUid
             };
 
-            setUserRole(emailLower, 'Admin');
+            state.currentSchoolId = schoolId;
+            state.currentSchool = newSchool;
             localStorage.setItem(SCHOOL_STORAGE_PREFIX + emailLower, schoolId);
 
             if (db) {
@@ -3597,16 +3656,18 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
                 }
               }
 
-              await db.collection('users').doc(emailLower).set({
+              const userDocData = {
                 email: emailLower,
                 role: 'Admin',
-                schoolId: schoolId,
                 schoolName: schoolName
-              }, { merge: true });
+              };
+              if (schoolId && schoolId.trim() !== '') {
+                userDocData.schoolId = schoolId;
+              }
+              await db.collection('users').doc(emailLower).set(userDocData, { merge: true });
             }
 
-            state.currentSchoolId = schoolId;
-            state.currentSchool = newSchool;
+            setUserRole(emailLower, 'Admin');
             state.profile = {
               ...DEFAULT_SCHOOL_PROFILE,
               name: schoolName,
@@ -3689,20 +3750,23 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
 
           // Valid school code matched!
           const schoolId = matchedSchoolId;
-          setUserRole(emailLower, 'Teacher');
+          state.currentSchoolId = schoolId;
+          state.currentSchool = matchedSchool;
           localStorage.setItem(SCHOOL_STORAGE_PREFIX + emailLower, schoolId);
 
           if (db) {
-            await db.collection('users').doc(emailLower).set({
+            const teacherDocData = {
               email: emailLower,
               role: 'Teacher',
-              schoolId: schoolId,
               schoolName: matchedSchool.name || ''
-            }, { merge: true });
+            };
+            if (schoolId && schoolId.trim() !== '') {
+              teacherDocData.schoolId = schoolId;
+            }
+            await db.collection('users').doc(emailLower).set(teacherDocData, { merge: true });
           }
 
-          state.currentSchoolId = schoolId;
-          state.currentSchool = matchedSchool;
+          setUserRole(emailLower, 'Teacher');
           state.profile = {
             ...DEFAULT_SCHOOL_PROFILE,
             name: matchedSchool.name || DEFAULT_SCHOOL_PROFILE.name,
@@ -4015,6 +4079,7 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
   window.__startBackgroundSync = startBackgroundSync;
   window.__showDataLoadError = showDataLoadError;
   window.__hideDataLoadError = hideDataLoadError;
+  window.__promptSchoolOnboarding = promptSchoolOnboarding;
 
   function start() {
     bindAuthEvents();

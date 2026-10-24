@@ -3730,3 +3730,21 @@ h1, h2, h3, h4, h5, h6 {
 .platform-table tr:hover {
   background: #F8FAFC;
 }
+
+
+/* Danger / Delete action button */
+.btn-danger {
+  background: #DC2626;
+  color: #FFFFFF;
+  border: 1px solid #DC2626;
+  font-weight: 600;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: all 0.15s ease;
+}
+
+.btn-danger:hover {
+  background: #B91C1C;
+  border-color: #B91C1C;
+  color: #FFFFFF;
+}

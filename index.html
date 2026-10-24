@@ -1378,6 +1378,31 @@
     </div>
   </div>
 
+
+  <!-- Confirm Delete Student Modal -->
+  <div class="modal-overlay hidden" id="deleteStudentModal" role="dialog" aria-modal="true" aria-labelledby="deleteStudentModalTitle">
+    <div class="modal-card" style="max-width: 440px;">
+      <div class="modal-header">
+        <h3 class="modal-title" id="deleteStudentModalTitle" style="color: #DC2626;">🗑️ Delete Student</h3>
+        <button type="button" class="btn-close" id="btnCloseDeleteStudentModal" aria-label="Close dialog">✕</button>
+      </div>
+      <div class="modal-body" style="padding: 16px 20px;">
+        <p style="font-size: 0.95rem; color: var(--text-heading); margin-bottom: 12px; line-height: 1.5;">
+          Are you sure you want to delete <strong id="deleteStudentTargetName">Student Name</strong> (<span id="deleteStudentTargetRoll">Roll #—</span>)?
+        </p>
+        <div style="background: #FEF2F2; border: 1px solid #FECACA; border-radius: var(--radius-md); padding: 12px; margin-bottom: 8px;">
+          <p style="color: #B91C1C; font-size: 0.85rem; font-weight: 600; margin: 0; line-height: 1.4;">
+            ⚠️ This will permanently remove this student and their records from this device and the cloud.
+          </p>
+        </div>
+      </div>
+      <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 8px; padding: 12px 20px;">
+        <button type="button" class="btn btn-subtle" id="btnCancelDeleteStudent">Cancel</button>
+        <button type="button" class="btn btn-danger" id="btnConfirmDeleteStudent">Delete Student</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Create New Test Modal -->
   <div class="modal-overlay hidden" id="newTestModal">
     <div class="modal-card">

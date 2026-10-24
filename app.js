@@ -2447,20 +2447,84 @@
     renderAttendanceRoster();
   }
 
-  function deleteStudent(id) {
-    const student = state.students.find(s => s.id === id);
-    if (!student) return;
+  let pendingDeleteStudentId = null;
 
-    if (confirm(`Are you sure you want to delete student "${student.name}" (Roll #${student.rollNo})?`)) {
+  function deleteStudent(id) {
+    if (!checkSubscriptionWritable('Delete Student')) return;
+
+    const student = state.students.find(s => s.id === id);
+    if (!student) {
+      showToast('Could not find this student — please refresh and try again.', 'error');
+      return;
+    }
+
+    pendingDeleteStudentId = id;
+    const nameEl = document.getElementById('deleteStudentTargetName');
+    const rollEl = document.getElementById('deleteStudentTargetRoll');
+
+    if (nameEl) nameEl.textContent = student.name || 'Unnamed Student';
+    if (rollEl) rollEl.textContent = `Roll #${student.rollNo || '—'}`;
+
+    openDeleteStudentModal();
+  }
+
+  function openDeleteStudentModal() {
+    document.getElementById('deleteStudentModal')?.classList.remove('hidden');
+  }
+
+  function closeDeleteStudentModal() {
+    document.getElementById('deleteStudentModal')?.classList.add('hidden');
+    pendingDeleteStudentId = null;
+  }
+
+  async function handleConfirmDeleteStudent() {
+    if (!pendingDeleteStudentId) return;
+    const id = pendingDeleteStudentId;
+
+    if (!checkSubscriptionWritable('Delete Student')) {
+      closeDeleteStudentModal();
+      return;
+    }
+
+    const student = state.students.find(s => s.id === id);
+    if (!student) {
+      showToast('Could not find this student — please refresh and try again.', 'error');
+      closeDeleteStudentModal();
+      return;
+    }
+
+    const confirmBtn = document.getElementById('btnConfirmDeleteStudent');
+    if (confirmBtn) {
+      confirmBtn.disabled = true;
+      confirmBtn.textContent = 'Deleting...';
+    }
+
+    try {
+      if (FirestoreDB.isReady()) {
+        const success = await FirestoreDB.deleteStudent(id);
+        if (success === false) {
+          showToast(`Failed to delete student ${student.name} from the database. Please try again.`, 'error');
+          closeDeleteStudentModal();
+          return;
+        }
+      }
+
       state.students = state.students.filter(s => s.id !== id);
       saveStorage(STORAGE_KEYS.STUDENTS, state.students);
-      if (FirestoreDB.isReady()) {
-        FirestoreDB.deleteStudent(id);
-      }
+      closeDeleteStudentModal();
       showToast(`Removed student ${student.name}`, 'info');
       renderClassDropdowns();
       renderStudentsList();
       renderAttendanceRoster();
+    } catch (err) {
+      console.error('Delete student error:', err);
+      showToast(`Failed to delete student: ${err.message || 'Database error'}`, 'error');
+      closeDeleteStudentModal();
+    } finally {
+      if (confirmBtn) {
+        confirmBtn.disabled = false;
+        confirmBtn.textContent = 'Delete Student';
+      }
     }
   }
 
@@ -4366,10 +4430,24 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
       if (e.target === settingsModal) closeSchoolSettingsModal(true);
     });
     document.addEventListener('keydown', (e) => {
-      if ((e.key === 'Escape' || e.key === 'Esc') && settingsModal && !settingsModal.classList.contains('hidden')) {
-        closeSchoolSettingsModal(true);
+      if (e.key === 'Escape' || e.key === 'Esc') {
+        if (settingsModal && !settingsModal.classList.contains('hidden')) {
+          closeSchoolSettingsModal(true);
+        }
+        if (deleteStudentModal && !deleteStudentModal.classList.contains('hidden')) {
+          closeDeleteStudentModal();
+        }
       }
     });
+
+    // M1 Students - Delete Student Modal Events
+    const deleteStudentModal = document.getElementById('deleteStudentModal');
+    deleteStudentModal?.addEventListener('click', (e) => {
+      if (e.target === deleteStudentModal) closeDeleteStudentModal();
+    });
+    document.getElementById('btnCloseDeleteStudentModal')?.addEventListener('click', closeDeleteStudentModal);
+    document.getElementById('btnCancelDeleteStudent')?.addEventListener('click', closeDeleteStudentModal);
+    document.getElementById('btnConfirmDeleteStudent')?.addEventListener('click', handleConfirmDeleteStudent);
 
     // M1 Students
     document.getElementById('btnOpenAddStudent')?.addEventListener('click', openAddStudentModal);
@@ -5273,6 +5351,10 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
   window.__showDataLoadError = showDataLoadError;
   window.__hideDataLoadError = hideDataLoadError;
   window.__promptSchoolOnboarding = promptSchoolOnboarding;
+  window.__deleteStudent = deleteStudent;
+  window.__confirmDeleteStudent = handleConfirmDeleteStudent;
+  window.__openDeleteStudentModal = openDeleteStudentModal;
+  window.__closeDeleteStudentModal = closeDeleteStudentModal;
   window.__applySchoolBranding = applySchoolBranding;
   window.__applyThemeBrandColor = applyThemeBrandColor;
   window.__computeSubscriptionStatus = computeSubscriptionStatus;

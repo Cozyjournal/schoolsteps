@@ -150,13 +150,133 @@
 
   const DEFAULT_SCHOOL_PROFILE = {
     name: 'SchoolSteps',
+    tagline: '',
     motto: '',
+    brandColor: '#0D9488',
+    logoData: '',
     address: '',
     phone: '',
     principal: '',
     academicYear: '2026–2027',
     passPercentage: 40
   };
+
+  function hexToRgb(hex) {
+    if (!hex || typeof hex !== 'string') return null;
+    const cleanHex = hex.replace('#', '').trim();
+    if (cleanHex.length !== 6) return null;
+    const num = parseInt(cleanHex, 16);
+    if (isNaN(num)) return null;
+    return {
+      r: (num >> 16) & 255,
+      g: (num >> 8) & 255,
+      b: num & 255
+    };
+  }
+
+  function adjustBrightness(hex, percent) {
+    const rgb = hexToRgb(hex);
+    if (!rgb) return hex;
+    const adjust = (val) => Math.min(255, Math.max(0, Math.round(val + (val * percent) / 100)));
+    const r = adjust(rgb.r).toString(16).padStart(2, '0');
+    const g = adjust(rgb.g).toString(16).padStart(2, '0');
+    const b = adjust(rgb.b).toString(16).padStart(2, '0');
+    return `#${r}${g}${b}`;
+  }
+
+  function applyThemeBrandColor(color) {
+    const defaultColor = '#0D9488';
+    const hex = (color && /^#[0-9A-Fa-f]{6}$/.test(color)) ? color : defaultColor;
+    const root = document.documentElement;
+    root.style.setProperty('--primary', hex);
+    root.style.setProperty('--secondary', hex);
+    root.style.setProperty('--border-focus', hex);
+
+    const hoverColor = adjustBrightness(hex, -15);
+    root.style.setProperty('--primary-hover', hoverColor);
+    root.style.setProperty('--secondary-hover', hoverColor);
+
+    const rgb = hexToRgb(hex);
+    if (rgb) {
+      root.style.setProperty('--primary-light', `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.12)`);
+      root.style.setProperty('--secondary-light', `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.12)`);
+    }
+  }
+
+  function applySchoolBranding(profile) {
+    if (!profile) return;
+    if (typeof state !== 'undefined' && state.profile) {
+      Object.assign(state.profile, profile);
+    }
+
+    const schoolName = (profile.name && profile.name.trim()) ? profile.name.trim() : 'SchoolSteps';
+    const tagline = profile.tagline || profile.motto || '';
+    const brandColor = profile.brandColor || '#0D9488';
+    const logoSrc = profile.logoData || 'icon.svg';
+
+    // 1. Theme Color CSS Variables
+    applyThemeBrandColor(brandColor);
+
+    // 2. App Header: school logo + school name (NOT the word "SchoolSteps" as identity)
+    const headerSchoolName = document.getElementById('headerSchoolName');
+    if (headerSchoolName) {
+      headerSchoolName.textContent = schoolName;
+    }
+    const headerSchoolTagline = document.getElementById('headerSchoolTagline');
+    if (headerSchoolTagline) {
+      if (tagline) {
+        headerSchoolTagline.textContent = tagline;
+        headerSchoolTagline.style.display = 'block';
+      } else {
+        headerSchoolTagline.style.display = 'none';
+      }
+    }
+    const headerSchoolLogo = document.getElementById('headerSchoolLogo');
+    if (headerSchoolLogo) {
+      headerSchoolLogo.src = logoSrc;
+      headerSchoolLogo.onerror = () => { headerSchoolLogo.src = 'icon.svg'; };
+    }
+
+    // 3. Browser Tab Title: "<School Name> — School Management" once school is loaded
+    if (schoolName && schoolName !== 'SchoolSteps') {
+      document.title = `${schoolName} — School Management`;
+    } else if (auth && auth.currentUser) {
+      document.title = `${schoolName} — School Management`;
+    }
+
+    // 4. Dashboard Heading Area: school name (+ tagline if set)
+    const dashName = document.getElementById('dashboardSchoolName');
+    if (dashName) {
+      dashName.textContent = schoolName;
+    }
+    const dashTagline = document.getElementById('dashboardSchoolTagline');
+    if (dashTagline) {
+      if (tagline) {
+        dashTagline.textContent = tagline;
+        dashTagline.style.display = 'block';
+      } else {
+        dashTagline.style.display = 'none';
+      }
+    }
+    const dashLogo = document.getElementById('dashboardSchoolLogo');
+    if (dashLogo) {
+      dashLogo.src = logoSrc;
+      dashLogo.onerror = () => { dashLogo.src = 'icon.svg'; };
+    }
+
+    // 5. Printed Report Card Header
+    const repName = document.getElementById('repSchoolName');
+    if (repName) repName.textContent = schoolName;
+    const repMotto = document.getElementById('repSchoolMotto');
+    if (repMotto) repMotto.textContent = tagline;
+    const repAddr = document.getElementById('repSchoolAddress');
+    if (repAddr) repAddr.textContent = profile.address || '';
+    const repLogo = document.getElementById('repSchoolLogo');
+    if (repLogo) {
+      repLogo.src = logoSrc;
+      repLogo.onerror = () => { repLogo.src = 'icon.svg'; };
+    }
+  }
 
   /**
    * Auto-generate a short 6-character alphanumeric School Code (e.g. K7X2P9)
@@ -520,12 +640,16 @@
               name: state.currentSchool.name || DEFAULT_SCHOOL_PROFILE.name,
               address: state.currentSchool.address || '',
               phone: state.currentSchool.phone || '',
-              motto: state.currentSchool.motto || '',
+              tagline: state.currentSchool.tagline || state.currentSchool.motto || '',
+              motto: state.currentSchool.motto || state.currentSchool.tagline || '',
+              brandColor: state.currentSchool.brandColor || '#0D9488',
+              logoData: state.currentSchool.logoData || '',
               principal: state.currentSchool.principal || '',
               academicYear: state.currentSchool.academicYear || '2026–2027',
               passPercentage: state.currentSchool.passPercentage || 40
             };
             saveStorage(STORAGE_KEYS.PROFILE, state.profile);
+            applySchoolBranding(state.profile);
           }
         } catch (err) {
           console.warn('School profile fetch warning:', err);
@@ -666,12 +790,16 @@
             name: state.currentSchool.name || DEFAULT_SCHOOL_PROFILE.name,
             address: state.currentSchool.address || '',
             phone: state.currentSchool.phone || '',
-            motto: state.currentSchool.motto || '',
+            tagline: state.currentSchool.tagline || state.currentSchool.motto || '',
+            motto: state.currentSchool.motto || state.currentSchool.tagline || '',
+            brandColor: state.currentSchool.brandColor || '#0D9488',
+            logoData: state.currentSchool.logoData || '',
             principal: state.currentSchool.principal || '',
             academicYear: state.currentSchool.academicYear || '2026–2027',
             passPercentage: state.currentSchool.passPercentage || 40
           };
           saveStorage(STORAGE_KEYS.PROFILE, state.profile);
+          applySchoolBranding(state.profile);
         }
 
       } catch (err) {
@@ -809,15 +937,29 @@
     async saveProfile(profile) {
       return this.writeWithRetry(`Save School Profile`, async () => {
         if (state.currentSchoolId) {
-          await db.collection('schools').doc(state.currentSchoolId).set({
+          const updateData = {
             name: profile.name || '',
-            motto: profile.motto || '',
+            tagline: profile.tagline || profile.motto || '',
+            motto: profile.motto || profile.tagline || '',
+            brandColor: profile.brandColor || '#0D9488',
+            logoData: profile.logoData || '',
             address: profile.address || '',
             phone: profile.phone || '',
             principal: profile.principal || '',
             academicYear: profile.academicYear || '',
             passPercentage: profile.passPercentage || 40
-          }, { merge: true });
+          };
+          await db.collection('schools').doc(state.currentSchoolId).set(updateData, { merge: true });
+
+          // Also mirror to schoolCode document if present
+          const schoolCode = state.currentSchool?.schoolCode || (state.profile && state.profile.schoolCode);
+          if (schoolCode && schoolCode !== state.currentSchoolId) {
+            try {
+              await db.collection('schools').doc(schoolCode).set(updateData, { merge: true });
+            } catch (codeErr) {
+              console.warn('School code mirror update warning:', codeErr);
+            }
+          }
         }
       });
     },
@@ -2228,11 +2370,16 @@ ${student.name} (${classLabel}) is marked PRESENT today (${formattedDate}).
     if (!student) return;
 
     // School Branding Elements
-    document.getElementById('repSchoolName').textContent = state.profile.name;
-    document.getElementById('repSchoolMotto').textContent = state.profile.motto;
-    document.getElementById('repSchoolAddress').textContent = state.profile.address;
+    document.getElementById('repSchoolName').textContent = state.profile.name || '';
+    document.getElementById('repSchoolMotto').textContent = state.profile.tagline || state.profile.motto || '';
+    document.getElementById('repSchoolAddress').textContent = state.profile.address || '';
     document.getElementById('repPrincipalName').textContent = `${state.profile.principal || 'Principal'} (Head of School)`;
-    document.getElementById('repSessionLabel').textContent = `Academic Session ${state.profile.academicYear} • Term Progress`;
+    document.getElementById('repSessionLabel').textContent = `Academic Session ${state.profile.academicYear || '2026–2027'} • Term Progress`;
+    const repLogo = document.getElementById('repSchoolLogo');
+    if (repLogo) {
+      repLogo.src = state.profile.logoData || 'icon.svg';
+      repLogo.onerror = () => { repLogo.src = 'icon.svg'; };
+    }
 
     // Student Information Box
     document.getElementById('repStudentName').textContent = student.name;
@@ -2325,13 +2472,20 @@ ${student.name} (${classLabel}) is marked PRESENT today (${formattedDate}).
   // ========================================================
   // School Settings & Branding Modal
   // ========================================================
+  let currentModalLogoData = '';
+
   function openSchoolSettingsModal() {
     const codeDisplay = document.getElementById('settingSchoolCodeDisplay');
     if (codeDisplay) {
       codeDisplay.textContent = (state.currentSchool && state.currentSchool.schoolCode) ? state.currentSchool.schoolCode : '------';
     }
     document.getElementById('settingSchoolName').value = state.profile.name || '';
-    document.getElementById('settingSchoolMotto').value = state.profile.motto || '';
+    const taglineVal = state.profile.tagline || state.profile.motto || '';
+    const taglineInput = document.getElementById('settingSchoolTagline');
+    if (taglineInput) taglineInput.value = taglineVal;
+    const mottoInput = document.getElementById('settingSchoolMotto');
+    if (mottoInput) mottoInput.value = taglineVal;
+
     document.getElementById('settingSchoolAddress').value = state.profile.address || '';
     const phoneInput = document.getElementById('settingSchoolPhone');
     if (phoneInput) {
@@ -2339,7 +2493,135 @@ ${student.name} (${classLabel}) is marked PRESENT today (${formattedDate}).
     }
     document.getElementById('settingPrincipalName').value = state.profile.principal || '';
     document.getElementById('settingAcademicYear').value = state.profile.academicYear || '2026–2027';
+
+    // Logo setup
+    currentModalLogoData = state.profile.logoData || '';
+    const logoPreview = document.getElementById('settingLogoPreview');
+    if (logoPreview) {
+      logoPreview.src = currentModalLogoData || 'icon.svg';
+    }
+    const logoUrlInput = document.getElementById('settingLogoUrl');
+    if (logoUrlInput) {
+      logoUrlInput.value = currentModalLogoData.startsWith('data:') ? '' : currentModalLogoData;
+    }
+    const logoFileInput = document.getElementById('settingLogoFile');
+    if (logoFileInput) {
+      logoFileInput.value = '';
+    }
+
+    // Color setup
+    const currentColor = (state.profile.brandColor || '#0D9488').toUpperCase();
+    const hexInput = document.getElementById('settingBrandColorHex');
+    if (hexInput) hexInput.value = currentColor;
+    const customPicker = document.getElementById('settingBrandColorCustom');
+    if (customPicker) customPicker.value = currentColor;
+
+    updateSwatchActiveState(currentColor);
+
     document.getElementById('schoolSettingsModal').classList.remove('hidden');
+  }
+
+  function updateSwatchActiveState(color) {
+    const clean = (color || '#0D9488').toUpperCase();
+    const swatches = document.querySelectorAll('.color-swatch-btn');
+    swatches.forEach(btn => {
+      const btnColor = (btn.getAttribute('data-color') || '').toUpperCase();
+      if (btnColor === clean) {
+        btn.classList.add('active');
+      } else {
+        btn.classList.remove('active');
+      }
+    });
+  }
+
+  function handleColorChange(color) {
+    if (!color) return;
+    const cleanHex = color.trim().toUpperCase();
+    if (!/^#[0-9A-F]{6}$/i.test(cleanHex)) return;
+
+    const hexInput = document.getElementById('settingBrandColorHex');
+    if (hexInput && hexInput.value.toUpperCase() !== cleanHex) hexInput.value = cleanHex;
+    const customPicker = document.getElementById('settingBrandColorCustom');
+    if (customPicker && customPicker.value.toUpperCase() !== cleanHex) customPicker.value = cleanHex;
+
+    updateSwatchActiveState(cleanHex);
+    applyThemeBrandColor(cleanHex);
+  }
+
+  function handleLogoFileUpload(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 500 * 1024) {
+      showToast('Image file is large (>500KB). Compressing to 256×256...', 'info');
+    }
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const img = new Image();
+      img.onload = () => {
+        const maxDim = 256;
+        let w = img.width;
+        let h = img.height;
+        if (w > maxDim || h > maxDim) {
+          if (w > h) {
+            h = Math.round((h * maxDim) / w);
+            w = maxDim;
+          } else {
+            w = Math.round((w * maxDim) / h);
+            h = maxDim;
+          }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+        currentModalLogoData = canvas.toDataURL('image/png');
+
+        const logoPreview = document.getElementById('settingLogoPreview');
+        if (logoPreview) logoPreview.src = currentModalLogoData;
+        const logoUrlInput = document.getElementById('settingLogoUrl');
+        if (logoUrlInput) logoUrlInput.value = '';
+      };
+      img.src = evt.target.result;
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function handleLogoUrlInput(e) {
+    const val = (e.target.value || '').trim();
+    if (val) {
+      currentModalLogoData = val;
+      const logoPreview = document.getElementById('settingLogoPreview');
+      if (logoPreview) {
+        logoPreview.src = val;
+        logoPreview.onerror = () => { logoPreview.src = 'icon.svg'; };
+      }
+    } else {
+      currentModalLogoData = '';
+      const logoPreview = document.getElementById('settingLogoPreview');
+      if (logoPreview) logoPreview.src = 'icon.svg';
+    }
+  }
+
+  function handleRemoveLogo() {
+    currentModalLogoData = '';
+    const logoPreview = document.getElementById('settingLogoPreview');
+    if (logoPreview) logoPreview.src = 'icon.svg';
+    const logoFileInput = document.getElementById('settingLogoFile');
+    if (logoFileInput) logoFileInput.value = '';
+    const logoUrlInput = document.getElementById('settingLogoUrl');
+    if (logoUrlInput) logoUrlInput.value = '';
+    showToast('Logo reset to default icon.', 'info');
+  }
+
+  function closeSchoolSettingsModal(revertColor = true) {
+    const modal = document.getElementById('schoolSettingsModal');
+    if (modal) modal.classList.add('hidden');
+    if (revertColor) {
+      applyThemeBrandColor(state.profile.brandColor || '#0D9488');
+    }
   }
 
   function copySchoolCodeToClipboard() {
@@ -2377,16 +2659,23 @@ ${student.name} (${classLabel}) is marked PRESENT today (${formattedDate}).
 
   function handleSaveSchoolSettings(e) {
     e.preventDefault();
-    const newName = document.getElementById('settingSchoolName').value.trim() || 'SchoolSteps';
-    const newMotto = document.getElementById('settingSchoolMotto').value.trim();
+    const newName = document.getElementById('settingSchoolName').value.trim() || 'School';
+    const newTagline = (document.getElementById('settingSchoolTagline')?.value || '').trim();
     const newAddr = document.getElementById('settingSchoolAddress').value.trim();
     const newPhone = (document.getElementById('settingSchoolPhone')?.value || '').trim();
     const newPrincipal = document.getElementById('settingPrincipalName').value.trim();
-    const newYear = document.getElementById('settingAcademicYear').value.trim();
+    const newYear = document.getElementById('settingAcademicYear').value.trim() || '2026–2027';
+
+    const hexInputVal = (document.getElementById('settingBrandColorHex')?.value || '').trim();
+    const newColor = /^#[0-9A-Fa-f]{6}$/.test(hexInputVal) ? hexInputVal : (state.profile.brandColor || '#0D9488');
 
     state.profile = {
+      ...state.profile,
       name: newName,
-      motto: newMotto,
+      tagline: newTagline,
+      motto: newTagline,
+      brandColor: newColor,
+      logoData: currentModalLogoData || '',
       address: newAddr,
       phone: newPhone,
       principal: newPrincipal,
@@ -2396,6 +2685,10 @@ ${student.name} (${classLabel}) is marked PRESENT today (${formattedDate}).
 
     if (state.currentSchool) {
       state.currentSchool.name = newName;
+      state.currentSchool.tagline = newTagline;
+      state.currentSchool.motto = newTagline;
+      state.currentSchool.brandColor = newColor;
+      state.currentSchool.logoData = currentModalLogoData || '';
       state.currentSchool.address = newAddr;
       state.currentSchool.phone = newPhone;
     }
@@ -2404,9 +2697,8 @@ ${student.name} (${classLabel}) is marked PRESENT today (${formattedDate}).
     if (FirestoreDB.isReady()) {
       FirestoreDB.saveProfile(state.profile);
     }
-    document.getElementById('schoolSettingsModal').classList.add('hidden');
-    const headerSchoolName = document.getElementById('headerSchoolName');
-    if (headerSchoolName) headerSchoolName.textContent = state.profile.name;
+    closeSchoolSettingsModal(false);
+    applySchoolBranding(state.profile);
     showToast('School profile & branding updated successfully!', 'success');
 
     // Refresh views that use school branding
@@ -3200,13 +3492,33 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
     // Top actions
     document.getElementById('btnSchoolSettings')?.addEventListener('click', openSchoolSettingsModal);
     document.getElementById('btnCopySchoolCode')?.addEventListener('click', copySchoolCodeToClipboard);
-    document.getElementById('btnCloseSchoolModal')?.addEventListener('click', () => {
-      document.getElementById('schoolSettingsModal').classList.add('hidden');
-    });
-    document.getElementById('btnCancelSchoolModal')?.addEventListener('click', () => {
-      document.getElementById('schoolSettingsModal').classList.add('hidden');
-    });
+    document.getElementById('btnCloseSchoolModal')?.addEventListener('click', () => closeSchoolSettingsModal(true));
+    document.getElementById('btnCancelSchoolModal')?.addEventListener('click', () => closeSchoolSettingsModal(true));
     document.getElementById('schoolSettingsForm')?.addEventListener('submit', handleSaveSchoolSettings);
+
+    // Branding modal interactive controls
+    document.querySelectorAll('.color-swatch-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const color = btn.getAttribute('data-color');
+        if (color) handleColorChange(color);
+      });
+    });
+    document.getElementById('settingBrandColorCustom')?.addEventListener('input', (e) => handleColorChange(e.target.value));
+    document.getElementById('settingBrandColorHex')?.addEventListener('input', (e) => handleColorChange(e.target.value));
+    document.getElementById('settingLogoFile')?.addEventListener('change', handleLogoFileUpload);
+    document.getElementById('settingLogoUrl')?.addEventListener('input', handleLogoUrlInput);
+    document.getElementById('btnRemoveLogo')?.addEventListener('click', handleRemoveLogo);
+
+    // Escape and backdrop click to close settings modal
+    const settingsModal = document.getElementById('schoolSettingsModal');
+    settingsModal?.addEventListener('click', (e) => {
+      if (e.target === settingsModal) closeSchoolSettingsModal(true);
+    });
+    document.addEventListener('keydown', (e) => {
+      if ((e.key === 'Escape' || e.key === 'Esc') && settingsModal && !settingsModal.classList.contains('hidden')) {
+        closeSchoolSettingsModal(true);
+      }
+    });
 
     // M1 Students
     document.getElementById('btnOpenAddStudent')?.addEventListener('click', openAddStudentModal);
@@ -4021,9 +4333,14 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
         FirestoreDB.hideSyncOverlay();
         hideDataLoadError();
         document.getElementById('schoolOnboardModal')?.classList.add('hidden');
+        document.getElementById('schoolSettingsModal')?.classList.add('hidden');
         authScreen?.classList.remove('hidden');
         appContainer?.classList.add('hidden');
         mobileBottomBar?.classList.add('hidden');
+
+        // Reset branding back to neutral default on logout
+        applyThemeBrandColor('#0D9488');
+        document.title = 'SchoolSteps';
 
         state.currentSchoolId = null;
         state.currentSchool = null;
@@ -4041,12 +4358,9 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
   // ========================================================
   function renderApp() {
     try {
-      const headerSchoolName = document.getElementById('headerSchoolName');
-      if (headerSchoolName) {
-        headerSchoolName.textContent = (state.profile && state.profile.name) ? state.profile.name : 'SchoolSteps';
-      }
+      applySchoolBranding(state.profile);
     } catch (e) {
-      console.warn('headerSchoolName render warning:', e);
+      console.warn('applySchoolBranding render warning:', e);
     }
     try {
       if (auth && auth.currentUser) {
@@ -4080,6 +4394,8 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
   window.__showDataLoadError = showDataLoadError;
   window.__hideDataLoadError = hideDataLoadError;
   window.__promptSchoolOnboarding = promptSchoolOnboarding;
+  window.__applySchoolBranding = applySchoolBranding;
+  window.__applyThemeBrandColor = applyThemeBrandColor;
 
   function start() {
     bindAuthEvents();

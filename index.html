@@ -135,14 +135,13 @@
       <div class="header-main">
         <div class="branding">
           <div class="brand-logo-wrap">
-            <img src="icon.svg" alt="SchoolSteps Logo" class="brand-logo">
+            <img src="icon.svg" alt="School Logo" class="brand-logo" id="headerSchoolLogo" style="object-fit: contain;">
           </div>
-          <div>
+          <div style="min-width: 0;">
             <div class="brand-row">
-              <h1 class="brand-title">SchoolSteps</h1>
-              <span class="badge badge-pilot">Phase 2</span>
+              <h1 class="brand-title" id="headerSchoolName">SchoolSteps</h1>
             </div>
-            <p class="school-name-subtitle" id="headerSchoolName">SchoolSteps</p>
+            <p class="school-name-subtitle" id="headerSchoolTagline" style="display: none;"></p>
           </div>
         </div>
         <div class="header-actions">
@@ -233,6 +232,19 @@
            MODULE 1: Student & Parent Database
            ============================================== -->
       <section id="tab-students" class="tab-panel active">
+        <!-- Dashboard Heading Area (School Identity) -->
+        <div class="dashboard-header-banner" id="dashboardHeadingArea" style="margin-bottom: 16px;">
+          <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+            <div class="dashboard-logo-wrap" id="dashboardLogoWrap" style="width: 44px; height: 44px; border-radius: var(--radius-md); border: 1px solid var(--border-soft); background: #FFFFFF; display: flex; align-items: center; justify-content: center; overflow: hidden; flex-shrink: 0;">
+              <img src="icon.svg" id="dashboardSchoolLogo" alt="School Logo" style="width: 100%; height: 100%; object-fit: contain;">
+            </div>
+            <div style="min-width: 0;">
+              <h2 id="dashboardSchoolName" style="font-family: var(--font-heading); font-size: 1.25rem; font-weight: 700; color: var(--text-heading); margin: 0; line-height: 1.2;">School Overview</h2>
+              <p id="dashboardSchoolTagline" style="font-size: 0.82rem; color: var(--text-muted); margin: 2px 0 0; display: none;"></p>
+            </div>
+          </div>
+        </div>
+
         <!-- Quick Stats -->
         <div class="stats-grid">
           <div class="stat-card">
@@ -505,7 +517,7 @@
             <!-- School Header / Letterhead -->
             <header class="report-school-header">
               <div class="report-crest">
-                <img src="icon.svg" alt="School Crest" class="school-crest-img">
+                <img src="icon.svg" alt="School Crest" class="school-crest-img" id="repSchoolLogo" style="object-fit: contain;">
               </div>
               <div class="report-school-info">
                 <h2 class="report-school-name" id="repSchoolName">SchoolSteps</h2>
@@ -1048,6 +1060,11 @@
       </section>
     </main>
 
+    <!-- Subtle SchoolSteps Footer -->
+    <footer class="app-footer no-print" style="text-align: center; padding: 24px 14px 20px; font-size: 0.74rem; color: var(--text-light); border-top: 1px solid var(--border-soft); margin-top: 32px;">
+      Powered by SchoolSteps
+    </footer>
+
     <!-- Bottom Navigation Bar (Mobile) -->
     <nav class="mobile-bottom-bar no-print hidden" id="mobileBottomBar">
       <button class="mobile-tab-btn active" data-tab="tab-students">
@@ -1281,7 +1298,7 @@
         <div class="school-code-card" style="background: #F1F5F9; border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 12px 14px; margin-bottom: 16px; display: flex; align-items: center; justify-content: space-between; gap: 10px;">
           <div>
             <div style="font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); font-weight: 700;">School Code (Share with Teachers)</div>
-            <div id="settingSchoolCodeDisplay" style="font-size: 1.3rem; font-weight: 800; letter-spacing: 3px; color: var(--teal); font-family: monospace;">------</div>
+            <div id="settingSchoolCodeDisplay" style="font-size: 1.3rem; font-weight: 800; letter-spacing: 3px; color: var(--primary); font-family: monospace;">------</div>
           </div>
           <button type="button" class="btn btn-secondary btn-sm" id="btnCopySchoolCode" title="Copy School Code">
             <span class="icon">📋</span>
@@ -1294,8 +1311,52 @@
           <input type="text" id="settingSchoolName" class="form-input" placeholder="Enter school name" required>
         </div>
         <div class="form-group">
-          <label for="settingSchoolMotto" class="form-label">School Motto / Tagline</label>
-          <input type="text" id="settingSchoolMotto" class="form-input" placeholder="e.g. Knowledge • Character • Excellence">
+          <label for="settingSchoolTagline" class="form-label">School Tagline / Motto</label>
+          <input type="text" id="settingSchoolTagline" class="form-input" placeholder="e.g. Knowledge • Character • Faith">
+          <input type="hidden" id="settingSchoolMotto">
+          <span style="font-size: 0.74rem; color: var(--text-muted); display: block; margin-top: 3px;">Short line displayed under school name across the app and printed reports</span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">School Logo</label>
+          <div class="logo-setting-container">
+            <div class="logo-preview-box">
+              <img id="settingLogoPreview" src="icon.svg" alt="Logo Preview">
+            </div>
+            <div style="flex: 1; min-width: 200px;">
+              <div style="margin-bottom: 8px;">
+                <label for="settingLogoFile" style="font-size: 0.75rem; font-weight: 600; color: var(--text-heading); display: block; margin-bottom: 2px;">Upload Image File</label>
+                <input type="file" id="settingLogoFile" accept="image/*" class="form-input" style="font-size: 0.78rem; padding: 5px 8px;">
+                <span style="font-size: 0.72rem; color: var(--text-muted); display: block; margin-top: 2px;">Downscales automatically to max 256×256 (warns if file > 500 KB)</span>
+              </div>
+              <div>
+                <label for="settingLogoUrl" style="font-size: 0.75rem; font-weight: 600; color: var(--text-heading); display: block; margin-bottom: 2px;">Or Paste Image URL</label>
+                <input type="url" id="settingLogoUrl" class="form-input" placeholder="https://example.com/logo.png" style="font-size: 0.8rem;">
+              </div>
+              <div style="margin-top: 6px;">
+                <button type="button" class="btn btn-subtle btn-sm" id="btnRemoveLogo" style="font-size: 0.74rem; padding: 3px 8px;">Reset to Default Icon</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Brand Colour</label>
+          <span style="font-size: 0.74rem; color: var(--text-muted); display: block; margin-bottom: 8px;">Primary theme color for buttons, navigation, and accents</span>
+          <div class="brand-color-picker-wrap" style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px;">
+            <div class="color-swatches-grid" id="colorSwatchesGroup">
+              <button type="button" class="color-swatch-btn active" data-color="#0D9488" style="background-color: #0D9488;" title="Teal (Default)" aria-label="Teal"></button>
+              <button type="button" class="color-swatch-btn" data-color="#2563EB" style="background-color: #2563EB;" title="Blue" aria-label="Blue"></button>
+              <button type="button" class="color-swatch-btn" data-color="#16A34A" style="background-color: #16A34A;" title="Green" aria-label="Green"></button>
+              <button type="button" class="color-swatch-btn" data-color="#7C3AED" style="background-color: #7C3AED;" title="Purple" aria-label="Purple"></button>
+              <button type="button" class="color-swatch-btn" data-color="#9F1239" style="background-color: #9F1239;" title="Maroon" aria-label="Maroon"></button>
+              <button type="button" class="color-swatch-btn" data-color="#1E3A5F" style="background-color: #1E3A5F;" title="Navy" aria-label="Navy"></button>
+              <button type="button" class="color-swatch-btn" data-color="#EA580C" style="background-color: #EA580C;" title="Orange" aria-label="Orange"></button>
+              <button type="button" class="color-swatch-btn" data-color="#DB2777" style="background-color: #DB2777;" title="Pink" aria-label="Pink"></button>
+            </div>
+            <div style="display: flex; align-items: center; gap: 6px; margin-left: 4px;">
+              <input type="color" id="settingBrandColorCustom" value="#0D9488" title="Custom color picker" style="width: 32px; height: 32px; border: 1px solid var(--border-soft); border-radius: 50%; cursor: pointer; padding: 0; background: none;">
+              <input type="text" id="settingBrandColorHex" class="form-input" value="#0D9488" maxlength="7" placeholder="#0D9488" style="width: 90px; text-transform: uppercase; font-family: monospace; font-size: 0.82rem; font-weight: 600; padding: 6px 8px;">
+            </div>
+          </div>
         </div>
         <div class="form-group">
           <label for="settingSchoolAddress" class="form-label">Campus Address</label>

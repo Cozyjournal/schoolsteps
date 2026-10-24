@@ -468,18 +468,22 @@
             await db.collection('schools').doc(schoolId).set(newSchool);
             if (schoolCode && schoolCode !== schoolId) {
               try {
-                // Mirror doc has name/branding only; billing fields live ONLY on main schools/{schoolId} doc
+                // Mirror doc has identity/branding only; billing fields live ONLY on main schools/{schoolId} doc
                 const mirrorSchool = {
                   schoolId,
+                  schoolCode,
                   name: schoolName,
                   address: schoolAddress,
                   phone: schoolPhone,
-                  schoolCode,
+                  logoData: '',
+                  brandColor: '#0D9488',
+                  tagline: '',
+                  motto: '',
                   createdAt: newSchool.createdAt,
                   creatorUid: creatorUid,
                   createdBy: creatorUid
                 };
-                await db.collection('schools').doc(schoolCode).set(mirrorSchool);
+                await db.collection('schools').doc(schoolCode).set(mirrorSchool, { merge: true });
               } catch (codeErr) {
                 console.warn('School code document mapping warning:', codeErr);
               }
@@ -1735,11 +1739,26 @@
           };
           await db.collection('schools').doc(state.currentSchoolId).set(updateData, { merge: true });
 
-          // Also mirror to schoolCode document if present
+          // Also mirror to schoolCode document if present (identity & branding fields ONLY)
           const schoolCode = state.currentSchool?.schoolCode || (state.profile && state.profile.schoolCode);
           if (schoolCode && schoolCode !== state.currentSchoolId) {
             try {
-              await db.collection('schools').doc(schoolCode).set(updateData, { merge: true });
+              const mirrorData = {
+                schoolId: state.currentSchoolId,
+                schoolCode: schoolCode,
+                name: updateData.name,
+                address: updateData.address,
+                phone: updateData.phone,
+                logoData: updateData.logoData,
+                brandColor: updateData.brandColor,
+                tagline: updateData.tagline,
+                motto: updateData.motto
+              };
+              if (state.currentSchool?.createdAt) mirrorData.createdAt = state.currentSchool.createdAt;
+              if (state.currentSchool?.creatorUid) mirrorData.creatorUid = state.currentSchool.creatorUid;
+              if (state.currentSchool?.createdBy) mirrorData.createdBy = state.currentSchool.createdBy;
+
+              await db.collection('schools').doc(schoolCode).set(mirrorData, { merge: true });
             } catch (codeErr) {
               console.warn('School code mirror update warning:', codeErr);
             }
@@ -4901,18 +4920,22 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
               await db.collection('schools').doc(schoolId).set(newSchool);
               if (schoolCode && schoolCode !== schoolId) {
                 try {
-                  // Mirror doc has name/branding only; billing fields live ONLY on main schools/{schoolId} doc
+                  // Mirror doc has identity/branding only; billing fields live ONLY on main schools/{schoolId} doc
                   const mirrorSchool = {
                     schoolId,
+                    schoolCode,
                     name: schoolName,
                     address: schoolAddress,
                     phone: schoolPhone,
-                    schoolCode,
+                    logoData: '',
+                    brandColor: '#0D9488',
+                    tagline: '',
+                    motto: '',
                     createdAt: newSchool.createdAt,
                     creatorUid,
                     createdBy: creatorUid
                   };
-                  await db.collection('schools').doc(schoolCode).set(mirrorSchool);
+                  await db.collection('schools').doc(schoolCode).set(mirrorSchool, { merge: true });
                 } catch (codeErr) {
                   console.warn('School code document mapping warning:', codeErr);
                 }

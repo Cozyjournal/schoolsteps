@@ -570,7 +570,11 @@
     }
 
     let daysLeft = 0;
-    if (keyDateMs) {
+    if (status === 'grace') {
+      const baseMs = paidUntilMs || trialEndsAtMs || todayMs;
+      const graceEndMs = baseMs + 7 * 24 * 60 * 60 * 1000;
+      daysLeft = Math.max(0, Math.ceil((graceEndMs - todayMs) / (24 * 60 * 60 * 1000)));
+    } else if (keyDateMs) {
       daysLeft = Math.max(0, Math.ceil((keyDateMs - todayMs) / (24 * 60 * 60 * 1000)));
     }
 
@@ -655,7 +659,7 @@
     } else if (sub.status === 'grace') {
       banner.classList.add('sub-banner-grace');
       if (iconEl) iconEl.textContent = '⚠️';
-      msgEl.textContent = `Your subscription ended on ${sub.keyDateStr}. Please renew within the grace period to avoid interruption.`;
+      msgEl.textContent = `Your subscription ended on ${sub.keyDateStr}. Please renew within the grace period (${sub.daysLeft} days left) to avoid interruption.`;
       actionBtn.textContent = 'Renew Now';
       if (dismissBtn) dismissBtn.style.display = 'none'; // Persistent per spec
       banner.classList.remove('hidden');

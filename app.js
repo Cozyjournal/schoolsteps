@@ -5397,6 +5397,9 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
   window.__rejectPaymentRequest = rejectPaymentRequest;
   window.__extendSchoolPaidPeriod = extendSchoolPaidPeriod;
   window.__changeSchoolPlan = changeSchoolPlan;
+  window.__renderStudentsList = renderStudentsList;
+  window.__renderApp = renderApp;
+  window.__FirestoreDB = FirestoreDB;
   window.__PLATFORM_PAYMENT = PLATFORM_PAYMENT;
   window.__state = state;
 

@@ -132,7 +132,8 @@
     PROFILE: 'schoolsteps_profile_v1',
     DISPATCH_LOG: 'schoolsteps_dispatch_log_v1',
     PTM_EVENTS: 'schoolsteps_ptm_events_v1',
-    CALL_LOGS: 'schoolsteps_call_logs_v1'
+    CALL_LOGS: 'schoolsteps_call_logs_v1',
+    FEES: 'schoolsteps_fees_v1'
   };
 
   function getUserRole(email) {
@@ -340,7 +341,11 @@
     activePtmId: null,
     ptmFilter: 'ALL', // ALL | YES | NO | MAYBE | PENDING
     callLogs: [],
-    commsSubtab: 'broadcast' // broadcast | calllogs
+    commsSubtab: 'broadcast', // broadcast | calllogs
+    feePayments: [],
+    feeSelectedMonth: '',
+    feeFilterStatus: 'ALL',
+    feeFilterClass: 'ALL'
   };
 
   // ========================================================
@@ -1442,6 +1447,7 @@
           dispatchSnap,
           ptmSnap,
           callSnap,
+          feePaymentsSnap,
           schoolSnap
         ] = await Promise.all([
           db.collection('students').where('schoolId', '==', state.currentSchoolId).get(),
@@ -1451,6 +1457,14 @@
           db.collection('dispatches').where('schoolId', '==', state.currentSchoolId).get(),
           db.collection('ptms').where('schoolId', '==', state.currentSchoolId).get(),
           db.collection('calls').where('schoolId', '==', state.currentSchoolId).get(),
+          db.collection('feePayments')
+            .where('schoolId', '==', state.currentSchoolId)
+            .where('month', '==', state.feeSelectedMonth || getCurrentMonthKey())
+            .get()
+            .catch(err => {
+              console.warn('feePayments load warning:', err);
+              return { docs: [] };
+            }),
           db.collection('schools').doc(state.currentSchoolId).get()
         ]);
 
@@ -1544,6 +1558,18 @@
         });
         state.callLogs.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
         saveStorage(STORAGE_KEYS.CALL_LOGS, state.callLogs);
+
+        // 7b. Fee Payments
+        if (feePaymentsSnap && feePaymentsSnap.docs) {
+          state.feePayments = feePaymentsSnap.docs.map(doc => {
+            const data = doc.data();
+            return {
+              id: doc.id,
+              ...data
+            };
+          });
+          saveStorage(STORAGE_KEYS.FEES, state.feePayments);
+        }
 
         // 8. School Profile & Billing Sync
         if (schoolSnap.exists) {
@@ -1892,6 +1918,64 @@
       });
     },
 
+    async loadFeePaymentsForMonth(month) {
+      if (!db || !state.currentSchoolId) return;
+      try {
+        const snap = await db.collection('feePayments')
+          .where('schoolId', '==', state.currentSchoolId)
+          .where('month', '==', month)
+          .get();
+        const paymentsForMonth = snap.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }));
+        const otherPayments = (state.feePayments || []).filter(p => p.month !== month);
+        state.feePayments = [...otherPayments, ...paymentsForMonth];
+        saveStorage(STORAGE_KEYS.FEES, state.feePayments);
+        renderFeesModule();
+        updateDashboardFeesStat();
+      } catch (err) {
+        console.warn('loadFeePaymentsForMonth warning:', err);
+        showToast('Could not sync fees from cloud — showing cached records.', 'warning');
+        renderFeesModule();
+      }
+    },
+
+    async saveFeePayment(payment) {
+      if (!checkSubscriptionWritable('Record Payment')) return false;
+      if (!state.currentSchoolId || !db) return false;
+      return this.writeWithRetry(`Fee Payment for ${payment.studentName}`, async () => {
+        const rand = Math.random().toString(36).substring(2, 7);
+        const docId = payment.id || `${state.currentSchoolId}_fee_${Date.now()}_${rand}`;
+        const data = {
+          ...payment,
+          id: docId,
+          schoolId: state.currentSchoolId,
+          createdAt: payment.createdAt || new Date().toISOString()
+        };
+        await db.collection('feePayments').doc(docId).set(data);
+        return data;
+      });
+    },
+
+    async deleteFeePayment(id) {
+      if (!checkSubscriptionWritable('Delete Payment')) return false;
+      if (!state.currentSchoolId || !db) return false;
+      return this.writeWithRetry('Delete Fee Payment', async () => {
+        await db.collection('feePayments').doc(id).delete();
+        return true;
+      });
+    },
+
+    async saveSchoolFeeStructure(feeByClass) {
+      if (!checkSubscriptionWritable('Save Fee Structure')) return false;
+      if (!state.currentSchoolId || !db) return false;
+      return this.writeWithRetry('Save Fee Structure', async () => {
+        await db.collection('schools').doc(state.currentSchoolId).set({ feeByClass }, { merge: true });
+        return true;
+      });
+    },
+
     async saveUser(email, role, schoolName, schoolId) {
       if (!email || !db) return;
       return this.writeWithRetry('Save User Role', async () => {
@@ -1923,6 +2007,10 @@
     state.ptmEvents = loadStorage(STORAGE_KEYS.PTM_EVENTS, []);
     state.callLogs = loadStorage(STORAGE_KEYS.CALL_LOGS, []);
     state.activePtmId = state.ptmEvents[0]?.id || null;
+    state.feePayments = loadStorage(STORAGE_KEYS.FEES, []);
+    state.feeSelectedMonth = getCurrentMonthKey();
+    state.feeFilterStatus = 'ALL';
+    state.feeFilterClass = 'ALL';
   }
 
   function getTodayISO() {
@@ -2063,6 +2151,8 @@
       renderPtmModule();
     } else if (tabId === 'tab-comms') {
       renderCommsModule();
+    } else if (tabId === 'tab-fees') {
+      renderFeesModule();
     }
     renderProFeatureLock();
   }
@@ -2268,6 +2358,7 @@
     document.getElementById('statActiveStudents').textContent = activeCount;
     document.getElementById('statTotalClasses').textContent = classSet.size;
     document.getElementById('studentCountBadge').textContent = totalCount;
+    updateDashboardFeesStat();
 
     if (summarySpan) {
       summarySpan.textContent = `Showing ${filtered.length} of ${totalCount} enrolled students`;
@@ -4417,6 +4508,8 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
     document.getElementById('platformRequestFilter')?.addEventListener('change', loadPlatformPaymentRequests);
 
     // Escape and backdrop click for Subscription Modal
+    bindFeesEvents();
+
     const subModal = document.getElementById('subscriptionModal');
     subModal?.addEventListener('click', (e) => {
       if (e.target === subModal) closeSubscriptionModal();
@@ -5319,6 +5412,8 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
         state.currentSchoolId = null;
         state.currentSchool = null;
         state.isPlatformAdmin = false;
+        state.feePayments = [];
+        state.feeSelectedMonth = getCurrentMonthKey();
         document.getElementById('tabBtnPlatform')?.classList.add('hidden');
         document.getElementById('mobileTabBtnPlatform')?.classList.add('hidden');
         document.getElementById('subscriptionBanner')?.classList.add('hidden');
@@ -5331,6 +5426,779 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
       }
     });
   }
+
+
+  // ========================================================
+  // M10: Fees Tracking Module Helpers & Logic
+  // ========================================================
+
+  function getCurrentMonthKey() {
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    return `${y}-${m}`;
+  }
+
+  function formatMonthHuman(monthStr) {
+    if (!monthStr || typeof monthStr !== 'string' || !monthStr.includes('-')) {
+      return monthStr || '';
+    }
+    const [y, m] = monthStr.split('-');
+    const date = new Date(parseInt(y, 10), parseInt(m, 10) - 1, 1);
+    return date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+  }
+
+  function shiftMonthKey(monthStr, delta) {
+    if (!monthStr || !monthStr.includes('-')) monthStr = getCurrentMonthKey();
+    const [y, m] = monthStr.split('-').map(Number);
+    const date = new Date(y, m - 1 + delta, 1);
+    const newY = date.getFullYear();
+    const newM = String(date.getMonth() + 1).padStart(2, '0');
+    return `${newY}-${newM}`;
+  }
+
+  function numberToWordsPKR(num) {
+    num = Math.round(Number(num) || 0);
+    if (num <= 0) return 'Zero Rupees Only';
+    const a = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten',
+      'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
+    const b = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+    
+    function inWords(n) {
+      if (n < 20) return a[n];
+      if (n < 100) return b[Math.floor(n / 10)] + (n % 10 !== 0 ? ' ' + a[n % 10] : '');
+      if (n < 1000) return a[Math.floor(n / 100)] + ' Hundred' + (n % 100 !== 0 ? ' ' + inWords(n % 100) : '');
+      if (n < 100000) return inWords(Math.floor(n / 1000)) + ' Thousand' + (n % 1000 !== 0 ? ' ' + inWords(n % 1000) : '');
+      if (n < 10000000) return inWords(Math.floor(n / 100000)) + ' Lakh' + (n % 100000 !== 0 ? ' ' + inWords(n % 100000) : '');
+      return inWords(Math.floor(n / 10000000)) + ' Crore' + (n % 10000000 !== 0 ? ' ' + inWords(n % 10000000) : '');
+    }
+    return inWords(num).trim() + ' Rupees Only';
+  }
+
+  function getFeeWhatsAppReminderUrl(student, monthKey, classFee, pendingAmount) {
+    const cleanPhone = sanitizePhoneForWhatsApp(student.whatsapp);
+    if (!cleanPhone) return '#';
+    const schoolName = (state.currentSchool && state.currentSchool.name) || state.profile?.name || 'School';
+    const parentName = student.fatherName || student.parentName || 'محترم والدین';
+    const monthHuman = formatMonthHuman(monthKey);
+    const amountStr = (pendingAmount || classFee || 0).toLocaleString();
+    
+    const text = `السلام علیکم ${parentName}،
+یہ ${schoolName} کی طرف سے یاد دہانی ہے کہ ${student.name} (${student.className || ''} ${student.section || ''}) کی برائے ماہ ${monthHuman} فیس واجب الادا ہے:
+بقایا رقم: Rs ${amountStr}
+برائے مہربانی فیس جلد از جلد جمع کروا دیں۔ شکریہ!
+— ${schoolName}`;
+
+    return `https://wa.me/${cleanPhone}?text=${encodeURIComponent(text)}`;
+  }
+
+  let isFeeSetupEditing = false;
+  let pendingDeleteFeePaymentId = null;
+
+  function renderFeeStructureInputs() {
+    const grid = document.getElementById('feeClassInputsGrid');
+    if (!grid) return;
+    const feeByClass = (state.currentSchool && state.currentSchool.feeByClass) || {};
+    grid.innerHTML = ALL_DEFAULT_CLASSES.map(cls => {
+      const inputId = `feeInput_${cls.replace(/\s+/g, '_')}`;
+      const val = feeByClass[cls] != null ? feeByClass[cls] : '';
+      return `
+        <div class="fee-class-input-item">
+          <label for="${inputId}">${cls}</label>
+          <div class="fee-input-with-prefix">
+            <span class="fee-input-prefix">Rs</span>
+            <input type="number" id="${inputId}" class="form-input" min="0" step="50" placeholder="0" value="${val}" />
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  async function handleSaveFeeStructure() {
+    if (!checkSubscriptionWritable('Save Fee Structure')) return;
+    const newFeeByClass = {};
+    ALL_DEFAULT_CLASSES.forEach(cls => {
+      const inputId = `feeInput_${cls.replace(/\s+/g, '_')}`;
+      const input = document.getElementById(inputId);
+      if (input) {
+        const val = Number(input.value);
+        if (val > 0) {
+          newFeeByClass[cls] = val;
+        }
+      }
+    });
+
+    const btn = document.getElementById('btnSaveFeeStructure');
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'Saving...';
+    }
+
+    try {
+      await FirestoreDB.saveSchoolFeeStructure(newFeeByClass);
+      if (!state.currentSchool) state.currentSchool = {};
+      state.currentSchool.feeByClass = newFeeByClass;
+      isFeeSetupEditing = false;
+      showToast('Fee structure saved successfully.', 'success');
+      renderFeesModule();
+      updateDashboardFeesStat();
+    } catch (err) {
+      console.error('Error saving fee structure:', err);
+      showToast('Failed to save fee structure. Please try again.', 'error');
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = '<span>💾 Save Fee Structure</span>';
+      }
+    }
+  }
+
+  function updateDashboardFeesStat() {
+    const valEl = document.getElementById('statDashboardFeesVal');
+    const lblEl = document.getElementById('statDashboardFeesLbl');
+    if (!valEl) return;
+
+    const monthKey = state.feeSelectedMonth || getCurrentMonthKey();
+    const monthHuman = formatMonthHuman(monthKey);
+    if (lblEl) lblEl.textContent = `Fees (${monthHuman})`;
+
+    const feeByClass = (state.currentSchool && state.currentSchool.feeByClass) || {};
+    const hasFeeStructure = Object.keys(feeByClass).some(k => Number(feeByClass[k]) > 0);
+
+    if (!hasFeeStructure) {
+      valEl.textContent = 'Fees: set up →';
+      return;
+    }
+
+    const activeStudents = (state.students || []).filter(s => s.status === 'Active');
+    let expected = 0;
+    activeStudents.forEach(s => {
+      expected += (Number(feeByClass[s.className]) || 0);
+    });
+
+    const monthPayments = (state.feePayments || []).filter(p => p.month === monthKey);
+    const collected = monthPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+
+    valEl.textContent = `Rs ${collected.toLocaleString()} / Rs ${expected.toLocaleString()}`;
+  }
+
+  function renderFeesModule() {
+    if (!state.feeSelectedMonth) {
+      state.feeSelectedMonth = getCurrentMonthKey();
+    }
+
+    const monthPicker = document.getElementById('feeMonthPicker');
+    if (monthPicker && monthPicker.value !== state.feeSelectedMonth) {
+      monthPicker.value = state.feeSelectedMonth;
+    }
+
+    const monthDisplay = document.getElementById('feeMonthHumanDisplay');
+    if (monthDisplay) {
+      monthDisplay.textContent = formatMonthHuman(state.feeSelectedMonth);
+    }
+
+    const feeByClass = (state.currentSchool && state.currentSchool.feeByClass) || {};
+    const hasFeeStructure = Object.keys(feeByClass).some(k => Number(feeByClass[k]) > 0);
+
+    const setupCard = document.getElementById('feesSetupCard');
+    const mainView = document.getElementById('feesMainView');
+    const btnCancelSetup = document.getElementById('btnCancelFeeSetup');
+
+    if (!hasFeeStructure || isFeeSetupEditing) {
+      if (setupCard) {
+        setupCard.classList.remove('hidden');
+        renderFeeStructureInputs();
+      }
+      if (btnCancelSetup) {
+        btnCancelSetup.classList.toggle('hidden', !hasFeeStructure);
+      }
+      if (!hasFeeStructure && mainView) {
+        mainView.classList.add('hidden');
+        return;
+      }
+    } else {
+      if (setupCard) setupCard.classList.add('hidden');
+    }
+
+    if (mainView) mainView.classList.remove('hidden');
+
+    // Summary calculations
+    const activeStudents = (state.students || []).filter(s => s.status === 'Active');
+    let expectedTotal = 0;
+    activeStudents.forEach(s => {
+      expectedTotal += (Number(feeByClass[s.className]) || 0);
+    });
+
+    const monthPayments = (state.feePayments || []).filter(p => p.month === state.feeSelectedMonth);
+    const collectedTotal = monthPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+
+    let unpaidCount = 0;
+    activeStudents.forEach(s => {
+      const cFee = Number(feeByClass[s.className]) || 0;
+      if (cFee > 0) {
+        const sPaid = monthPayments.filter(p => p.studentId === s.id).reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+        if (sPaid < cFee) {
+          unpaidCount++;
+        }
+      }
+    });
+
+    const pendingTotal = Math.max(0, expectedTotal - collectedTotal);
+    const percent = expectedTotal > 0 ? Math.round((collectedTotal / expectedTotal) * 100) : 0;
+
+    const statExp = document.getElementById('feeStatExpected');
+    if (statExp) statExp.textContent = `Rs ${expectedTotal.toLocaleString()}`;
+
+    const statCol = document.getElementById('feeStatCollected');
+    if (statCol) statCol.textContent = `Rs ${collectedTotal.toLocaleString()}`;
+
+    const statPen = document.getElementById('feeStatPending');
+    if (statPen) statPen.textContent = `Rs ${pendingTotal.toLocaleString()}`;
+
+    const statPenLbl = document.getElementById('feeStatPendingLbl');
+    if (statPenLbl) statPenLbl.textContent = `Pending (${unpaidCount} unpaid)`;
+
+    const statPct = document.getElementById('feeStatPercent');
+    if (statPct) statPct.textContent = `${percent}%`;
+
+    // Populate Class Filter
+    const classFilterSelect = document.getElementById('feeFilterClassSelect');
+    if (classFilterSelect) {
+      const currentVal = state.feeFilterClass || 'ALL';
+      const classesInUse = Array.from(new Set(activeStudents.map(s => s.className))).filter(Boolean);
+      classesInUse.sort();
+      let optionsHtml = '<option value="ALL">All Classes</option>';
+      classesInUse.forEach(c => {
+        optionsHtml += `<option value="${escapeHtml(c)}" ${c === currentVal ? 'selected' : ''}>${escapeHtml(c)}</option>`;
+      });
+      classFilterSelect.innerHTML = optionsHtml;
+    }
+
+    // Filter Students
+    let filtered = activeStudents.slice();
+    if (state.feeFilterClass && state.feeFilterClass !== 'ALL') {
+      filtered = filtered.filter(s => s.className === state.feeFilterClass);
+    }
+
+    // Student status calculation
+    const studentStatusMap = new Map();
+    filtered.forEach(s => {
+      const cFee = Number(feeByClass[s.className]) || 0;
+      const sPayments = monthPayments.filter(p => p.studentId === s.id);
+      const sPaid = sPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+      let status = 'Unpaid';
+      if (cFee === 0) {
+        status = 'NotSet';
+      } else if (sPaid >= cFee) {
+        status = 'Paid';
+      } else if (sPaid > 0) {
+        status = 'Partial';
+      }
+      studentStatusMap.set(s.id, { cFee, sPayments, sPaid, status });
+    });
+
+    if (state.feeFilterStatus === 'UNPAID') {
+      filtered = filtered.filter(s => {
+        const info = studentStatusMap.get(s.id);
+        return info && (info.status === 'Unpaid' || info.status === 'Partial');
+      });
+    }
+
+    // Toggle filter buttons UI
+    document.getElementById('btnFeeFilterAll')?.classList.toggle('active', state.feeFilterStatus === 'ALL');
+    document.getElementById('btnFeeFilterUnpaid')?.classList.toggle('active', state.feeFilterStatus === 'UNPAID');
+
+    const summaryEl = document.getElementById('feeRosterSummary');
+    if (summaryEl) {
+      summaryEl.textContent = `Showing ${filtered.length} of ${activeStudents.length} active students`;
+    }
+
+    const container = document.getElementById('feeStudentsContainer');
+    const noStudentsEl = document.getElementById('feeNoStudentsState');
+    const emptyFilterEl = document.getElementById('feeEmptyFilterState');
+
+    if (activeStudents.length === 0) {
+      if (noStudentsEl) noStudentsEl.classList.remove('hidden');
+      if (emptyFilterEl) emptyFilterEl.classList.add('hidden');
+      if (container) container.innerHTML = '';
+    } else if (filtered.length === 0) {
+      if (noStudentsEl) noStudentsEl.classList.add('hidden');
+      if (emptyFilterEl) emptyFilterEl.classList.remove('hidden');
+      if (container) container.innerHTML = '';
+    } else {
+      if (noStudentsEl) noStudentsEl.classList.add('hidden');
+      if (emptyFilterEl) emptyFilterEl.classList.add('hidden');
+      if (container) {
+        container.innerHTML = filtered.map(s => {
+          const info = studentStatusMap.get(s.id);
+          const cFee = info.cFee;
+          const sPaid = info.sPaid;
+          const status = info.status;
+          const sPayments = info.sPayments;
+
+          let badgeHtml = '';
+          if (status === 'Paid') {
+            const lastDate = sPayments.length > 0 ? (sPayments[sPayments.length - 1].paidDate || '') : '';
+            badgeHtml = `<span class="badge-fee-paid">✓ Paid (Rs ${sPaid.toLocaleString()}${lastDate ? ' • ' + lastDate : ''})</span>`;
+          } else if (status === 'Partial') {
+            const rem = Math.max(0, cFee - sPaid);
+            badgeHtml = `<span class="badge-fee-partial">◐ Partial: Rs ${sPaid.toLocaleString()} / Rs ${cFee.toLocaleString()} (Pending: Rs ${rem.toLocaleString()})</span>`;
+          } else if (status === 'Unpaid') {
+            badgeHtml = `<span class="badge-fee-unpaid">✕ Unpaid (Rs ${cFee.toLocaleString()})</span>`;
+          } else {
+            badgeHtml = `<span class="badge badge-subtle">Fee not set</span>`;
+          }
+
+          // Action buttons
+          let recordBtn = '';
+          if (status !== 'Paid' && cFee > 0) {
+            recordBtn = `<button type="button" class="btn btn-sm btn-primary" onclick="openRecordPaymentModal('${s.id}')">💰 Record Payment</button>`;
+          }
+
+          let receiptBtn = '';
+          if (sPayments.length > 0) {
+            const latestPayment = sPayments[sPayments.length - 1];
+            receiptBtn = `<button type="button" class="btn btn-sm btn-subtle" onclick="openPrintReceipt('${latestPayment.id}')" title="Print Fee Receipt">🧾 Receipt</button>`;
+          }
+
+          let remindBtn = '';
+          if (status !== 'Paid') {
+            const cleanPhone = sanitizePhoneForWhatsApp(s.whatsapp);
+            if (cleanPhone) {
+              const waUrl = getFeeWhatsAppReminderUrl(s, state.feeSelectedMonth, cFee, Math.max(0, cFee - sPaid));
+              remindBtn = `<a href="${waUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-subtle" title="Send WhatsApp Fee Reminder">💬 Remind</a>`;
+            } else {
+              remindBtn = `<button type="button" class="btn btn-sm btn-subtle" disabled title="No WhatsApp number registered for this student">💬 Remind</button>`;
+            }
+          }
+
+          return `
+            <div class="fee-student-card" data-student-id="${s.id}">
+              <div class="fee-student-main">
+                <div class="fee-student-header-row">
+                  <span class="badge badge-subtle">Roll #${escapeHtml(s.rollNo || '—')}</span>
+                  <span class="fee-student-name">${escapeHtml(s.name)}</span>
+                  ${badgeHtml}
+                </div>
+                <div class="fee-student-meta">
+                  <span>Class: <strong>${escapeHtml(s.className)} ${escapeHtml(s.section || '')}</strong></span>
+                  <span>•</span>
+                  <span>Monthly Fee: <strong>${cFee > 0 ? 'Rs ' + cFee.toLocaleString() : 'Not set'}</strong></span>
+                  ${s.fatherName ? `<span>•</span><span>Parent: ${escapeHtml(s.fatherName)}</span>` : ''}
+                </div>
+              </div>
+              <div class="fee-student-actions">
+                ${recordBtn}
+                ${receiptBtn}
+                ${remindBtn}
+              </div>
+            </div>
+          `;
+        }).join('');
+      }
+    }
+
+    // Render Recent Payments
+    renderRecentPaymentsList();
+  }
+
+  function renderRecentPaymentsList() {
+    const container = document.getElementById('feeRecentPaymentsContainer');
+    const countEl = document.getElementById('feeRecentPaymentsCount');
+    if (!container) return;
+
+    // Show payments for the selected month (sorted newest first)
+    const monthPayments = (state.feePayments || []).filter(p => p.month === state.feeSelectedMonth);
+    monthPayments.sort((a, b) => new Date(b.paidDate || b.createdAt || 0) - new Date(a.paidDate || a.createdAt || 0));
+
+    if (countEl) countEl.textContent = monthPayments.length;
+
+    if (monthPayments.length === 0) {
+      container.innerHTML = `
+        <div style="text-align: center; color: var(--text-muted); padding: 18px 10px; font-size: 0.88rem;">
+          No fee payments recorded for ${formatMonthHuman(state.feeSelectedMonth)} yet.
+        </div>
+      `;
+      return;
+    }
+
+    container.innerHTML = `
+      <div class="fee-recent-table-wrap">
+        <table class="fee-recent-table">
+          <thead>
+            <tr>
+              <th>Student</th>
+              <th>Class</th>
+              <th>Month</th>
+              <th>Date & Method</th>
+              <th>Amount</th>
+              <th>Received By</th>
+              <th style="text-align: right;">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${monthPayments.map(p => {
+              return `
+                <tr>
+                  <td>
+                    <strong>${escapeHtml(p.studentName || '—')}</strong>
+                  </td>
+                  <td>${escapeHtml(p.className || '')} ${escapeHtml(p.section || '')}</td>
+                  <td>${formatMonthHuman(p.month)}</td>
+                  <td>
+                    <div>${p.paidDate || ''}</div>
+                    <div style="font-size: 0.78rem; color: var(--text-muted);">${escapeHtml(p.method || 'Cash')}</div>
+                  </td>
+                  <td>
+                    <strong style="color: var(--primary);">Rs ${Number(p.amount || 0).toLocaleString()}</strong>
+                    ${p.note ? `<div style="font-size: 0.75rem; color: var(--text-muted);">${escapeHtml(p.note)}</div>` : ''}
+                  </td>
+                  <td>
+                    <span style="font-size: 0.78rem; color: var(--text-muted);">${escapeHtml(p.receivedBy || '')}</span>
+                  </td>
+                  <td style="text-align: right; white-space: nowrap;">
+                    <button type="button" class="btn btn-sm btn-subtle" onclick="openPrintReceipt('${p.id}')" title="Print Receipt">🧾</button>
+                    <button type="button" class="btn btn-sm btn-danger" onclick="openDeleteFeePaymentModal('${p.id}')" title="Delete Payment" style="padding: 4px 8px; margin-left: 4px;">🗑️</button>
+                  </td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  function openRecordPaymentModal(studentId) {
+    if (!checkSubscriptionWritable('Record Payment')) return;
+
+    const student = (state.students || []).find(s => s.id === studentId);
+    if (!student) {
+      showToast('Student not found. Please refresh.', 'error');
+      return;
+    }
+
+    const feeByClass = (state.currentSchool && state.currentSchool.feeByClass) || {};
+    const cFee = Number(feeByClass[student.className]) || 0;
+
+    const monthPayments = (state.feePayments || []).filter(p => p.studentId === studentId && p.month === state.feeSelectedMonth);
+    const alreadyPaid = monthPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+    const remaining = Math.max(0, cFee - alreadyPaid);
+
+    document.getElementById('payStudentId').value = student.id;
+    document.getElementById('payStudentNameDisplay').textContent = student.name;
+    document.getElementById('payStudentClassDisplay').textContent = `${student.className} ${student.section || ''}`;
+    document.getElementById('payStudentFeeDisplay').textContent = `Monthly Fee: Rs ${cFee.toLocaleString()}`;
+
+    const balEl = document.getElementById('payStudentBalanceDisplay');
+    if (balEl) {
+      if (alreadyPaid > 0) {
+        balEl.textContent = `Already paid: Rs ${alreadyPaid.toLocaleString()} • Remaining balance: Rs ${remaining.toLocaleString()}`;
+      } else {
+        balEl.textContent = `Pending balance: Rs ${remaining.toLocaleString()}`;
+      }
+    }
+
+    document.getElementById('payAmountInput').value = remaining > 0 ? remaining : (cFee > 0 ? cFee : '');
+    document.getElementById('payMethodSelect').value = 'Cash';
+    document.getElementById('payDateInput').value = getTodayISO();
+    document.getElementById('payNoteInput').value = '';
+
+    document.getElementById('recordPaymentModal')?.classList.remove('hidden');
+  }
+
+  function closeRecordPaymentModal() {
+    document.getElementById('recordPaymentModal')?.classList.add('hidden');
+  }
+
+  async function handleConfirmSavePayment() {
+    if (!checkSubscriptionWritable('Record Payment')) return;
+
+    const studentId = document.getElementById('payStudentId').value;
+    const student = (state.students || []).find(s => s.id === studentId);
+    if (!student) {
+      showToast('Student not found.', 'error');
+      closeRecordPaymentModal();
+      return;
+    }
+
+    const amtVal = Number(document.getElementById('payAmountInput').value);
+    if (!amtVal || amtVal <= 0) {
+      showToast('Please enter a valid payment amount greater than zero.', 'error');
+      return;
+    }
+
+    const method = document.getElementById('payMethodSelect').value || 'Cash';
+    const paidDate = document.getElementById('payDateInput').value || getTodayISO();
+    const note = document.getElementById('payNoteInput').value.trim();
+
+    const btn = document.getElementById('btnConfirmSavePayment');
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'Saving...';
+    }
+
+    try {
+      const rand = Math.random().toString(36).substring(2, 7);
+      const docId = `${state.currentSchoolId}_fee_${Date.now()}_${rand}`;
+      const payment = {
+        id: docId,
+        schoolId: state.currentSchoolId,
+        studentId: student.id,
+        studentName: student.name,
+        className: student.className,
+        section: student.section || 'A',
+        month: state.feeSelectedMonth || getCurrentMonthKey(),
+        amount: amtVal,
+        method: method,
+        paidDate: paidDate,
+        note: note,
+        receivedBy: (auth && auth.currentUser && auth.currentUser.email) ? auth.currentUser.email : (state.profile?.principal || 'Admin'),
+        createdAt: new Date().toISOString()
+      };
+
+      await FirestoreDB.saveFeePayment(payment);
+      state.feePayments.push(payment);
+      saveStorage(STORAGE_KEYS.FEES, state.feePayments);
+
+      closeRecordPaymentModal();
+      showToast(`Fee received: Rs ${amtVal.toLocaleString()} from ${student.name}`, 'success');
+      renderFeesModule();
+      updateDashboardFeesStat();
+    } catch (err) {
+      console.error('Error saving fee payment:', err);
+      showToast('Failed to record payment. Please try again.', 'error');
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = '💾 Save Payment';
+      }
+    }
+  }
+
+  function openDeleteFeePaymentModal(paymentId) {
+    if (!checkSubscriptionWritable('Delete Payment')) return;
+
+    const payment = (state.feePayments || []).find(p => p.id === paymentId);
+    if (!payment) {
+      showToast('Payment record not found.', 'error');
+      return;
+    }
+
+    pendingDeleteFeePaymentId = paymentId;
+    document.getElementById('deleteFeeTargetAmount').textContent = `Rs ${Number(payment.amount || 0).toLocaleString()}`;
+    document.getElementById('deleteFeeTargetStudent').textContent = payment.studentName || 'Student';
+    document.getElementById('deleteFeeTargetMonth').textContent = formatMonthHuman(payment.month);
+
+    document.getElementById('deleteFeePaymentModal')?.classList.remove('hidden');
+  }
+
+  function closeDeleteFeePaymentModal() {
+    pendingDeleteFeePaymentId = null;
+    document.getElementById('deleteFeePaymentModal')?.classList.add('hidden');
+  }
+
+  async function handleConfirmDeleteFeePayment() {
+    if (!pendingDeleteFeePaymentId) return;
+    if (!checkSubscriptionWritable('Delete Payment')) {
+      closeDeleteFeePaymentModal();
+      return;
+    }
+
+    const paymentId = pendingDeleteFeePaymentId;
+    const btn = document.getElementById('btnConfirmDeleteFeePayment');
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'Deleting...';
+    }
+
+    try {
+      await FirestoreDB.deleteFeePayment(paymentId);
+      state.feePayments = (state.feePayments || []).filter(p => p.id !== paymentId);
+      saveStorage(STORAGE_KEYS.FEES, state.feePayments);
+
+      closeDeleteFeePaymentModal();
+      showToast('Fee payment deleted.', 'success');
+      renderFeesModule();
+      updateDashboardFeesStat();
+    } catch (err) {
+      console.error('Error deleting fee payment:', err);
+      showToast('Failed to delete payment. Please try again.', 'error');
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = 'Delete Payment';
+      }
+    }
+  }
+
+  function openPrintReceipt(paymentId) {
+    const payment = (state.feePayments || []).find(p => p.id === paymentId);
+    if (!payment) {
+      showToast('Payment record not found for receipt printing.', 'error');
+      return;
+    }
+
+    const schoolName = (state.currentSchool && state.currentSchool.name) || state.profile?.name || 'SchoolSteps';
+    const tagline = state.profile.tagline || state.profile.motto || (state.currentSchool && (state.currentSchool.tagline || state.currentSchool.motto)) || '';
+    const brandColor = state.profile.brandColor || (state.currentSchool && state.currentSchool.brandColor) || '#0D9488';
+    const logoSrc = state.profile.logoData || (state.currentSchool && state.currentSchool.logoData) || 'icon.svg';
+    const address = state.profile.address || (state.currentSchool && state.currentSchool.address) || '';
+    const phone = state.profile.phone || (state.currentSchool && state.currentSchool.phone) || '';
+
+    // Populate receipt container
+    const logoEl = document.getElementById('recPrintLogo');
+    if (logoEl) {
+      logoEl.src = logoSrc;
+      logoEl.onerror = () => { logoEl.src = 'icon.svg'; };
+    }
+
+    const nameEl = document.getElementById('recPrintSchoolName');
+    if (nameEl) {
+      nameEl.textContent = schoolName;
+      nameEl.style.color = brandColor;
+    }
+
+    const taglineEl = document.getElementById('recPrintTagline');
+    if (taglineEl) taglineEl.textContent = tagline;
+
+    const contactEl = document.getElementById('recPrintContact');
+    if (contactEl) {
+      contactEl.textContent = [address, phone].filter(Boolean).join(' | ');
+    }
+
+    const cleanReceiptNo = 'REC-' + (payment.id ? payment.id.replace(/.*_fee_/, '').slice(0, 8).toUpperCase() : '1001');
+    document.getElementById('recPrintNo').textContent = cleanReceiptNo;
+    document.getElementById('recPrintDate').textContent = payment.paidDate || getTodayISO();
+    document.getElementById('recPrintStudentName').textContent = payment.studentName || '—';
+
+    const student = (state.students || []).find(s => s.id === payment.studentId);
+    document.getElementById('recPrintRollNo').textContent = student ? (student.rollNo || '—') : '—';
+    document.getElementById('recPrintClass').textContent = `${payment.className || ''} ${payment.section ? '- ' + payment.section : ''}`;
+    document.getElementById('recPrintMonth').textContent = formatMonthHuman(payment.month);
+    document.getElementById('recPrintMethod').textContent = payment.method || 'Cash';
+
+    const amtStr = `Rs ${Number(payment.amount || 0).toLocaleString()}`;
+    document.getElementById('recPrintAmountFigures').textContent = amtStr;
+    document.getElementById('recPrintTotalFigures').textContent = amtStr;
+    document.getElementById('recPrintAmountWords').textContent = numberToWordsPKR(payment.amount);
+
+    const noteEl = document.getElementById('recPrintNote');
+    if (noteEl) {
+      noteEl.textContent = payment.note ? `Note: ${payment.note}` : '';
+    }
+
+    const recByEl = document.getElementById('recPrintReceivedBy');
+    if (recByEl) {
+      recByEl.textContent = payment.receivedBy || (auth && auth.currentUser && auth.currentUser.email) || 'Admin';
+    }
+
+    // Set brand color top-border
+    const printCard = document.querySelector('.receipt-card-print');
+    if (printCard) {
+      printCard.style.borderTopColor = brandColor;
+    }
+
+    document.body.classList.add('printing-fee-receipt');
+    window.print();
+
+    const cleanup = () => {
+      document.body.classList.remove('printing-fee-receipt');
+      window.removeEventListener('afterprint', cleanup);
+    };
+    window.addEventListener('afterprint', cleanup);
+    setTimeout(cleanup, 1500);
+  }
+
+  function bindFeesEvents() {
+    // Save Fee Structure
+    document.getElementById('btnSaveFeeStructure')?.addEventListener('click', handleSaveFeeStructure);
+    document.getElementById('btnEditFeeStructure')?.addEventListener('click', () => {
+      isFeeSetupEditing = true;
+      document.getElementById('feesSetupCard')?.classList.remove('hidden');
+      renderFeeStructureInputs();
+      document.getElementById('btnCancelFeeSetup')?.classList.remove('hidden');
+    });
+    document.getElementById('btnCancelFeeSetup')?.addEventListener('click', () => {
+      isFeeSetupEditing = false;
+      document.getElementById('feesSetupCard')?.classList.add('hidden');
+    });
+
+    // Month Navigation
+    document.getElementById('btnFeePrevMonth')?.addEventListener('click', () => {
+      state.feeSelectedMonth = shiftMonthKey(state.feeSelectedMonth, -1);
+      FirestoreDB.loadFeePaymentsForMonth(state.feeSelectedMonth);
+      renderFeesModule();
+    });
+
+    document.getElementById('btnFeeNextMonth')?.addEventListener('click', () => {
+      state.feeSelectedMonth = shiftMonthKey(state.feeSelectedMonth, 1);
+      FirestoreDB.loadFeePaymentsForMonth(state.feeSelectedMonth);
+      renderFeesModule();
+    });
+
+    document.getElementById('feeMonthPicker')?.addEventListener('change', (e) => {
+      if (e.target.value) {
+        state.feeSelectedMonth = e.target.value;
+        FirestoreDB.loadFeePaymentsForMonth(state.feeSelectedMonth);
+        renderFeesModule();
+      }
+    });
+
+    // Filters
+    document.getElementById('btnFeeFilterAll')?.addEventListener('click', () => {
+      state.feeFilterStatus = 'ALL';
+      renderFeesModule();
+    });
+
+    document.getElementById('btnFeeFilterUnpaid')?.addEventListener('click', () => {
+      state.feeFilterStatus = 'UNPAID';
+      renderFeesModule();
+    });
+
+    document.getElementById('feeFilterClassSelect')?.addEventListener('change', (e) => {
+      state.feeFilterClass = e.target.value;
+      renderFeesModule();
+    });
+
+    // Empty state redirect button
+    document.getElementById('btnFeeGoToStudents')?.addEventListener('click', () => {
+      switchTab('tab-students');
+    });
+
+    // Dashboard quick stat card click
+    document.getElementById('statCardDashboardFees')?.addEventListener('click', () => {
+      switchTab('tab-fees');
+    });
+
+    // Record Payment Modal
+    document.getElementById('btnCloseRecordPaymentModal')?.addEventListener('click', closeRecordPaymentModal);
+    document.getElementById('btnCancelRecordPayment')?.addEventListener('click', closeRecordPaymentModal);
+    document.getElementById('btnConfirmSavePayment')?.addEventListener('click', handleConfirmSavePayment);
+
+    // Delete Payment Modal
+    document.getElementById('btnCloseDeleteFeePaymentModal')?.addEventListener('click', closeDeleteFeePaymentModal);
+    document.getElementById('btnCancelDeleteFeePayment')?.addEventListener('click', closeDeleteFeePaymentModal);
+    document.getElementById('btnConfirmDeleteFeePayment')?.addEventListener('click', handleConfirmDeleteFeePayment);
+  }
+
+  // Window exports for debugging & testing
+  window.__renderFeesModule = renderFeesModule;
+  window.__openRecordPaymentModal = openRecordPaymentModal;
+  window.__openPrintReceipt = openPrintReceipt;
+  window.__openDeleteFeePaymentModal = openDeleteFeePaymentModal;
+  window.__handleConfirmDeleteFeePayment = handleConfirmDeleteFeePayment;
+  window.__updateDashboardFeesStat = updateDashboardFeesStat;
+  window.__saveSchoolFeeStructure = handleSaveFeeStructure;
+
+  // Global window bindings for HTML onclick handlers
+  window.openRecordPaymentModal = openRecordPaymentModal;
+  window.openPrintReceipt = openPrintReceipt;
+  window.openDeleteFeePaymentModal = openDeleteFeePaymentModal;
+  window.switchTab = switchTab;
+  window.getFeeWhatsAppReminderUrl = getFeeWhatsAppReminderUrl;
+  window.getCurrentMonthKey = getCurrentMonthKey;
+  window.formatMonthHuman = formatMonthHuman;
 
   // ========================================================
     // App Render & Startup
@@ -5362,6 +6230,8 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
     renderDispatchRoster();
     renderPtmModule();
     renderCommsModule();
+    renderFeesModule();
+    updateDashboardFeesStat();
   }
 
   function initApp() {

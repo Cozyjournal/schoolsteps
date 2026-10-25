@@ -192,6 +192,10 @@
           <span class="tab-icon">📢</span>
           <span class="tab-text">Comms</span>
         </button>
+        <button class="tab-btn" data-tab="tab-fees" role="tab" aria-selected="false">
+          <span class="tab-icon">💰</span>
+          <span class="tab-text">Fees</span>
+        </button>
         <button class="tab-btn hidden" id="tabBtnPlatform" data-tab="tab-platform" role="tab" aria-selected="false">
           <span class="tab-icon">🛠</span>
           <span class="tab-text">Platform</span>
@@ -274,6 +278,10 @@
           <div class="stat-card">
             <div class="stat-val stat-val-peach" id="statTotalClasses">0</div>
             <div class="stat-lbl">Active Classes</div>
+          </div>
+          <div class="stat-card" id="statCardDashboardFees" style="cursor: pointer;" title="Open Fees Module">
+            <div class="stat-val stat-val-teal" id="statDashboardFeesVal" style="font-size: 1.15rem; word-break: break-word;">Fees: set up →</div>
+            <div class="stat-lbl" id="statDashboardFeesLbl">Fees (Oct 2026)</div>
           </div>
         </div>
 
@@ -1140,6 +1148,129 @@
         </div>
       </section>
       <!-- ==============================================
+           FEES TRACKING MODULE (M10)
+           ============================================== -->
+      <section id="tab-fees" class="tab-panel">
+        <div class="fees-container">
+
+          <!-- Fee Structure Setup Card -->
+          <div class="card fee-setup-card hidden" id="feesSetupCard" style="margin-bottom: 20px; border: 1.5px solid var(--primary-light, #CCFBF1);">
+            <div class="card-header" style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 14px; flex-wrap: wrap;">
+              <div>
+                <h3 style="font-family: var(--font-heading); font-size: 1.15rem; font-weight: 700; color: var(--text-heading); margin: 0 0 4px;">
+                  ⚙️ Set Monthly Fee Structure
+                </h3>
+                <p style="font-size: 0.85rem; color: var(--text-muted); margin: 0;">
+                  Set your school's monthly fee for each class (Class 1 to Class 10). Leave 0 or blank for classes not offered.
+                </p>
+              </div>
+              <button type="button" class="btn btn-subtle btn-sm hidden" id="btnCancelFeeSetup">✕ Close</button>
+            </div>
+            <form id="feeStructureForm" class="fee-structure-form" onsubmit="return false;">
+              <div class="fee-class-grid" id="feeClassInputsGrid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px;">
+                <!-- Populated via JS for Class 1 to Class 10 -->
+              </div>
+              <div style="margin-top: 18px; display: flex; justify-content: flex-end; gap: 8px;">
+                <button type="button" class="btn btn-primary" id="btnSaveFeeStructure">
+                  <span>💾 Save Fee Structure</span>
+                </button>
+              </div>
+            </form>
+          </div>
+
+          <!-- Main Fees View -->
+          <div id="feesMainView">
+            <!-- Header & Month Navigation Toolbar -->
+            <div class="card toolbar-card" style="margin-bottom: 16px;">
+              <div class="toolbar-row" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+                <div class="fee-month-selector" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                  <button type="button" class="btn btn-subtle btn-sm" id="btnFeePrevMonth" title="Previous Month">◀</button>
+                  <input type="month" id="feeMonthPicker" class="form-input" style="max-width: 170px; padding: 6px 10px; font-weight: 600;" />
+                  <button type="button" class="btn btn-subtle btn-sm" id="btnFeeNextMonth" title="Next Month">▶</button>
+                  <span id="feeMonthHumanDisplay" style="font-family: var(--font-heading); font-size: 1.1rem; font-weight: 700; color: var(--text-heading); margin-left: 4px;"></span>
+                </div>
+                <div>
+                  <button type="button" class="btn btn-subtle btn-sm" id="btnEditFeeStructure">
+                    <span>⚙️ Edit Fee Structure</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- 4 Summary Cards -->
+            <div class="stats-grid" style="margin-bottom: 20px;">
+              <div class="stat-card">
+                <div class="stat-val stat-val-blue" id="feeStatExpected">Rs 0</div>
+                <div class="stat-lbl">Expected Total</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-val stat-val-green" id="feeStatCollected">Rs 0</div>
+                <div class="stat-lbl">Collected</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-val stat-val-amber" id="feeStatPending">Rs 0</div>
+                <div class="stat-lbl" id="feeStatPendingLbl">Pending (0 unpaid)</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-val stat-val-teal" id="feeStatPercent">0%</div>
+                <div class="stat-lbl">Collection %</div>
+              </div>
+            </div>
+
+            <!-- Filter & Search Toolbar -->
+            <div class="card toolbar-card" style="margin-bottom: 16px;">
+              <div class="toolbar-row" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+                <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                  <div class="btn-group" role="group">
+                    <button type="button" class="btn btn-sm btn-subtle active" id="btnFeeFilterAll">All Students</button>
+                    <button type="button" class="btn btn-sm btn-subtle" id="btnFeeFilterUnpaid">Unpaid Only</button>
+                  </div>
+                  <select id="feeFilterClassSelect" class="form-select" style="max-width: 150px; font-size: 0.85rem; padding: 6px 10px;">
+                    <option value="ALL">All Classes</option>
+                  </select>
+                </div>
+                <div style="font-size: 0.85rem; color: var(--text-muted);" id="feeRosterSummary">
+                  <!-- Summary count -->
+                </div>
+              </div>
+            </div>
+
+            <!-- Student Fee Roster List Container -->
+            <div class="fee-students-container" id="feeStudentsContainer">
+              <!-- Rendered via JS -->
+            </div>
+
+            <!-- Empty states -->
+            <div id="feeNoStudentsState" class="empty-state hidden">
+              <div class="empty-icon">🎒</div>
+              <h3>No Active Students</h3>
+              <p>No active students enrolled in this school. Add students to begin tracking fees.</p>
+              <button type="button" class="btn btn-primary" id="btnFeeGoToStudents" style="margin-top: 12px;">Go to Students</button>
+            </div>
+
+            <div id="feeEmptyFilterState" class="empty-state hidden">
+              <div class="empty-icon">🔍</div>
+              <h3>No Matching Records</h3>
+              <p>No students match the selected filter.</p>
+            </div>
+
+            <!-- Recent Payments Section -->
+            <div class="card recent-payments-card" style="margin-top: 24px; padding: 18px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 8px;">
+                <h3 style="font-family: var(--font-heading); font-size: 1.05rem; font-weight: 700; color: var(--text-heading); margin: 0;">
+                  🧾 Recent Payments (<span id="feeRecentPaymentsCount">0</span>)
+                </h3>
+              </div>
+              <div id="feeRecentPaymentsContainer">
+                <!-- Rendered via JS -->
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </section>
+
+      <!-- ==============================================
            PLATFORM SUPER ADMIN MODULE
            ============================================== -->
       <section id="tab-platform" class="tab-panel">
@@ -1255,6 +1386,10 @@
       <button class="mobile-tab-btn" data-tab="tab-comms">
         <span class="icon">📢</span>
         <span class="label">Comms</span>
+      </button>
+      <button class="mobile-tab-btn" data-tab="tab-fees">
+        <span class="icon">💰</span>
+        <span class="label">Fees</span>
       </button>
       <button class="mobile-tab-btn hidden" id="mobileTabBtnPlatform" data-tab="tab-platform">
         <span class="icon">🛠</span>
@@ -1913,6 +2048,163 @@
       </div>
     </div>
   </div>
+
+  <!-- Record Fee Payment Modal -->
+  <div class="modal-overlay hidden" id="recordPaymentModal" role="dialog" aria-modal="true" aria-labelledby="recordPaymentModalTitle">
+    <div class="modal-card" style="max-width: 480px;">
+      <div class="modal-header">
+        <h3 class="modal-title" id="recordPaymentModalTitle">💰 Record Fee Payment</h3>
+        <button type="button" class="btn-close" id="btnCloseRecordPaymentModal" aria-label="Close dialog">✕</button>
+      </div>
+      <form id="recordPaymentForm" class="modal-body" novalidate onsubmit="return false;">
+        <input type="hidden" id="payStudentId" />
+        
+        <div style="background: var(--bg-soft, #f8fafc); border: 1px solid var(--border-soft, #e2e8f0); border-radius: var(--radius-md); padding: 12px; margin-bottom: 14px;">
+          <div style="font-size: 1rem; font-weight: 700; color: var(--text-heading);" id="payStudentNameDisplay">—</div>
+          <div style="font-size: 0.85rem; color: var(--text-muted); display: flex; justify-content: space-between; margin-top: 4px;">
+            <span id="payStudentClassDisplay">Class —</span>
+            <span id="payStudentFeeDisplay">Monthly Fee: Rs —</span>
+          </div>
+          <div style="font-size: 0.82rem; color: #b45309; margin-top: 4px; font-weight: 600;" id="payStudentBalanceDisplay"></div>
+        </div>
+
+        <div class="form-group">
+          <label for="payAmountInput" class="form-label required">Amount Received (PKR)</label>
+          <input type="number" id="payAmountInput" class="form-input" min="1" step="any" placeholder="e.g. 1500" required />
+        </div>
+
+        <div class="form-group">
+          <label for="payMethodSelect" class="form-label required">Payment Method</label>
+          <select id="payMethodSelect" class="form-select" required>
+            <option value="Cash" selected>Cash</option>
+            <option value="JazzCash">JazzCash</option>
+            <option value="Easypaisa">Easypaisa</option>
+            <option value="Bank Transfer">Bank Transfer</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="payDateInput" class="form-label required">Payment Date</label>
+          <input type="date" id="payDateInput" class="form-input" required />
+        </div>
+
+        <div class="form-group">
+          <label for="payNoteInput" class="form-label">Optional Note</label>
+          <input type="text" id="payNoteInput" class="form-input" placeholder="e.g. Received via father, receipt #123" />
+        </div>
+
+        <div class="modal-footer" style="padding: 12px 0 0; display: flex; justify-content: flex-end; gap: 8px;">
+          <button type="button" class="btn btn-subtle" id="btnCancelRecordPayment">Cancel</button>
+          <button type="button" class="btn btn-primary" id="btnConfirmSavePayment">💾 Save Payment</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Delete Fee Payment Modal -->
+  <div class="modal-overlay hidden" id="deleteFeePaymentModal" role="dialog" aria-modal="true" aria-labelledby="deleteFeePaymentModalTitle">
+    <div class="modal-card" style="max-width: 440px;">
+      <div class="modal-header">
+        <h3 class="modal-title" id="deleteFeePaymentModalTitle" style="color: #DC2626;">🗑️ Delete Payment</h3>
+        <button type="button" class="btn-close" id="btnCloseDeleteFeePaymentModal" aria-label="Close dialog">✕</button>
+      </div>
+      <div class="modal-body" style="padding: 16px 20px;">
+        <p style="font-size: 0.95rem; color: var(--text-heading); margin-bottom: 12px; line-height: 1.5;">
+          Are you sure you want to delete the payment of <strong id="deleteFeeTargetAmount">Rs 0</strong> for <strong id="deleteFeeTargetStudent">Student Name</strong> (<span id="deleteFeeTargetMonth">Month</span>)?
+        </p>
+        <div style="background: #FEF2F2; border: 1px solid #FECACA; border-radius: var(--radius-md); padding: 12px; margin-bottom: 8px;">
+          <p style="color: #B91C1C; font-size: 0.85rem; font-weight: 600; margin: 0; line-height: 1.4;">
+            ⚠️ This will remove this payment record and revert the student's fee balance.
+          </p>
+        </div>
+      </div>
+      <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 8px; padding: 12px 20px;">
+        <button type="button" class="btn btn-subtle" id="btnCancelDeleteFeePayment">Cancel</button>
+        <button type="button" class="btn btn-danger" id="btnConfirmDeleteFeePayment">Delete Payment</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Printable Fee Receipt (Only visible when printing fee receipt) -->
+  <div id="printableFeeReceipt" class="printable-fee-receipt no-screen">
+    <div class="receipt-card-print">
+      <div class="receipt-header-print">
+        <div class="receipt-logo-wrap">
+          <img id="recPrintLogo" src="icon.svg" alt="Logo" class="receipt-logo-img" />
+        </div>
+        <div class="receipt-header-text">
+          <h2 id="recPrintSchoolName" class="rec-school-name">School Name</h2>
+          <div id="recPrintTagline" class="rec-tagline">Tagline / Motto</div>
+          <div id="recPrintContact" class="rec-contact">Address | Phone</div>
+        </div>
+      </div>
+      
+      <div class="receipt-divider-line"></div>
+
+      <div class="receipt-badge-title">
+        <span>FEE RECEIPT</span>
+      </div>
+
+      <div class="receipt-meta-grid">
+        <div class="receipt-meta-col">
+          <div><span class="rec-lbl">Receipt No:</span> <strong id="recPrintNo">SS-1001</strong></div>
+          <div><span class="rec-lbl">Student Name:</span> <strong id="recPrintStudentName">—</strong></div>
+          <div><span class="rec-lbl">Roll No:</span> <strong id="recPrintRollNo">—</strong></div>
+        </div>
+        <div class="receipt-meta-col">
+          <div><span class="rec-lbl">Date:</span> <strong id="recPrintDate">—</strong></div>
+          <div><span class="rec-lbl">Class & Section:</span> <strong id="recPrintClass">—</strong></div>
+          <div><span class="rec-lbl">Fee Month:</span> <strong id="recPrintMonth">—</strong></div>
+        </div>
+      </div>
+
+      <table class="receipt-table">
+        <thead>
+          <tr>
+            <th>Description</th>
+            <th>Payment Method</th>
+            <th style="text-align: right;">Amount (PKR)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>
+              <strong>Monthly Tuition Fee</strong>
+              <div id="recPrintNote" style="font-size: 0.8rem; color: #64748B; margin-top: 2px;"></div>
+            </td>
+            <td id="recPrintMethod">Cash</td>
+            <td id="recPrintAmountFigures" style="text-align: right; font-weight: 700;">Rs 0</td>
+          </tr>
+        </tbody>
+        <tfoot>
+          <tr>
+            <th colspan="2" style="text-align: right;">Total Received:</th>
+            <th id="recPrintTotalFigures" style="text-align: right; font-size: 1.1rem; color: var(--primary);">Rs 0</th>
+          </tr>
+        </tfoot>
+      </table>
+
+      <div class="receipt-words-box">
+        <span class="rec-lbl">Amount in Words:</span>
+        <strong id="recPrintAmountWords">Zero Rupees Only</strong>
+      </div>
+
+      <div class="receipt-footer-print">
+        <div class="rec-thanks-note">Received with thanks</div>
+        <div class="rec-signatures-row">
+          <div class="rec-sig-block">
+            <div class="rec-sig-line"></div>
+            <div class="rec-sig-title">Received By (<span id="recPrintReceivedBy">Admin</span>)</div>
+          </div>
+          <div class="rec-sig-block">
+            <div class="rec-sig-line"></div>
+            <div class="rec-sig-title">Official Stamp / Signature</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
 
 </body>
 </html>

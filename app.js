@@ -1477,7 +1477,9 @@
             className: data.className || data.class || 'Class 3',
             section: data.section || 'A',
             fatherName: data.fatherName || data.parentName || '',
-            whatsapp: data.whatsapp || data.parentPhone || ''
+            whatsapp: data.whatsapp || data.parentPhone || '',
+            monthlyFee: (data.monthlyFee != null && Number(data.monthlyFee) > 0) ? Number(data.monthlyFee) : null,
+            feeNote: data.feeNote || ''
           };
         });
         state.students.sort((a, b) => (parseInt(a.rollNo, 10) || 0) - (parseInt(b.rollNo, 10) || 0));
@@ -1646,6 +1648,8 @@
           dob: student.dob || '',
           address: student.address || '',
           status: student.status || 'Active',
+          monthlyFee: (student.monthlyFee != null && Number(student.monthlyFee) > 0) ? Number(student.monthlyFee) : null,
+          feeNote: student.feeNote || '',
           admissionDate: student.admissionDate || getTodayISO()
         }, { merge: true });
       });
@@ -2469,6 +2473,8 @@
     document.getElementById('studStatus').value = 'Active';
     document.getElementById('studClass').value = 'Class 3';
     document.getElementById('studSection').value = 'A';
+    if (document.getElementById('studMonthlyFee')) document.getElementById('studMonthlyFee').value = '';
+    if (document.getElementById('studFeeNote')) document.getElementById('studFeeNote').value = '';
     document.getElementById('studentModal').classList.remove('hidden');
   }
 
@@ -2492,6 +2498,12 @@
     document.getElementById('parentWhatsApp').value = student.whatsapp || '';
     document.getElementById('parentEmergency').value = student.emergencyPhone || '';
     document.getElementById('parentAddress').value = student.address || '';
+    if (document.getElementById('studMonthlyFee')) {
+      document.getElementById('studMonthlyFee').value = (student.monthlyFee != null && Number(student.monthlyFee) > 0) ? student.monthlyFee : '';
+    }
+    if (document.getElementById('studFeeNote')) {
+      document.getElementById('studFeeNote').value = student.feeNote || '';
+    }
 
     document.getElementById('studentModal').classList.remove('hidden');
   }
@@ -2510,6 +2522,12 @@
       return;
     }
 
+    const address = document.getElementById('parentAddress').value.trim();
+    const monthlyFeeInput = document.getElementById('studMonthlyFee');
+    const monthlyFeeVal = monthlyFeeInput ? monthlyFeeInput.value.trim() : '';
+    const monthlyFee = (monthlyFeeVal !== '' && Number(monthlyFeeVal) > 0) ? Number(monthlyFeeVal) : null;
+    const feeNote = document.getElementById('studFeeNote') ? document.getElementById('studFeeNote').value.trim() : '';
+
     const payload = {
       name,
       rollNo,
@@ -2523,7 +2541,9 @@
       motherName: document.getElementById('parentMother').value.trim(),
       whatsapp,
       emergencyPhone: document.getElementById('parentEmergency').value.trim(),
-      address: document.getElementById('parentAddress').value.trim()
+      address,
+      monthlyFee,
+      feeNote
     };
 
     if (state.editingStudentId) {
@@ -2559,6 +2579,8 @@
     renderClassDropdowns();
     renderStudentsList();
     renderAttendanceRoster();
+    renderFeesModule();
+    updateDashboardFeesStat();
   }
 
   let pendingDeleteStudentId = null;
@@ -5432,6 +5454,19 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
   // M10: Fees Tracking Module Helpers & Logic
   // ========================================================
 
+  function getEffectiveMonthlyFee(student) {
+    if (!student) return null;
+    if (student.monthlyFee != null && Number(student.monthlyFee) > 0) {
+      return Number(student.monthlyFee);
+    }
+    const feeByClass = (state.currentSchool && state.currentSchool.feeByClass) || {};
+    const classFee = student.className ? feeByClass[student.className] : null;
+    if (classFee != null && Number(classFee) > 0) {
+      return Number(classFee);
+    }
+    return null;
+  }
+
   function getCurrentMonthKey() {
     const d = new Date();
     const y = d.getFullYear();
@@ -5475,13 +5510,15 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
     return inWords(num).trim() + ' Rupees Only';
   }
 
-  function getFeeWhatsAppReminderUrl(student, monthKey, classFee, pendingAmount) {
+  function getFeeWhatsAppReminderUrl(student, monthKey, effectiveFee, pendingAmount) {
     const cleanPhone = sanitizePhoneForWhatsApp(student.whatsapp);
     if (!cleanPhone) return '#';
     const schoolName = (state.currentSchool && state.currentSchool.name) || state.profile?.name || 'School';
     const parentName = student.fatherName || student.parentName || 'محترم والدین';
     const monthHuman = formatMonthHuman(monthKey);
-    const amountStr = (pendingAmount || classFee || 0).toLocaleString();
+    const effFee = effectiveFee != null ? effectiveFee : (getEffectiveMonthlyFee(student) || 0);
+    const amountVal = pendingAmount != null ? pendingAmount : effFee;
+    const amountStr = (amountVal || 0).toLocaleString();
     
     const text = `السلام علیکم ${parentName}،
 یہ ${schoolName} کی طرف سے یاد دہانی ہے کہ ${student.name} (${student.className || ''} ${student.section || ''}) کی برائے ماہ ${monthHuman} فیس واجب الادا ہے:
@@ -5563,17 +5600,21 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
     if (lblEl) lblEl.textContent = `Fees (${monthHuman})`;
 
     const feeByClass = (state.currentSchool && state.currentSchool.feeByClass) || {};
-    const hasFeeStructure = Object.keys(feeByClass).some(k => Number(feeByClass[k]) > 0);
+    const hasClassFeeStructure = Object.keys(feeByClass).some(k => Number(feeByClass[k]) > 0);
+    const activeStudents = (state.students || []).filter(s => s.status === 'Active');
+    const hasCustomFee = activeStudents.some(s => s.monthlyFee != null && Number(s.monthlyFee) > 0);
 
-    if (!hasFeeStructure) {
+    if (!hasClassFeeStructure && !hasCustomFee) {
       valEl.textContent = 'Fees: set up →';
       return;
     }
 
-    const activeStudents = (state.students || []).filter(s => s.status === 'Active');
     let expected = 0;
     activeStudents.forEach(s => {
-      expected += (Number(feeByClass[s.className]) || 0);
+      const eff = getEffectiveMonthlyFee(s);
+      if (eff != null && eff > 0) {
+        expected += eff;
+      }
     });
 
     const monthPayments = (state.feePayments || []).filter(p => p.month === monthKey);
@@ -5622,23 +5663,20 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
 
     if (mainView) mainView.classList.remove('hidden');
 
-    // Summary calculations
+    // Summary calculations using getEffectiveMonthlyFee
     const activeStudents = (state.students || []).filter(s => s.status === 'Active');
     let expectedTotal = 0;
-    activeStudents.forEach(s => {
-      expectedTotal += (Number(feeByClass[s.className]) || 0);
-    });
-
+    let pendingCount = 0;
     const monthPayments = (state.feePayments || []).filter(p => p.month === state.feeSelectedMonth);
     const collectedTotal = monthPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
 
-    let unpaidCount = 0;
     activeStudents.forEach(s => {
-      const cFee = Number(feeByClass[s.className]) || 0;
-      if (cFee > 0) {
+      const effFee = getEffectiveMonthlyFee(s);
+      if (effFee != null && effFee > 0) {
+        expectedTotal += effFee;
         const sPaid = monthPayments.filter(p => p.studentId === s.id).reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
-        if (sPaid < cFee) {
-          unpaidCount++;
+        if (sPaid < effFee) {
+          pendingCount++;
         }
       }
     });
@@ -5656,7 +5694,7 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
     if (statPen) statPen.textContent = `Rs ${pendingTotal.toLocaleString()}`;
 
     const statPenLbl = document.getElementById('feeStatPendingLbl');
-    if (statPenLbl) statPenLbl.textContent = `Pending (${unpaidCount} unpaid)`;
+    if (statPenLbl) statPenLbl.textContent = `Pending (${pendingCount} pending)`;
 
     const statPct = document.getElementById('feeStatPercent');
     if (statPct) statPct.textContent = `${percent}%`;
@@ -5680,21 +5718,21 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
       filtered = filtered.filter(s => s.className === state.feeFilterClass);
     }
 
-    // Student status calculation
+    // Student status calculation using getEffectiveMonthlyFee
     const studentStatusMap = new Map();
     filtered.forEach(s => {
-      const cFee = Number(feeByClass[s.className]) || 0;
+      const effFee = getEffectiveMonthlyFee(s);
       const sPayments = monthPayments.filter(p => p.studentId === s.id);
       const sPaid = sPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
       let status = 'Unpaid';
-      if (cFee === 0) {
+      if (effFee === null || effFee <= 0) {
         status = 'NotSet';
-      } else if (sPaid >= cFee) {
+      } else if (sPaid >= effFee) {
         status = 'Paid';
       } else if (sPaid > 0) {
         status = 'Partial';
       }
-      studentStatusMap.set(s.id, { cFee, sPayments, sPaid, status });
+      studentStatusMap.set(s.id, { effFee, sPayments, sPaid, status });
     });
 
     if (state.feeFilterStatus === 'UNPAID') {
@@ -5731,27 +5769,43 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
       if (container) {
         container.innerHTML = filtered.map(s => {
           const info = studentStatusMap.get(s.id);
-          const cFee = info.cFee;
+          const effFee = info.effFee;
           const sPaid = info.sPaid;
           const status = info.status;
           const sPayments = info.sPayments;
+          const hasCustomFee = s.monthlyFee != null && Number(s.monthlyFee) > 0;
 
           let badgeHtml = '';
           if (status === 'Paid') {
             const lastDate = sPayments.length > 0 ? (sPayments[sPayments.length - 1].paidDate || '') : '';
             badgeHtml = `<span class="badge-fee-paid">✓ Paid (Rs ${sPaid.toLocaleString()}${lastDate ? ' • ' + lastDate : ''})</span>`;
           } else if (status === 'Partial') {
-            const rem = Math.max(0, cFee - sPaid);
-            badgeHtml = `<span class="badge-fee-partial">◐ Partial: Rs ${sPaid.toLocaleString()} / Rs ${cFee.toLocaleString()} (Pending: Rs ${rem.toLocaleString()})</span>`;
+            const rem = Math.max(0, effFee - sPaid);
+            badgeHtml = `<span class="badge-fee-partial">◐ Partial: Rs ${sPaid.toLocaleString()} / Rs ${effFee.toLocaleString()} (Pending: Rs ${rem.toLocaleString()})</span>`;
           } else if (status === 'Unpaid') {
-            badgeHtml = `<span class="badge-fee-unpaid">✕ Unpaid (Rs ${cFee.toLocaleString()})</span>`;
+            badgeHtml = `<span class="badge-fee-unpaid">✕ Unpaid (Rs ${effFee.toLocaleString()})</span>`;
           } else {
             badgeHtml = `<span class="badge badge-subtle">Fee not set</span>`;
           }
 
+          let feeDisplayHtml = '';
+          if (effFee != null && effFee > 0) {
+            feeDisplayHtml = `Monthly Fee: <strong>Rs ${effFee.toLocaleString()}</strong>`;
+            if (hasCustomFee) {
+              feeDisplayHtml += ` <span class="badge badge-custom" style="font-size: 0.72rem; padding: 2px 6px; margin-left: 4px; vertical-align: middle;">Custom</span>`;
+            }
+          } else {
+            feeDisplayHtml = `Monthly Fee: <strong>Fee not set</strong>`;
+          }
+
+          let feeNoteHtml = '';
+          if (hasCustomFee && s.feeNote && s.feeNote.trim()) {
+            feeNoteHtml = `<div style="font-size: 0.76rem; color: var(--text-muted); margin-top: 2px;">Note: ${escapeHtml(s.feeNote.trim())}</div>`;
+          }
+
           // Action buttons
           let recordBtn = '';
-          if (status !== 'Paid' && cFee > 0) {
+          if (status !== 'Paid' && effFee != null && effFee > 0) {
             recordBtn = `<button type="button" class="btn btn-sm btn-primary" onclick="openRecordPaymentModal('${s.id}')">💰 Record Payment</button>`;
           }
 
@@ -5762,10 +5816,10 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
           }
 
           let remindBtn = '';
-          if (status !== 'Paid') {
+          if (status !== 'Paid' && effFee != null && effFee > 0) {
             const cleanPhone = sanitizePhoneForWhatsApp(s.whatsapp);
             if (cleanPhone) {
-              const waUrl = getFeeWhatsAppReminderUrl(s, state.feeSelectedMonth, cFee, Math.max(0, cFee - sPaid));
+              const waUrl = getFeeWhatsAppReminderUrl(s, state.feeSelectedMonth, effFee, Math.max(0, effFee - sPaid));
               remindBtn = `<a href="${waUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-subtle" title="Send WhatsApp Fee Reminder">💬 Remind</a>`;
             } else {
               remindBtn = `<button type="button" class="btn btn-sm btn-subtle" disabled title="No WhatsApp number registered for this student">💬 Remind</button>`;
@@ -5783,9 +5837,10 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
                 <div class="fee-student-meta">
                   <span>Class: <strong>${escapeHtml(s.className)} ${escapeHtml(s.section || '')}</strong></span>
                   <span>•</span>
-                  <span>Monthly Fee: <strong>${cFee > 0 ? 'Rs ' + cFee.toLocaleString() : 'Not set'}</strong></span>
+                  <span>${feeDisplayHtml}</span>
                   ${s.fatherName ? `<span>•</span><span>Parent: ${escapeHtml(s.fatherName)}</span>` : ''}
                 </div>
+                ${feeNoteHtml}
               </div>
               <div class="fee-student-actions">
                 ${recordBtn}
@@ -5878,28 +5933,29 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
       return;
     }
 
-    const feeByClass = (state.currentSchool && state.currentSchool.feeByClass) || {};
-    const cFee = Number(feeByClass[student.className]) || 0;
+    const effFee = getEffectiveMonthlyFee(student) || 0;
+    const hasCustomFee = student.monthlyFee != null && Number(student.monthlyFee) > 0;
 
     const monthPayments = (state.feePayments || []).filter(p => p.studentId === studentId && p.month === state.feeSelectedMonth);
     const alreadyPaid = monthPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
-    const remaining = Math.max(0, cFee - alreadyPaid);
+    const remaining = Math.max(0, effFee - alreadyPaid);
 
     document.getElementById('payStudentId').value = student.id;
     document.getElementById('payStudentNameDisplay').textContent = student.name;
     document.getElementById('payStudentClassDisplay').textContent = `${student.className} ${student.section || ''}`;
-    document.getElementById('payStudentFeeDisplay').textContent = `Monthly Fee: Rs ${cFee.toLocaleString()}`;
+    document.getElementById('payStudentFeeDisplay').innerHTML = `Monthly Fee: Rs ${effFee.toLocaleString()}${hasCustomFee ? ' <span class="badge badge-custom" style="font-size: 0.72rem; padding: 2px 6px; margin-left: 4px;">Custom</span>' : ''}`;
 
     const balEl = document.getElementById('payStudentBalanceDisplay');
     if (balEl) {
+      const noteSuffix = (hasCustomFee && student.feeNote) ? ` • Note: ${student.feeNote}` : '';
       if (alreadyPaid > 0) {
-        balEl.textContent = `Already paid: Rs ${alreadyPaid.toLocaleString()} • Remaining balance: Rs ${remaining.toLocaleString()}`;
+        balEl.textContent = `Already paid: Rs ${alreadyPaid.toLocaleString()} • Remaining balance: Rs ${remaining.toLocaleString()}${noteSuffix}`;
       } else {
-        balEl.textContent = `Pending balance: Rs ${remaining.toLocaleString()}`;
+        balEl.textContent = `Pending balance: Rs ${remaining.toLocaleString()}${noteSuffix}`;
       }
     }
 
-    document.getElementById('payAmountInput').value = remaining > 0 ? remaining : (cFee > 0 ? cFee : '');
+    document.getElementById('payAmountInput').value = remaining > 0 ? remaining : (effFee > 0 ? effFee : '');
     document.getElementById('payMethodSelect').value = 'Cash';
     document.getElementById('payDateInput').value = getTodayISO();
     document.getElementById('payNoteInput').value = '';
@@ -6188,6 +6244,7 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
   window.__openPrintReceipt = openPrintReceipt;
   window.__openDeleteFeePaymentModal = openDeleteFeePaymentModal;
   window.__handleConfirmDeleteFeePayment = handleConfirmDeleteFeePayment;
+  window.__handleConfirmSavePayment = handleConfirmSavePayment;
   window.__updateDashboardFeesStat = updateDashboardFeesStat;
   window.__saveSchoolFeeStructure = handleSaveFeeStructure;
 
@@ -6199,6 +6256,8 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
   window.getFeeWhatsAppReminderUrl = getFeeWhatsAppReminderUrl;
   window.getCurrentMonthKey = getCurrentMonthKey;
   window.formatMonthHuman = formatMonthHuman;
+  window.getEffectiveMonthlyFee = getEffectiveMonthlyFee;
+  window.__getEffectiveMonthlyFee = getEffectiveMonthlyFee;
 
   // ========================================================
     // App Render & Startup
@@ -6251,6 +6310,9 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
   window.__deleteStudent = deleteStudent;
   window.__confirmDeleteStudent = handleConfirmDeleteStudent;
   window.__openDeleteStudentModal = openDeleteStudentModal;
+  window.openEditStudentModal = openEditStudentModal;
+  window.__openEditStudentModal = openEditStudentModal;
+  window.openAddStudentModal = openAddStudentModal;
   window.__closeDeleteStudentModal = closeDeleteStudentModal;
   window.__applySchoolBranding = applySchoolBranding;
   window.__applyThemeBrandColor = applyThemeBrandColor;

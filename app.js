@@ -5529,6 +5529,85 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
     return `https://wa.me/${cleanPhone}?text=${encodeURIComponent(text)}`;
   }
 
+  function generateFeeReceiptMessage(payment, student) {
+    if (!payment) return '';
+    if (!student) {
+      student = (state.students || []).find(s => s.id === payment.studentId) || {
+        name: payment.studentName || 'Student',
+        className: payment.className || '',
+        section: payment.section || '',
+        fatherName: ''
+      };
+    }
+
+    const schoolName = (state.currentSchool && state.currentSchool.name) || state.profile?.name || 'School';
+    const guardianName = (student.fatherName || student.parentName || student.guardianName || '').trim();
+    const greeting = guardianName ? `Assalam-o-Alaikum ${guardianName},` : 'Assalam-o-Alaikum,';
+
+    const studentName = student.name || payment.studentName || 'Student';
+    const sClass = student.className || payment.className || '';
+    const sSec = student.section || payment.section || '';
+    const classSec = [sClass, sSec].filter(Boolean).join(' ');
+    const studentLine = classSec ? `Student: ${studentName} (${classSec})` : `Student: ${studentName}`;
+
+    const monthHuman = payment.month ? formatMonthHuman(payment.month) : formatMonthHuman(state.feeSelectedMonth || getCurrentMonthKey());
+    const monthLine = `Month: ${monthHuman}`;
+    const thisAmount = Number(payment.amount) || 0;
+    const methodStr = payment.method || 'Cash';
+    const amountLine = `Amount received: Rs ${thisAmount.toLocaleString()} (${methodStr})`;
+    const dateLine = `Date: ${payment.paidDate || getTodayISO()}`;
+
+    const effFee = (getEffectiveMonthlyFee(student) != null) ? getEffectiveMonthlyFee(student) : thisAmount;
+    const monthPayments = (state.feePayments || []).filter(p => p.studentId === student.id && p.month === payment.month);
+    const allMonthPayments = monthPayments.some(p => p.id && payment.id && p.id === payment.id)
+      ? monthPayments
+      : (monthPayments.length === 0 ? [payment] : [...monthPayments, payment]);
+
+    const totalPaid = allMonthPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+    const hasMultiplePayments = allMonthPayments.length > 1;
+    const diffFromThis = totalPaid !== thisAmount;
+    const showTotalPaidLine = hasMultiplePayments || diffFromThis;
+
+    const remainingBalance = Math.max(0, effFee - totalPaid);
+    const isFullyPaid = remainingBalance === 0;
+
+    const lines = [
+      greeting,
+      `${schoolName} — Fee Receipt 🧾`,
+      studentLine,
+      monthLine,
+      amountLine,
+      dateLine
+    ];
+
+    if (showTotalPaidLine) {
+      lines.push(`Total paid this month: Rs ${totalPaid.toLocaleString()} of Rs ${effFee.toLocaleString()}`);
+    }
+
+    if (isFullyPaid) {
+      lines.push('Fee fully paid. Thank you!');
+    } else {
+      lines.push(`Remaining balance: Rs ${remainingBalance.toLocaleString()}`);
+      lines.push('Thank you!');
+    }
+
+    lines.push(`— ${schoolName}`);
+
+    return lines.join('\n');
+  }
+
+  function getFeeReceiptWhatsAppUrl(payment, student) {
+    if (!payment) return '#';
+    if (!student) {
+      student = (state.students || []).find(s => s.id === payment.studentId);
+    }
+    const phone = student ? (student.whatsapp || student.parentPhone) : '';
+    const cleanPhone = sanitizePhoneForWhatsApp(phone);
+    if (!cleanPhone) return '#';
+    const text = generateFeeReceiptMessage(payment, student);
+    return `https://wa.me/${cleanPhone}?text=${encodeURIComponent(text)}`;
+  }
+
   let isFeeSetupEditing = false;
   let pendingDeleteFeePaymentId = null;
 
@@ -5810,9 +5889,15 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
           }
 
           let receiptBtn = '';
+          let waReceiptBtn = '';
           if (sPayments.length > 0) {
             const latestPayment = sPayments[sPayments.length - 1];
             receiptBtn = `<button type="button" class="btn btn-sm btn-subtle" onclick="openPrintReceipt('${latestPayment.id}')" title="Print Fee Receipt">🧾 Receipt</button>`;
+            const cleanPhone = sanitizePhoneForWhatsApp(s.whatsapp || s.parentPhone);
+            if (cleanPhone) {
+              const waReceiptUrl = getFeeReceiptWhatsAppUrl(latestPayment, s);
+              waReceiptBtn = `<a href="${waReceiptUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-subtle" title="Send WhatsApp Fee Receipt">💬 Receipt</a>`;
+            }
           }
 
           let remindBtn = '';
@@ -5845,6 +5930,7 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
               <div class="fee-student-actions">
                 ${recordBtn}
                 ${receiptBtn}
+                ${waReceiptBtn}
                 ${remindBtn}
               </div>
             </div>
@@ -5912,6 +5998,15 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
                     <span style="font-size: 0.78rem; color: var(--text-muted);">${escapeHtml(p.receivedBy || '')}</span>
                   </td>
                   <td style="text-align: right; white-space: nowrap;">
+                    ${(() => {
+                      const pStudent = (state.students || []).find(s => s.id === p.studentId);
+                      const pCleanPhone = pStudent ? sanitizePhoneForWhatsApp(pStudent.whatsapp || pStudent.parentPhone) : '';
+                      if (pCleanPhone) {
+                        const waUrl = getFeeReceiptWhatsAppUrl(p, pStudent);
+                        return `<a href="${waUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-subtle" title="Send WhatsApp Receipt" style="margin-right: 4px;">💬</a>`;
+                      }
+                      return '';
+                    })()}
                     <button type="button" class="btn btn-sm btn-subtle" onclick="openPrintReceipt('${p.id}')" title="Print Receipt">🧾</button>
                     <button type="button" class="btn btn-sm btn-danger" onclick="openDeleteFeePaymentModal('${p.id}')" title="Delete Payment" style="padding: 4px 8px; margin-left: 4px;">🗑️</button>
                   </td>
@@ -6247,6 +6342,8 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
   window.__handleConfirmSavePayment = handleConfirmSavePayment;
   window.__updateDashboardFeesStat = updateDashboardFeesStat;
   window.__saveSchoolFeeStructure = handleSaveFeeStructure;
+  window.__generateFeeReceiptMessage = generateFeeReceiptMessage;
+  window.__getFeeReceiptWhatsAppUrl = getFeeReceiptWhatsAppUrl;
 
   // Global window bindings for HTML onclick handlers
   window.openRecordPaymentModal = openRecordPaymentModal;
@@ -6254,6 +6351,8 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
   window.openDeleteFeePaymentModal = openDeleteFeePaymentModal;
   window.switchTab = switchTab;
   window.getFeeWhatsAppReminderUrl = getFeeWhatsAppReminderUrl;
+  window.generateFeeReceiptMessage = generateFeeReceiptMessage;
+  window.getFeeReceiptWhatsAppUrl = getFeeReceiptWhatsAppUrl;
   window.getCurrentMonthKey = getCurrentMonthKey;
   window.formatMonthHuman = formatMonthHuman;
   window.getEffectiveMonthlyFee = getEffectiveMonthlyFee;

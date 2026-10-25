@@ -2186,6 +2186,14 @@ h1, h2, h3, h4, h5, h6 {
     display: block !important;
   }
 
+  body.printing-fee-receipt #tab-reports {
+    display: none !important;
+  }
+
+  body.printing-fee-receipt #printableFeeReceipt {
+    display: block !important;
+  }
+
   .report-card-wrapper {
     background: transparent !important;
     padding: 0 !important;
@@ -3747,4 +3755,408 @@ h1, h2, h3, h4, h5, h6 {
   background: #B91C1C;
   border-color: #B91C1C;
   color: #FFFFFF;
+}
+
+
+/* ========================================================
+   FEES MODULE (M10) STYLES
+   ======================================================== */
+
+.no-screen {
+  display: none !important;
+}
+
+/* Fee Badge Pills */
+.badge-fee-paid {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #ECFDF5;
+  color: #047857;
+  border: 1px solid #A7F3D0;
+  font-weight: 700;
+  font-size: 0.78rem;
+  padding: 3px 8px;
+  border-radius: var(--radius-full, 9999px);
+  white-space: nowrap;
+}
+
+.badge-fee-partial {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #FFFBEB;
+  color: #B45309;
+  border: 1px solid #FDE68A;
+  font-weight: 700;
+  font-size: 0.78rem;
+  padding: 3px 8px;
+  border-radius: var(--radius-full, 9999px);
+  white-space: nowrap;
+}
+
+.badge-fee-unpaid {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #FEF2F2;
+  color: #B91C1C;
+  border: 1px solid #FECACA;
+  font-weight: 700;
+  font-size: 0.78rem;
+  padding: 3px 8px;
+  border-radius: var(--radius-full, 9999px);
+  white-space: nowrap;
+}
+
+/* Fee Structure Form */
+.fee-class-input-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: #F8FAFC;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-soft);
+}
+
+.fee-class-input-item label {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text-heading);
+}
+
+.fee-input-with-prefix {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.fee-input-prefix {
+  position: absolute;
+  left: 8px;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  font-weight: 600;
+  pointer-events: none;
+}
+
+.fee-input-with-prefix input {
+  padding-left: 28px;
+  font-size: 0.88rem;
+}
+
+/* Student Fee Cards */
+.fee-students-container {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.fee-student-card {
+  background: #FFFFFF;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  padding: 14px 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+  transition: border-color 0.15s ease;
+}
+
+.fee-student-card:hover {
+  border-color: var(--primary);
+}
+
+.fee-student-main {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+
+.fee-student-header-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.fee-student-name {
+  font-family: var(--font-heading);
+  font-weight: 700;
+  font-size: 0.98rem;
+  color: var(--text-heading);
+}
+
+.fee-student-meta {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.fee-student-status-row {
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.fee-student-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+/* Recent Payments Table / Cards */
+.fee-recent-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.fee-recent-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.84rem;
+}
+
+.fee-recent-table th {
+  background: #F8FAFC;
+  padding: 8px 12px;
+  text-align: left;
+  font-weight: 700;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-soft);
+  white-space: nowrap;
+}
+
+.fee-recent-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-soft);
+  color: var(--text-heading);
+  vertical-align: middle;
+}
+
+.fee-recent-table tr:last-child td {
+  border-bottom: none;
+}
+
+.fee-recent-table tr:hover {
+  background: #F8FAFC;
+}
+
+/* Printable Fee Receipt Styles */
+@media print {
+  body.printing-fee-receipt {
+    background: #FFFFFF !important;
+    padding: 0 !important;
+    color: #1E293B !important;
+  }
+
+  body.printing-fee-receipt .app-container {
+    max-width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  .printable-fee-receipt {
+    display: block !important;
+    width: 100% !important;
+    max-width: 650px !important;
+    margin: 0 auto !important;
+    padding: 15mm !important;
+    background: #FFFFFF !important;
+    color: #1E293B !important;
+    box-sizing: border-box !important;
+    page-break-inside: avoid !important;
+  }
+
+  .receipt-card-print {
+    border: 1.5px solid #CBD5E1;
+    border-radius: 8px;
+    padding: 16px 20px;
+    background: #FFFFFF;
+    position: relative;
+    border-top: 5px solid var(--primary, #0D9488);
+  }
+
+  .receipt-header-print {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 12px;
+  }
+
+  .receipt-logo-img {
+    width: 56px;
+    height: 56px;
+    object-fit: contain;
+    border-radius: 6px;
+  }
+
+  .receipt-header-text .rec-school-name {
+    font-size: 1.35rem;
+    font-weight: 800;
+    color: var(--primary, #0D9488) !important;
+    margin: 0 0 2px;
+  }
+
+  .receipt-header-text .rec-tagline {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #64748B;
+    margin-bottom: 2px;
+  }
+
+  .receipt-header-text .rec-contact {
+    font-size: 0.78rem;
+    color: #475569;
+  }
+
+  .receipt-divider-line {
+    height: 1px;
+    background: #E2E8F0;
+    margin: 12px 0;
+  }
+
+  .receipt-badge-title {
+    text-align: center;
+    margin-bottom: 12px;
+  }
+
+  .receipt-badge-title span {
+    display: inline-block;
+    padding: 3px 16px;
+    background: #F1F5F9;
+    color: #1E293B;
+    border: 1px solid #CBD5E1;
+    font-weight: 800;
+    letter-spacing: 1.5px;
+    font-size: 0.85rem;
+    border-radius: 4px;
+  }
+
+  .receipt-meta-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px 16px;
+    background: #F8FAFC;
+    border: 1px solid #E2E8F0;
+    border-radius: 6px;
+    padding: 10px 14px;
+    font-size: 0.85rem;
+    margin-bottom: 14px;
+  }
+
+  .receipt-meta-col > div {
+    margin-bottom: 4px;
+  }
+
+  .rec-lbl {
+    color: #64748B;
+    display: inline-block;
+    width: 105px;
+  }
+
+  .receipt-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 12px;
+    font-size: 0.88rem;
+  }
+
+  .receipt-table th {
+    background: #F1F5F9;
+    color: #1E293B;
+    padding: 8px 10px;
+    border: 1px solid #CBD5E1;
+    text-align: left;
+    font-weight: 700;
+  }
+
+  .receipt-table td {
+    padding: 10px;
+    border: 1px solid #CBD5E1;
+    vertical-align: top;
+  }
+
+  .receipt-words-box {
+    background: #F8FAFC;
+    border: 1px dashed #CBD5E1;
+    padding: 8px 12px;
+    border-radius: 4px;
+    font-size: 0.82rem;
+    margin-bottom: 24px;
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .receipt-footer-print {
+    margin-top: 20px;
+  }
+
+  .rec-thanks-note {
+    font-style: italic;
+    font-size: 0.85rem;
+    color: #475569;
+    margin-bottom: 30px;
+    text-align: left;
+  }
+
+  .rec-signatures-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 30px;
+  }
+
+  .rec-sig-block {
+    text-align: center;
+    width: 200px;
+  }
+
+  .rec-sig-line {
+    border-bottom: 1px solid #475569;
+    height: 1px;
+    margin-bottom: 6px;
+  }
+
+  .rec-sig-title {
+    font-size: 0.78rem;
+    color: #475569;
+    font-weight: 600;
+  }
+}
+
+/* Mobile Responsiveness for Fees Module (360px) */
+@media (max-width: 640px) {
+  .fee-student-card {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .fee-student-actions {
+    justify-content: flex-start;
+    border-top: 1px solid var(--border-soft);
+    padding-top: 10px;
+    width: 100%;
+  }
+
+  .fee-student-actions .btn {
+    flex: 1 1 auto;
+    text-align: center;
+    justify-content: center;
+  }
 }

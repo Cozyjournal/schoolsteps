@@ -3809,6 +3809,22 @@ h1, h2, h3, h4, h5, h6 {
   white-space: nowrap;
 }
 
+.badge-custom,
+.badge-subtle {
+  display: inline-flex;
+  align-items: center;
+  background: #F1F5F9;
+  color: #475569;
+  border: 1px solid #CBD5E1;
+  font-weight: 700;
+  font-size: 0.72rem;
+  padding: 2px 7px;
+  border-radius: var(--radius-full, 9999px);
+  white-space: nowrap;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
 /* Fee Structure Form */
 .fee-class-input-item {
   display: flex;

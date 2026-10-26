@@ -842,121 +842,138 @@
           </div>
         </div>
 
-        <!-- Active PTM Event Selector & Details Card -->
-        <div class="card">
-          <div class="card-header-bar">
-            <div>
-              <h3 class="card-title" id="ptmActiveTitle">Parent-Teacher Meeting</h3>
-              <p class="card-subtitle" id="ptmActiveSubtitle">Select or create a PTM session to manage invites and RSVPs</p>
+        <!-- PTM Empty State (shown ONLY when zero events exist) -->
+        <div class="card empty-state hidden" id="ptmEmptyState" style="text-align: center; padding: 48px 24px;">
+          <div style="font-size: 2.8rem; margin-bottom: 12px;">🤝</div>
+          <h3 class="card-title" style="margin-bottom: 8px;">No PTM Events Scheduled</h3>
+          <p class="card-subtitle" style="max-width: 480px; margin: 0 auto 20px auto; font-size: 0.95rem;">
+            No Parent-Teacher Meetings scheduled yet. Click "+ Create PTM" to set up a meeting, allocate slots, and invite parents via WhatsApp.
+          </p>
+          <button type="button" class="btn btn-primary" onclick="document.getElementById('btnOpenCreatePtm')?.click()">
+            <span class="icon">➕</span>
+            <span>Create PTM Event</span>
+          </button>
+        </div>
+
+        <!-- Active PTM Event Container (shown ONLY when at least 1 event exists) -->
+        <div id="ptmActiveView">
+          <!-- Active PTM Event Selector & Details Card -->
+          <div class="card" id="ptmEventDetailsCard">
+            <div class="card-header-bar">
+              <div>
+                <h3 class="card-title" id="ptmActiveTitle">Parent-Teacher Meeting</h3>
+                <p class="card-subtitle" id="ptmActiveSubtitle">Select or create a PTM session to manage invites and RSVPs</p>
+              </div>
+              <div class="ptm-event-picker-wrap">
+                <select id="ptmEventSelect" class="form-select form-select-sm">
+                  <!-- Populated dynamically -->
+                </select>
+              </div>
             </div>
-            <div class="ptm-event-picker-wrap">
-              <select id="ptmEventSelect" class="form-select form-select-sm">
-                <!-- Populated dynamically -->
-              </select>
+
+            <!-- PTM Event Metadata Box -->
+            <div class="ptm-meta-banner" id="ptmMetaBanner">
+              <div class="ptm-meta-item">
+                <span class="ptm-meta-icon">📅</span>
+                <div>
+                  <strong class="ptm-meta-label">Date</strong>
+                  <span class="ptm-meta-value" id="ptmEventDateText">—</span>
+                </div>
+              </div>
+              <div class="ptm-meta-item">
+                <span class="ptm-meta-icon">⏰</span>
+                <div>
+                  <strong class="ptm-meta-label">Time Window</strong>
+                  <span class="ptm-meta-value" id="ptmEventTimeText">—</span>
+                </div>
+              </div>
+              <div class="ptm-meta-item">
+                <span class="ptm-meta-icon">🏫</span>
+                <div>
+                  <strong class="ptm-meta-label">Venue / Room</strong>
+                  <span class="ptm-meta-value" id="ptmEventVenueText">—</span>
+                </div>
+              </div>
+              <div class="ptm-meta-item">
+                <span class="ptm-meta-icon">🎒</span>
+                <div>
+                  <strong class="ptm-meta-label">Classes</strong>
+                  <span class="ptm-meta-value" id="ptmEventClassesText">—</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- PTM Action Row for Edit/Delete -->
+            <div class="ptm-card-footer-actions">
+              <div class="ptm-note-preview" id="ptmEventNoteText">
+                <em>Note: Please bring the student diary.</em>
+              </div>
+              <div class="ptm-btn-group">
+                <button class="btn btn-subtle btn-sm" id="btnEditCurrentPtm">
+                  <span class="icon">✏️</span> Edit Event
+                </button>
+                <button class="btn btn-subtle btn-sm btn-logout" id="btnDeleteCurrentPtm">
+                  <span class="icon">🗑️</span> Delete Event
+                </button>
+              </div>
             </div>
           </div>
 
-          <!-- PTM Event Metadata Box -->
-          <div class="ptm-meta-banner" id="ptmMetaBanner">
-            <div class="ptm-meta-item">
-              <span class="ptm-meta-icon">📅</span>
-              <div>
-                <strong class="ptm-meta-label">Date</strong>
-                <span class="ptm-meta-value" id="ptmEventDateText">Saturday, Oct 25, 2026</span>
-              </div>
+          <!-- RSVP Stats Grid -->
+          <div class="stats-grid" id="ptmStatsGrid">
+            <div class="stat-card">
+              <div class="stat-val" id="statPtmTotal">0</div>
+              <div class="stat-lbl">Total Invited</div>
             </div>
-            <div class="ptm-meta-item">
-              <span class="ptm-meta-icon">⏰</span>
-              <div>
-                <strong class="ptm-meta-label">Time Window</strong>
-                <span class="ptm-meta-value" id="ptmEventTimeText">09:00 AM – 01:00 PM</span>
-              </div>
+            <div class="stat-card">
+              <div class="stat-val stat-val-green" id="statPtmYes">0</div>
+              <div class="stat-lbl">Attending (Yes)</div>
             </div>
-            <div class="ptm-meta-item">
-              <span class="ptm-meta-icon">🏫</span>
-              <div>
-                <strong class="ptm-meta-label">Venue / Room</strong>
-                <span class="ptm-meta-value" id="ptmEventVenueText">Main Campus & Classrooms</span>
-              </div>
+            <div class="stat-card">
+              <div class="stat-val stat-val-rose" id="statPtmNo">0</div>
+              <div class="stat-lbl">Declined (No)</div>
             </div>
-            <div class="ptm-meta-item">
-              <span class="ptm-meta-icon">🎒</span>
-              <div>
-                <strong class="ptm-meta-label">Classes</strong>
-                <span class="ptm-meta-value" id="ptmEventClassesText">Class 3, Class 4</span>
-              </div>
+            <div class="stat-card">
+              <div class="stat-val stat-val-gold" id="statPtmMaybe">0</div>
+              <div class="stat-lbl">Tentative (Maybe)</div>
             </div>
           </div>
 
-          <!-- PTM Action Row for Edit/Delete -->
-          <div class="ptm-card-footer-actions">
-            <div class="ptm-note-preview" id="ptmEventNoteText">
-              <em>Note: Please bring the student diary.</em>
+          <!-- Parent Invite & RSVP Roster Card -->
+          <div class="card" id="ptmRosterCard">
+            <div class="card-header-bar">
+              <div>
+                <h3 class="card-title">👨‍👩‍👧 Parent Invites & RSVP Tracking</h3>
+                <p class="card-subtitle">Send WhatsApp invite links and record parent responses (Yes / No / Maybe)</p>
+              </div>
+              <div class="dispatch-filter-pills">
+                <button class="badge-filter-btn active" data-ptm-filter="ALL">All</button>
+                <button class="badge-filter-btn" data-ptm-filter="YES">Yes</button>
+                <button class="badge-filter-btn" data-ptm-filter="NO">No</button>
+                <button class="badge-filter-btn" data-ptm-filter="MAYBE">Maybe</button>
+                <button class="badge-filter-btn" data-ptm-filter="PENDING">Pending</button>
+              </div>
             </div>
-            <div class="ptm-btn-group">
-              <button class="btn btn-subtle btn-sm" id="btnEditCurrentPtm">
-                <span class="icon">✏️</span> Edit Event
-              </button>
-              <button class="btn btn-subtle btn-sm btn-logout" id="btnDeleteCurrentPtm">
-                <span class="icon">🗑️</span> Delete Event
-              </button>
+
+            <div class="table-responsive">
+              <table class="data-table" id="ptmInviteTable">
+                <thead>
+                  <tr>
+                    <th>Student</th>
+                    <th>Class</th>
+                    <th>Parent & Contact</th>
+                    <th>Slot Time</th>
+                    <th class="text-center">RSVP Status</th>
+                    <th class="text-right">WhatsApp Invite</th>
+                  </tr>
+                </thead>
+                <tbody id="ptmInviteTableBody">
+                  <!-- Injected via JavaScript -->
+                </tbody>
+              </table>
             </div>
           </div>
         </div>
-
-        <!-- RSVP Stats Grid -->
-        <div class="stats-grid">
-          <div class="stat-card">
-            <div class="stat-val" id="statPtmTotal">0</div>
-            <div class="stat-lbl">Total Invited</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-val stat-val-green" id="statPtmYes">0</div>
-            <div class="stat-lbl">Attending (Yes)</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-val stat-val-rose" id="statPtmNo">0</div>
-            <div class="stat-lbl">Declined (No)</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-val stat-val-gold" id="statPtmMaybe">0</div>
-            <div class="stat-lbl">Tentative (Maybe)</div>
-          </div>
-        </div>
-
-        <!-- Parent Invite & RSVP Roster Card -->
-        <div class="card">
-          <div class="card-header-bar">
-            <div>
-              <h3 class="card-title">👨‍👩‍👧 Parent Invites & RSVP Tracking</h3>
-              <p class="card-subtitle">Send WhatsApp invite links and record parent responses (Yes / No / Maybe)</p>
-            </div>
-            <div class="dispatch-filter-pills">
-              <button class="badge-filter-btn active" data-ptm-filter="ALL">All</button>
-              <button class="badge-filter-btn" data-ptm-filter="YES">Yes</button>
-              <button class="badge-filter-btn" data-ptm-filter="NO">No</button>
-              <button class="badge-filter-btn" data-ptm-filter="MAYBE">Maybe</button>
-              <button class="badge-filter-btn" data-ptm-filter="PENDING">Pending</button>
-            </div>
-          </div>
-
-          <div class="table-responsive">
-            <table class="data-table" id="ptmInviteTable">
-              <thead>
-                <tr>
-                  <th>Student</th>
-                  <th>Class</th>
-                  <th>Parent & Contact</th>
-                  <th>Slot Time</th>
-                  <th class="text-center">RSVP Status</th>
-                  <th class="text-right">WhatsApp Invite</th>
-                </tr>
-              </thead>
-              <tbody id="ptmInviteTableBody">
-                <!-- Injected via JavaScript -->
-              </tbody>
-            </table>
-          </div>
         </div>
       </section>
 

@@ -3980,23 +3980,34 @@ Status: ${res.anyFailed ? 'PROMOTED ON TRIAL' : 'PASSED'}
 
   function renderPtmModule() {
     const select = document.getElementById('ptmEventSelect');
-    if (!select) return;
+    const emptyStateEl = document.getElementById('ptmEmptyState');
+    const activeViewEl = document.getElementById('ptmActiveView');
+    const copyReminderBtn = document.getElementById('btnCopyPtmReminder');
 
-    if (!state.ptmEvents || state.ptmEvents.length === 0) {
-      select.innerHTML = '<option value="">No PTM Events Scheduled</option>';
-      const titleEl = document.getElementById('ptmActiveTitle');
-      if (titleEl) titleEl.textContent = 'No PTM Events Scheduled';
-      const container = document.getElementById('ptmSlotsContainer');
-      if (container) container.innerHTML = '<div class="empty-state"><p>No PTM meetings scheduled yet. Click "+ Create PTM Event" to set up a meeting.</p></div>';
+    const hasEvents = Array.isArray(state.ptmEvents) && state.ptmEvents.length > 0;
+
+    if (!hasEvents) {
+      if (emptyStateEl) emptyStateEl.classList.remove('hidden');
+      if (activeViewEl) activeViewEl.classList.add('hidden');
+      if (copyReminderBtn) copyReminderBtn.disabled = true;
+      if (select) {
+        select.innerHTML = '<option value="">No PTM Events Scheduled</option>';
+      }
       return;
     }
 
+    if (emptyStateEl) emptyStateEl.classList.add('hidden');
+    if (activeViewEl) activeViewEl.classList.remove('hidden');
+    if (copyReminderBtn) copyReminderBtn.disabled = false;
+
     // Populate PTM select dropdown
-    select.innerHTML = state.ptmEvents.map(ev => `
-      <option value="${ev.id}" ${ev.id === state.activePtmId ? 'selected' : ''}>
-        ${escapeHtml(ev.title)} (${formatDateHuman(ev.date)})
-      </option>
-    `).join('');
+    if (select) {
+      select.innerHTML = state.ptmEvents.map(ev => `
+        <option value="${ev.id}" ${ev.id === state.activePtmId ? 'selected' : ''}>
+          ${escapeHtml(ev.title)} (${formatDateHuman(ev.date)})
+        </option>
+      `).join('');
+    }
 
     const activeEvent = state.ptmEvents.find(ev => ev.id === state.activePtmId) || state.ptmEvents[0];
     if (!activeEvent) return;
@@ -4228,12 +4239,8 @@ Please confirm your attendance (Yes / No).
 
   function handleDeletePtm(id) {
     if (!id) return;
-    if (state.ptmEvents.length <= 1) {
-      showToast('Cannot delete the only PTM event.', 'warn');
-      return;
-    }
     if (confirm('Are you sure you want to delete this PTM event?')) {
-      state.ptmEvents = state.ptmEvents.filter(ev => ev.id !== id);
+      state.ptmEvents = (state.ptmEvents || []).filter(ev => ev.id !== id);
       state.activePtmId = state.ptmEvents[0]?.id || null;
       saveStorage(STORAGE_KEYS.PTM_EVENTS, state.ptmEvents);
       if (FirestoreDB.isReady()) {
@@ -4245,9 +4252,13 @@ Please confirm your attendance (Yes / No).
   }
 
   function handleCopyPtmReminder() {
-    const activeEvent = state.ptmEvents.find(ev => ev.id === state.activePtmId);
-    const dateStr = activeEvent ? formatDateHuman(activeEvent.date) : 'Saturday';
-    const venueStr = activeEvent ? activeEvent.venue : 'Main Campus';
+    const activeEvent = (state.ptmEvents || []).find(ev => ev.id === state.activePtmId);
+    if (!activeEvent) {
+      showToast('No active PTM event to copy reminder for.', 'warn');
+      return;
+    }
+    const dateStr = formatDateHuman(activeEvent.date);
+    const venueStr = activeEvent.venue || 'Main Campus';
 
     const reminderMsg = `Assalam-o-Alaikum Dear Parents!
 Reminder: The Parent-Teacher Meeting (PTM) is scheduled for ${dateStr} (${activeEvent?.startTime || '09:00 AM'} to ${activeEvent?.endTime || '01:00 PM'}) at ${venueStr}.
@@ -6380,16 +6391,16 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
     } catch (e) {
       console.warn('userHeader update warning:', e);
     }
-    renderClassDropdowns();
-    renderStudentsList();
-    renderAttendanceRoster();
-    renderMarksEntrySheet();
-    renderReportCard();
-    renderDispatchRoster();
-    renderPtmModule();
-    renderCommsModule();
-    renderFeesModule();
-    updateDashboardFeesStat();
+    try { renderClassDropdowns(); } catch (e) { console.warn('renderClassDropdowns warning:', e); }
+    try { renderStudentsList(); } catch (e) { console.warn('renderStudentsList warning:', e); }
+    try { renderAttendanceRoster(); } catch (e) { console.warn('renderAttendanceRoster warning:', e); }
+    try { renderMarksEntrySheet(); } catch (e) { console.warn('renderMarksEntrySheet warning:', e); }
+    try { renderReportCard(); } catch (e) { console.warn('renderReportCard warning:', e); }
+    try { renderDispatchRoster(); } catch (e) { console.warn('renderDispatchRoster warning:', e); }
+    try { renderPtmModule(); } catch (e) { console.warn('renderPtmModule warning:', e); }
+    try { renderCommsModule(); } catch (e) { console.warn('renderCommsModule warning:', e); }
+    try { renderFeesModule(); } catch (e) { console.warn('renderFeesModule warning:', e); }
+    try { updateDashboardFeesStat(); } catch (e) { console.warn('updateDashboardFeesStat warning:', e); }
   }
 
   function initApp() {
@@ -6433,6 +6444,13 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
   window.__FirestoreDB = FirestoreDB;
   window.__PLATFORM_PAYMENT = PLATFORM_PAYMENT;
   window.__state = state;
+  window.__renderPtmModule = renderPtmModule;
+  window.__handleOpenCreatePtm = handleOpenCreatePtm;
+  window.__handleDeletePtm = handleDeletePtm;
+  window.__handleSavePtm = handleSavePtm;
+  window.renderPtmModule = renderPtmModule;
+  window.handleOpenCreatePtm = handleOpenCreatePtm;
+  window.handleDeletePtm = handleDeletePtm;
 
   function start() {
     bindAuthEvents();

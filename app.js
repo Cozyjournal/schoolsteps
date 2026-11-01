@@ -5577,10 +5577,9 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
     const totalPaid = allMonthPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
     const hasMultiplePayments = allMonthPayments.length > 1;
     const diffFromThis = totalPaid !== thisAmount;
-    const showTotalPaidLine = hasMultiplePayments || diffFromThis;
-
     const remainingBalance = Math.max(0, effFee - totalPaid);
     const isFullyPaid = remainingBalance === 0;
+    const showTotalPaidLine = hasMultiplePayments || diffFromThis || remainingBalance > 0;
 
     const lines = [
       greeting,

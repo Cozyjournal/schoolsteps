@@ -196,6 +196,10 @@
           <span class="tab-icon">💰</span>
           <span class="tab-text">Fees</span>
         </button>
+        <button class="tab-btn" data-tab="tab-syllabus" role="tab" aria-selected="false">
+          <span class="tab-icon">📚</span>
+          <span class="tab-text">Syllabus</span>
+        </button>
         <button class="tab-btn hidden" id="tabBtnPlatform" data-tab="tab-platform" role="tab" aria-selected="false">
           <span class="tab-icon">🛠</span>
           <span class="tab-text">Platform</span>
@@ -1291,6 +1295,87 @@
       </section>
 
       <!-- ==============================================
+           MODULE 8: Syllabus Manager (M8)
+           ============================================== -->
+      <section id="tab-syllabus" class="tab-panel">
+        <div class="panel-header-wrap">
+          <div>
+            <h2 class="panel-title">📚 Academic Syllabus Manager (M8)</h2>
+            <p class="panel-subtitle">Manage subject curriculum, monthly topics, and track teaching progress</p>
+          </div>
+          <div class="panel-actions">
+            <button type="button" class="btn btn-primary" id="btnSyllabusAddSubject">
+              <span class="icon">➕</span>
+              <span class="btn-label">Add Subject</span>
+            </button>
+            <button type="button" class="btn btn-subtle" id="btnPrintSyllabus" title="Print or Save PDF Syllabus">
+              <span class="icon">🖨️</span>
+              <span class="btn-label">Print / PDF</span>
+            </button>
+            <a href="#" id="btnShareSyllabusWhatsApp" target="_blank" rel="noopener noreferrer" class="btn btn-subtle" title="Share Syllabus via WhatsApp">
+              <span class="icon">💬</span>
+              <span class="btn-label">Share via WhatsApp</span>
+            </a>
+          </div>
+        </div>
+
+        <!-- Class & Section Selector Card -->
+        <div class="card" style="margin-bottom: 16px;">
+          <div class="syllabus-controls-grid">
+            <div class="form-group" style="margin-bottom: 0;">
+              <label for="syllabusClassSelect" class="form-label">Select Class</label>
+              <select id="syllabusClassSelect" class="form-select form-select-sm">
+                <!-- Populated dynamically with Classes 1 - 10 -->
+              </select>
+            </div>
+            <div class="form-group" style="margin-bottom: 0;">
+              <label for="syllabusSectionSelect" class="form-label">Section</label>
+              <select id="syllabusSectionSelect" class="form-select form-select-sm">
+                <option value="ALL">All Sections</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Empty State (When no syllabus created yet for selected class) -->
+        <div id="syllabusEmptyState" class="card empty-state hidden" style="text-align: center; padding: 48px 24px;">
+          <div style="font-size: 2.8rem; margin-bottom: 12px;">📚</div>
+          <h3 class="card-title" id="syllabusEmptyStateTitle" style="margin-bottom: 8px;">No Syllabus Created</h3>
+          <p class="card-subtitle" id="syllabusEmptyStateText" style="max-width: 480px; margin: 0 auto 20px auto; font-size: 0.95rem;">
+            No syllabus has been set up for this class yet. Click "Create Syllabus" to define subjects, books, and monthly topics.
+          </p>
+          <button type="button" class="btn btn-primary" id="btnCreateSyllabus">
+            <span class="icon">➕</span>
+            <span>Create Syllabus</span>
+          </button>
+        </div>
+
+        <!-- Main Syllabus Content View (When syllabus exists for selected class) -->
+        <div id="syllabusMainView" class="hidden">
+          <!-- Class Overall Progress Summary Card -->
+          <div class="card" style="margin-bottom: 16px;">
+            <div class="syllabus-class-summary-header">
+              <div>
+                <h3 class="card-title" id="sylClassTitleDisplay">Class 1 Syllabus</h3>
+                <p class="card-subtitle" id="sylClassSubtitleDisplay">0 Subjects • 0 Topics</p>
+              </div>
+              <div class="syllabus-class-progress-badge">
+                <span id="sylClassProgressPercent" class="badge badge-subtle" style="font-size: 0.95rem; font-weight: 700;">0% Completed</span>
+              </div>
+            </div>
+            <div class="sync-progress-bar-wrap" style="margin-top: 12px; margin-bottom: 0; height: 10px; border-radius: 9999px;">
+              <div id="sylClassProgressBar" class="sync-progress-bar" style="width: 0%; border-radius: 9999px;"></div>
+            </div>
+          </div>
+
+          <!-- Subjects Container -->
+          <div id="syllabusSubjectsContainer" class="syllabus-subjects-list">
+            <!-- Populated dynamically -->
+          </div>
+        </div>
+      </section>
+
+      <!-- ==============================================
            PLATFORM SUPER ADMIN MODULE
            ============================================== -->
       <section id="tab-platform" class="tab-panel">
@@ -1410,6 +1495,10 @@
       <button class="mobile-tab-btn" data-tab="tab-fees">
         <span class="icon">💰</span>
         <span class="label">Fees</span>
+      </button>
+      <button class="mobile-tab-btn" data-tab="tab-syllabus">
+        <span class="icon">📚</span>
+        <span class="label">Syllabus</span>
       </button>
       <button class="mobile-tab-btn hidden" id="mobileTabBtnPlatform" data-tab="tab-platform">
         <span class="icon">🛠</span>
@@ -2239,6 +2328,106 @@
     </div>
   </div>
 
+
+  <!-- Add / Edit Subject Modal (M8) -->
+  <div class="modal-overlay hidden" id="syllabusSubjectModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 class="modal-title" id="syllabusSubjectModalTitle">Add Subject</h3>
+        <button type="button" class="btn-close" id="btnCloseSyllabusSubjectModal">✕</button>
+      </div>
+      <form id="syllabusSubjectForm" class="modal-body" novalidate>
+        <input type="hidden" id="sylSubjectEditId" value="" />
+        <div class="form-group">
+          <label for="sylSubjectNameInput" class="form-label required">Subject Name</label>
+          <input type="text" id="sylSubjectNameInput" class="form-input" placeholder="e.g. Mathematics, Science, Urdu, English" required />
+        </div>
+        <div class="form-group">
+          <label for="sylSubjectBookInput" class="form-label">Book Name (Optional)</label>
+          <input type="text" id="sylSubjectBookInput" class="form-input" placeholder="e.g. Oxford Countdown 4, Gohar Science" />
+        </div>
+        <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 8px; padding-top: 12px;">
+          <button type="button" class="btn btn-subtle" id="btnCancelSyllabusSubject">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="btnSaveSyllabusSubject">Save Subject</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Add / Edit Topic Modal (M8) -->
+  <div class="modal-overlay hidden" id="syllabusTopicModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 class="modal-title" id="syllabusTopicModalTitle">Add Topic</h3>
+        <button type="button" class="btn-close" id="btnCloseSyllabusTopicModal">✕</button>
+      </div>
+      <form id="syllabusTopicForm" class="modal-body" novalidate>
+        <input type="hidden" id="sylTopicSubjectId" value="" />
+        <input type="hidden" id="sylTopicEditId" value="" />
+        <div class="form-group">
+          <label for="sylTopicTitleInput" class="form-label required">Topic / Chapter Title</label>
+          <input type="text" id="sylTopicTitleInput" class="form-input" placeholder="e.g. Chapter 1: Whole Numbers & Operations" required />
+        </div>
+        <div class="form-group">
+          <label for="sylTopicMonthInput" class="form-label required">Month / Pacing (Free text)</label>
+          <input type="text" id="sylTopicMonthInput" class="form-input" placeholder="e.g. April, May, Term 1, Week 1" required />
+        </div>
+        <div class="form-group">
+          <label class="checkbox-pill" style="cursor: pointer; display: inline-flex; align-items: center; gap: 8px;">
+            <input type="checkbox" id="sylTopicCompletedInput" />
+            <span>Mark topic as completed</span>
+          </label>
+        </div>
+        <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 8px; padding-top: 12px;">
+          <button type="button" class="btn btn-subtle" id="btnCancelSyllabusTopic">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="btnSaveSyllabusTopic">Save Topic</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Delete Subject/Topic Confirmation Modal (M8) -->
+  <div class="modal-overlay hidden" id="syllabusDeleteModal">
+    <div class="modal-card" style="max-width: 440px;">
+      <div class="modal-header">
+        <h3 class="modal-title" id="syllabusDeleteModalTitle">Confirm Delete</h3>
+        <button type="button" class="btn-close" id="btnCloseSyllabusDeleteModal">✕</button>
+      </div>
+      <div class="modal-body">
+        <p id="syllabusDeleteModalMessage" style="font-size: 0.92rem; color: var(--text-heading); margin-bottom: 0;">
+          Are you sure you want to delete this item?
+        </p>
+      </div>
+      <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 8px; padding: 12px 20px;">
+        <button type="button" class="btn btn-subtle" id="btnCancelSyllabusDelete">Cancel</button>
+        <button type="button" class="btn btn-danger" id="btnConfirmSyllabusDelete">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Printable Syllabus Document (Only visible when printing syllabus) -->
+  <div id="printableSyllabus" class="printable-syllabus no-screen">
+    <div class="syllabus-card-print">
+      <div class="syllabus-header-print">
+        <div class="syllabus-logo-wrap">
+          <img id="sylPrintLogo" src="icon.svg" alt="Logo" class="syllabus-logo-img" />
+        </div>
+        <div class="syllabus-header-text">
+          <h2 id="sylPrintSchoolName" class="syl-school-name">School Name</h2>
+          <div id="sylPrintTagline" class="syl-tagline">Tagline / Motto</div>
+          <div id="sylPrintContact" class="syl-contact">Address | Phone</div>
+        </div>
+      </div>
+      <div class="syl-title-bar">
+        <h3>ACADEMIC SYLLABUS</h3>
+        <div id="sylPrintMeta" class="syl-meta">Class: Class 4 | All Sections</div>
+        <div id="sylPrintProgress" class="syl-progress-line">Overall Progress: 50% (2 of 4 topics completed)</div>
+      </div>
+      <div id="sylPrintBody" class="syl-print-body">
+        <!-- Injected via JavaScript -->
+      </div>
+    </div>
+  </div>
 
 </body>
 </html>

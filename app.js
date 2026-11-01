@@ -133,7 +133,8 @@
     DISPATCH_LOG: 'schoolsteps_dispatch_log_v1',
     PTM_EVENTS: 'schoolsteps_ptm_events_v1',
     CALL_LOGS: 'schoolsteps_call_logs_v1',
-    FEES: 'schoolsteps_fees_v1'
+    FEES: 'schoolsteps_fees_v1',
+    SYLLABUS: 'schoolsteps_syllabus_v1'
   };
 
   function getUserRole(email) {
@@ -345,7 +346,10 @@
     feePayments: [],
     feeSelectedMonth: '',
     feeFilterStatus: 'ALL',
-    feeFilterClass: 'ALL'
+    feeFilterClass: 'ALL',
+    syllabi: [],
+    syllabusSelectedClass: 'Class 1',
+    syllabusSelectedSection: 'ALL'
   };
 
   // ========================================================
@@ -1448,6 +1452,7 @@
           ptmSnap,
           callSnap,
           feePaymentsSnap,
+          syllabiSnap,
           schoolSnap
         ] = await Promise.all([
           db.collection('students').where('schoolId', '==', state.currentSchoolId).get(),
@@ -1463,6 +1468,13 @@
             .get()
             .catch(err => {
               console.warn('feePayments load warning:', err);
+              return { docs: [] };
+            }),
+          db.collection('syllabi')
+            .where('schoolId', '==', state.currentSchoolId)
+            .get()
+            .catch(err => {
+              console.warn('syllabi load warning:', err);
               return { docs: [] };
             }),
           db.collection('schools').doc(state.currentSchoolId).get()
@@ -1571,6 +1583,18 @@
             };
           });
           saveStorage(STORAGE_KEYS.FEES, state.feePayments);
+        }
+
+        // 7c. Syllabi
+        if (syllabiSnap && syllabiSnap.docs) {
+          state.syllabi = syllabiSnap.docs.map(doc => {
+            const data = doc.data();
+            return {
+              id: data.id || doc.id,
+              ...data
+            };
+          });
+          saveStorage(STORAGE_KEYS.SYLLABUS, state.syllabi);
         }
 
         // 8. School Profile & Billing Sync
@@ -1980,6 +2004,33 @@
       });
     },
 
+    async saveSyllabus(syllabus) {
+      if (!checkSubscriptionWritable('Save Syllabus')) return false;
+      if (!state.currentSchoolId || !db) return false;
+      return this.writeWithRetry(`Save Syllabus (${syllabus.className})`, async () => {
+        const cleanClass = (syllabus.className || 'Class 1').replace(/[^a-zA-Z0-9]/g, '_');
+        const cleanSec = (syllabus.section || 'ALL').replace(/[^a-zA-Z0-9]/g, '_');
+        const docId = syllabus.id || `${state.currentSchoolId}_syl_${cleanClass}_${cleanSec}`;
+        const data = {
+          ...syllabus,
+          id: docId,
+          schoolId: state.currentSchoolId,
+          updatedAt: new Date().toISOString()
+        };
+        await db.collection('syllabi').doc(docId).set(data, { merge: true });
+        return data;
+      });
+    },
+
+    async deleteSyllabus(id) {
+      if (!checkSubscriptionWritable('Delete Syllabus')) return false;
+      if (!state.currentSchoolId || !db) return false;
+      return this.writeWithRetry('Delete Syllabus', async () => {
+        await db.collection('syllabi').doc(id).delete();
+        return true;
+      });
+    },
+
     async saveUser(email, role, schoolName, schoolId) {
       if (!email || !db) return;
       return this.writeWithRetry('Save User Role', async () => {
@@ -2015,6 +2066,9 @@
     state.feeSelectedMonth = getCurrentMonthKey();
     state.feeFilterStatus = 'ALL';
     state.feeFilterClass = 'ALL';
+    state.syllabi = loadStorage(STORAGE_KEYS.SYLLABUS, []);
+    state.syllabusSelectedClass = state.syllabusSelectedClass || 'Class 1';
+    state.syllabusSelectedSection = state.syllabusSelectedSection || 'ALL';
   }
 
   function getTodayISO() {
@@ -2157,6 +2211,8 @@
       renderCommsModule();
     } else if (tabId === 'tab-fees') {
       renderFeesModule();
+    } else if (tabId === 'tab-syllabus') {
+      renderSyllabusModule();
     }
     renderProFeatureLock();
   }
@@ -4542,6 +4598,7 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
 
     // Escape and backdrop click for Subscription Modal
     bindFeesEvents();
+    bindSyllabusEvents();
 
     const subModal = document.getElementById('subscriptionModal');
     subModal?.addEventListener('click', (e) => {
@@ -6200,7 +6257,7 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
       return;
     }
 
-    const schoolName = (state.currentSchool && state.currentSchool.name) || state.profile?.name || 'SchoolSteps';
+    const schoolName = (state.currentSchool && (state.currentSchool.schoolName || state.currentSchool.name)) || state.profile?.name || 'SchoolSteps';
     const tagline = state.profile.tagline || state.profile.motto || (state.currentSchool && (state.currentSchool.tagline || state.currentSchool.motto)) || '';
     const brandColor = state.profile.brandColor || (state.currentSchool && state.currentSchool.brandColor) || '#0D9488';
     const logoSrc = state.profile.logoData || (state.currentSchool && state.currentSchool.logoData) || 'icon.svg';
@@ -6369,6 +6426,749 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
   window.__getEffectiveMonthlyFee = getEffectiveMonthlyFee;
 
   // ========================================================
+  // MODULE 8: Syllabus Manager (M8)
+  // ========================================================
+  let pendingDeleteSyllabusItem = null; // { type: 'subject'|'topic', syllabusId, subjectId, topicId, title }
+
+  function getCurrentSyllabus() {
+    const cls = state.syllabusSelectedClass || 'Class 1';
+    const sec = state.syllabusSelectedSection || 'ALL';
+    return (state.syllabi || []).find(s =>
+      s.className === cls &&
+      (s.section === sec || s.section === 'ALL' || !s.section)
+    );
+  }
+
+  function generateSyllabusWhatsAppMessage(className, section) {
+    const schoolName = (state.currentSchool && (state.currentSchool.schoolName || state.currentSchool.name)) || state.profile?.name || 'SchoolSteps';
+    const classSec = [className, (section && section !== 'ALL') ? `Section ${section}` : ''].filter(Boolean).join(' ');
+    const syllabus = (state.syllabi || []).find(s => s.className === className && (s.section === section || s.section === 'ALL' || !s.section));
+    let details = '';
+    if (syllabus && syllabus.subjects && syllabus.subjects.length > 0) {
+      let totalClassTopics = 0;
+      let totalClassCompleted = 0;
+      const subLines = syllabus.subjects.map(sub => {
+        const total = (sub.topics || []).length;
+        const done = (sub.topics || []).filter(t => t.completed).length;
+        totalClassTopics += total;
+        totalClassCompleted += done;
+        const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+        return `• ${sub.name}: ${pct}% (${done}/${total} topics)`;
+      });
+      const overallPct = totalClassTopics > 0 ? Math.round((totalClassCompleted / totalClassTopics) * 100) : 0;
+      details = `\nProgress: ${overallPct}% completed\n` + subLines.join('\n');
+    }
+    return `Assalam-o-Alaikum,
+This is ${schoolName}. The academic syllabus for ${classSec} is now available.${details ? '\n' + details : ''}
+Please review the syllabus and schedule to support your child's learning.
+— ${schoolName}`;
+  }
+
+  function getSyllabusWhatsAppUrl(className, section) {
+    const text = generateSyllabusWhatsAppMessage(className, section);
+    const studentsInClass = (state.students || []).filter(s => s.className === className && s.status === 'Active');
+    let cleanPhone = '';
+    for (const s of studentsInClass) {
+      cleanPhone = sanitizePhoneForWhatsApp(s.whatsapp || s.parentPhone);
+      if (cleanPhone) break;
+    }
+    if (cleanPhone) {
+      return `https://wa.me/${cleanPhone}?text=${encodeURIComponent(text)}`;
+    }
+    return `https://wa.me/?text=${encodeURIComponent(text)}`;
+  }
+
+  function renderSyllabusModule() {
+    const classSelect = document.getElementById('syllabusClassSelect');
+    const sectionSelect = document.getElementById('syllabusSectionSelect');
+    const emptyState = document.getElementById('syllabusEmptyState');
+    const mainView = document.getElementById('syllabusMainView');
+    const btnAddSubject = document.getElementById('btnSyllabusAddSubject');
+    const btnCreateSyllabus = document.getElementById('btnCreateSyllabus');
+    const btnShareWa = document.getElementById('btnShareSyllabusWhatsApp');
+    const emptyTitle = document.getElementById('syllabusEmptyStateTitle');
+    const emptyText = document.getElementById('syllabusEmptyStateText');
+
+    if (!classSelect || !mainView) return;
+
+    // Populate Class dropdown
+    const classSet = new Set(ALL_DEFAULT_CLASSES);
+    (state.students || []).forEach(s => {
+      if (s.className) classSet.add(s.className);
+    });
+    (state.syllabi || []).forEach(s => {
+      if (s.className) classSet.add(s.className);
+    });
+    const sortedClasses = sortClasses(classSet);
+    if (!state.syllabusSelectedClass || !classSet.has(state.syllabusSelectedClass)) {
+      state.syllabusSelectedClass = sortedClasses[0] || 'Class 1';
+    }
+
+    classSelect.innerHTML = sortedClasses.map(c => `
+      <option value="${c}" ${c === state.syllabusSelectedClass ? 'selected' : ''}>${c}</option>
+    `).join('');
+
+    // Populate Section dropdown
+    if (sectionSelect) {
+      const secSet = new Set();
+      (state.students || []).forEach(s => {
+        if (s.className === state.syllabusSelectedClass && s.section && s.section.trim()) {
+          secSet.add(s.section.trim());
+        }
+      });
+      (state.syllabi || []).forEach(s => {
+        if (s.className === state.syllabusSelectedClass && s.section && s.section !== 'ALL') {
+          secSet.add(s.section);
+        }
+      });
+      const sortedSecs = Array.from(secSet).sort();
+      const currSec = state.syllabusSelectedSection || 'ALL';
+      sectionSelect.innerHTML = '<option value="ALL">All Sections</option>' + sortedSecs.map(sec => `
+        <option value="${sec}" ${sec === currSec ? 'selected' : ''}>Section ${sec}</option>
+      `).join('');
+    }
+
+    // Role
+    const userRole = (state.currentUser && state.currentUser.role) || ((auth && auth.currentUser) ? getUserRole(auth.currentUser.email) : 'Admin');
+    const isAdmin = userRole === 'Admin';
+
+    // WhatsApp link
+    if (btnShareWa) {
+      btnShareWa.href = getSyllabusWhatsAppUrl(state.syllabusSelectedClass, state.syllabusSelectedSection);
+    }
+
+    const syllabus = getCurrentSyllabus();
+
+    // Empty state
+    if (!syllabus) {
+      emptyState?.classList.remove('hidden');
+      mainView?.classList.add('hidden');
+      btnAddSubject?.classList.add('hidden');
+
+      if (isAdmin) {
+        if (emptyTitle) emptyTitle.textContent = 'No Syllabus Created';
+        if (emptyText) emptyText.textContent = `No syllabus has been set up for ${state.syllabusSelectedClass} yet. Click "Create Syllabus" to define subjects, books, and monthly topics.`;
+        btnCreateSyllabus?.classList.remove('hidden');
+      } else {
+        if (emptyTitle) emptyTitle.textContent = 'No Syllabus Available';
+        if (emptyText) emptyText.textContent = `No syllabus has been set up for ${state.syllabusSelectedClass} yet. Please contact your administrator.`;
+        btnCreateSyllabus?.classList.add('hidden');
+      }
+      return;
+    }
+
+    // Main view
+    emptyState?.classList.add('hidden');
+    mainView?.classList.remove('hidden');
+    btnAddSubject?.classList.toggle('hidden', !isAdmin);
+
+    // Compute metrics
+    const subjects = syllabus.subjects || [];
+    let totalClassTopics = 0;
+    let totalClassCompleted = 0;
+
+    subjects.forEach(sub => {
+      (sub.topics || []).forEach(top => {
+        totalClassTopics++;
+        if (top.completed) totalClassCompleted++;
+      });
+    });
+
+    const classPercent = totalClassTopics > 0 ? Math.round((totalClassCompleted / totalClassTopics) * 100) : 0;
+    const brandColor = state.profile?.brandColor || (state.currentSchool && state.currentSchool.brandColor) || '#0D9488';
+
+    // Header info
+    const titleEl = document.getElementById('sylClassTitleDisplay');
+    const subtitleEl = document.getElementById('sylClassSubtitleDisplay');
+    const badgeEl = document.getElementById('sylClassProgressPercent');
+    const barEl = document.getElementById('sylClassProgressBar');
+
+    if (titleEl) {
+      const secLabel = (syllabus.section && syllabus.section !== 'ALL') ? ` (Section ${syllabus.section})` : '';
+      titleEl.textContent = `${syllabus.className}${secLabel} Syllabus`;
+    }
+    if (subtitleEl) {
+      subtitleEl.textContent = `${subjects.length} Subjects • ${totalClassTopics} Topics (${totalClassCompleted} Completed)`;
+    }
+    if (badgeEl) {
+      badgeEl.textContent = `${classPercent}% Completed`;
+      badgeEl.className = classPercent === 100 ? 'badge badge-pass' : 'badge badge-subtle';
+      if (classPercent === 100) {
+        badgeEl.style.color = '#047857';
+      }
+    }
+    if (barEl) {
+      barEl.style.width = `${classPercent}%`;
+      barEl.style.background = brandColor;
+    }
+
+    // Render subjects
+    const container = document.getElementById('syllabusSubjectsContainer');
+    if (!container) return;
+
+    if (subjects.length === 0) {
+      container.innerHTML = `
+        <div class="empty-state" style="padding: 32px 16px; background: var(--bg-card); border: 1px dashed var(--border-soft); border-radius: var(--radius-lg);">
+          <p style="font-size: 0.95rem; color: var(--text-muted); margin-bottom: 12px;">No subjects added to this syllabus yet.</p>
+          ${isAdmin ? `<button type="button" class="btn btn-sm btn-primary" onclick="openAddSubjectModal('${syllabus.id}')">➕ Add Subject</button>` : ''}
+        </div>
+      `;
+      return;
+    }
+
+    container.innerHTML = subjects.map(subject => {
+      const topics = subject.topics || [];
+      const subTotal = topics.length;
+      const subDone = topics.filter(t => t.completed).length;
+      const subPercent = subTotal > 0 ? Math.round((subDone / subTotal) * 100) : 0;
+
+      // Group topics by month
+      const monthsMap = new Map();
+      topics.forEach(top => {
+        const m = (top.month && top.month.trim()) ? top.month.trim() : 'General';
+        if (!monthsMap.has(m)) monthsMap.set(m, []);
+        monthsMap.get(m).push(top);
+      });
+
+      let topicsHtml = '';
+      if (topics.length === 0) {
+        topicsHtml = `
+          <div style="font-size: 0.85rem; color: var(--text-muted); font-style: italic; padding: 10px 0;">
+            No topics added yet. ${isAdmin ? `Click "+ Add Topic" to add curriculum chapters.` : ''}
+          </div>
+        `;
+      } else {
+        monthsMap.forEach((monthTopics, monthLabel) => {
+          topicsHtml += `
+            <div class="syllabus-month-group">
+              <div class="syllabus-month-heading">📅 ${escapeHtml(monthLabel)}</div>
+              ${monthTopics.map(top => `
+                <div class="syllabus-topic-item ${top.completed ? 'completed' : ''}" data-topic-id="${top.id}">
+                  <div class="syllabus-topic-left">
+                    <input type="checkbox" class="syllabus-topic-checkbox" ${top.completed ? 'checked' : ''}
+                      onchange="toggleTopicCompleted('${syllabus.id}', '${subject.id}', '${top.id}', this.checked)"
+                      title="Mark topic completed" />
+                    <span class="syllabus-topic-title">${escapeHtml(top.title)}</span>
+                  </div>
+                  <div class="syllabus-topic-right">
+                    <span class="badge ${top.completed ? 'badge-pass' : 'badge-subtle'}" style="font-size: 0.72rem;">
+                      ${top.completed ? '✓ Completed' : 'In Progress'}
+                    </span>
+                    ${isAdmin ? `
+                      <button type="button" class="btn btn-sm btn-subtle" onclick="openEditTopicModal('${syllabus.id}', '${subject.id}', '${top.id}')" title="Edit Topic" style="padding: 2px 7px;">✏️</button>
+                      <button type="button" class="btn btn-sm btn-danger" onclick="openDeleteTopicModal('${syllabus.id}', '${subject.id}', '${top.id}')" title="Delete Topic" style="padding: 2px 7px;">🗑️</button>
+                    ` : ''}
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          `;
+        });
+      }
+
+      return `
+        <div class="syllabus-subject-card" data-subject-id="${subject.id}">
+          <div class="syllabus-subject-header">
+            <div class="syllabus-subject-title-area">
+              <h4 class="syllabus-subject-title">
+                <span>${escapeHtml(subject.name)}</span>
+                ${subject.bookName ? `<span class="badge badge-subtle" style="font-weight: 500; font-size: 0.78rem;">📖 ${escapeHtml(subject.bookName)}</span>` : ''}
+              </h4>
+              <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 2px;">
+                ${subDone} of ${subTotal} topics completed (${subPercent}%)
+              </div>
+            </div>
+            <div class="syllabus-subject-actions">
+              <span class="badge syllabus-subject-badge ${subPercent === 100 ? 'badge-pass' : 'badge-subtle'}" style="font-size: 0.85rem; font-weight: 700;">${subPercent}%</span>
+              ${isAdmin ? `
+                <button type="button" class="btn btn-sm btn-subtle" onclick="openAddTopicModal('${syllabus.id}', '${subject.id}')">➕ Add Topic</button>
+                <button type="button" class="btn btn-sm btn-subtle" onclick="openEditSubjectModal('${syllabus.id}', '${subject.id}')" title="Rename Subject">✏️</button>
+                <button type="button" class="btn btn-sm btn-danger" onclick="openDeleteSubjectModal('${syllabus.id}', '${subject.id}')" title="Delete Subject" style="padding: 4px 8px;">🗑️</button>
+              ` : ''}
+            </div>
+          </div>
+          <div class="sync-progress-bar-wrap" style="height: 6px; margin: 6px 0 12px 0; border-radius: 9999px;">
+            <div class="sync-progress-bar" style="width: ${subPercent}%; border-radius: 9999px; background: ${subPercent === 100 ? '#10B981' : brandColor};"></div>
+          </div>
+          <div class="syllabus-topics-list">
+            ${topicsHtml}
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  // Create syllabus for currently selected class
+  function createSyllabusForClass(className, section) {
+    if (!checkSubscriptionWritable('Create Syllabus')) return;
+    const cls = className || state.syllabusSelectedClass || 'Class 1';
+    const sec = section || state.syllabusSelectedSection || 'ALL';
+
+    // Verify does not already exist
+    let existing = (state.syllabi || []).find(s => s.className === cls && (s.section === sec || s.section === 'ALL' || !s.section));
+    if (existing) {
+      renderSyllabusModule();
+      return;
+    }
+
+    const cleanClass = cls.replace(/[^a-zA-Z0-9]/g, '_');
+    const cleanSec = sec.replace(/[^a-zA-Z0-9]/g, '_');
+    const docId = `${state.currentSchoolId}_syl_${cleanClass}_${cleanSec}`;
+
+    const newSyllabus = {
+      id: docId,
+      schoolId: state.currentSchoolId,
+      className: cls,
+      section: sec,
+      subjects: [],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    state.syllabi.push(newSyllabus);
+    saveStorage(STORAGE_KEYS.SYLLABUS, state.syllabi);
+    if (FirestoreDB.isReady()) {
+      FirestoreDB.saveSyllabus(newSyllabus);
+    }
+    renderSyllabusModule();
+    showToast(`Syllabus created for ${cls}!`, 'success');
+  }
+
+  // Toggle topic completed status
+  async function toggleTopicCompleted(syllabusId, subjectId, topicId, completed) {
+    const syllabus = (state.syllabi || []).find(s => s.id === syllabusId);
+    if (!syllabus) return;
+    const subject = (syllabus.subjects || []).find(sub => sub.id === subjectId);
+    if (!subject) return;
+    const topic = (subject.topics || []).find(t => t.id === topicId);
+    if (!topic) return;
+
+    topic.completed = !!completed;
+    syllabus.updatedAt = new Date().toISOString();
+
+    saveStorage(STORAGE_KEYS.SYLLABUS, state.syllabi);
+    renderSyllabusModule();
+    showToast(completed ? 'Topic marked as completed.' : 'Topic marked in progress.', 'info');
+    if (FirestoreDB.isReady()) {
+      FirestoreDB.saveSyllabus(syllabus).catch(e => console.warn('saveSyllabus error:', e));
+    }
+  }
+
+  // Subject Modal handlers
+  function openAddSubjectModal(sylId) {
+    if (!checkSubscriptionWritable('Add Subject')) return;
+    const syllabus = sylId ? (state.syllabi || []).find(s => s.id === sylId) : getCurrentSyllabus();
+    if (!syllabus) return;
+
+    document.getElementById('syllabusSubjectModalTitle').textContent = `Add Subject (${syllabus.className})`;
+    document.getElementById('sylSubjectEditId').value = '';
+    document.getElementById('sylSubjectNameInput').value = '';
+    document.getElementById('sylSubjectBookInput').value = '';
+    document.getElementById('syllabusSubjectModal')?.classList.remove('hidden');
+    document.getElementById('sylSubjectNameInput')?.focus();
+  }
+
+  function openEditSubjectModal(sylId, subId) {
+    if (!checkSubscriptionWritable('Edit Subject')) return;
+    const syllabus = (state.syllabi || []).find(s => s.id === sylId);
+    if (!syllabus) return;
+    const subject = (syllabus.subjects || []).find(sub => sub.id === subId);
+    if (!subject) return;
+
+    document.getElementById('syllabusSubjectModalTitle').textContent = 'Rename / Edit Subject';
+    document.getElementById('sylSubjectEditId').value = subject.id;
+    document.getElementById('sylSubjectNameInput').value = subject.name || '';
+    document.getElementById('sylSubjectBookInput').value = subject.bookName || '';
+    document.getElementById('syllabusSubjectModal')?.classList.remove('hidden');
+    document.getElementById('sylSubjectNameInput')?.focus();
+  }
+
+  function closeSyllabusSubjectModal() {
+    document.getElementById('syllabusSubjectModal')?.classList.add('hidden');
+  }
+
+  async function handleSaveSyllabusSubject(e) {
+    e.preventDefault();
+    if (!checkSubscriptionWritable('Save Subject')) return;
+    const syllabus = getCurrentSyllabus();
+    if (!syllabus) return;
+
+    const name = document.getElementById('sylSubjectNameInput').value.trim();
+    const bookName = document.getElementById('sylSubjectBookInput').value.trim();
+    const editId = document.getElementById('sylSubjectEditId').value;
+
+    if (!name) {
+      showToast('Please enter a subject name.', 'warn');
+      return;
+    }
+
+    if (!syllabus.subjects) syllabus.subjects = [];
+
+    if (editId) {
+      const sub = syllabus.subjects.find(s => s.id === editId);
+      if (sub) {
+        sub.name = name;
+        sub.bookName = bookName;
+      }
+    } else {
+      const newSubject = {
+        id: 'subj_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+        name: name,
+        bookName: bookName,
+        topics: []
+      };
+      syllabus.subjects.push(newSubject);
+    }
+
+    syllabus.updatedAt = new Date().toISOString();
+    saveStorage(STORAGE_KEYS.SYLLABUS, state.syllabi);
+    closeSyllabusSubjectModal();
+    renderSyllabusModule();
+    showToast(editId ? 'Subject updated.' : `Subject "${name}" added.`, 'success');
+    if (FirestoreDB.isReady()) {
+      FirestoreDB.saveSyllabus(syllabus).catch(e => console.warn('saveSyllabus error:', e));
+    }
+  }
+
+  // Topic Modal handlers
+  function openAddTopicModal(sylId, subId) {
+    if (!checkSubscriptionWritable('Add Topic')) return;
+    let syllabus = (state.syllabi || []).find(s => s.id === sylId);
+    if (!syllabus && !subId) {
+      syllabus = getCurrentSyllabus();
+      subId = sylId;
+    }
+    if (!syllabus) return;
+    const subject = (syllabus.subjects || []).find(sub => sub.id === subId);
+    if (!subject) return;
+
+    document.getElementById('syllabusTopicModalTitle').textContent = `Add Topic to ${subject.name}`;
+    document.getElementById('sylTopicSubjectId').value = subject.id;
+    document.getElementById('sylTopicEditId').value = '';
+    document.getElementById('sylTopicTitleInput').value = '';
+    document.getElementById('sylTopicMonthInput').value = '';
+    document.getElementById('sylTopicCompletedInput').checked = false;
+    document.getElementById('syllabusTopicModal')?.classList.remove('hidden');
+    document.getElementById('sylTopicTitleInput')?.focus();
+  }
+
+  function openEditTopicModal(sylId, subId, topId) {
+    if (!checkSubscriptionWritable('Edit Topic')) return;
+    let syllabus = (state.syllabi || []).find(s => s.id === sylId);
+    if (!syllabus && !topId) {
+      syllabus = getCurrentSyllabus();
+      topId = subId;
+      subId = sylId;
+    }
+    if (!syllabus) return;
+    const subject = (syllabus.subjects || []).find(sub => sub.id === subId);
+    if (!subject) return;
+    const topic = (subject.topics || []).find(t => t.id === topId);
+    if (!topic) return;
+
+    document.getElementById('syllabusTopicModalTitle').textContent = `Edit Topic (${subject.name})`;
+    document.getElementById('sylTopicSubjectId').value = subject.id;
+    document.getElementById('sylTopicEditId').value = topic.id;
+    document.getElementById('sylTopicTitleInput').value = topic.title || '';
+    document.getElementById('sylTopicMonthInput').value = topic.month || '';
+    document.getElementById('sylTopicCompletedInput').checked = !!topic.completed;
+    document.getElementById('syllabusTopicModal')?.classList.remove('hidden');
+    document.getElementById('sylTopicTitleInput')?.focus();
+  }
+
+  function closeSyllabusTopicModal() {
+    document.getElementById('syllabusTopicModal')?.classList.add('hidden');
+  }
+
+  async function handleSaveSyllabusTopic(e) {
+    e.preventDefault();
+    if (!checkSubscriptionWritable('Save Topic')) return;
+    const syllabus = getCurrentSyllabus();
+    if (!syllabus) return;
+
+    const subId = document.getElementById('sylTopicSubjectId').value;
+    const editId = document.getElementById('sylTopicEditId').value;
+    const title = document.getElementById('sylTopicTitleInput').value.trim();
+    const month = document.getElementById('sylTopicMonthInput').value.trim();
+    const completed = document.getElementById('sylTopicCompletedInput').checked;
+
+    if (!title || !month) {
+      showToast('Please enter both topic title and month label.', 'warn');
+      return;
+    }
+
+    const subject = (syllabus.subjects || []).find(s => s.id === subId);
+    if (!subject) return;
+    if (!subject.topics) subject.topics = [];
+
+    if (editId) {
+      const top = subject.topics.find(t => t.id === editId);
+      if (top) {
+        top.title = title;
+        top.month = month;
+        top.completed = completed;
+      }
+    } else {
+      subject.topics.push({
+        id: 'top_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+        title,
+        month,
+        completed
+      });
+    }
+
+    syllabus.updatedAt = new Date().toISOString();
+    saveStorage(STORAGE_KEYS.SYLLABUS, state.syllabi);
+    closeSyllabusTopicModal();
+    renderSyllabusModule();
+    showToast(editId ? 'Topic updated.' : `Topic added under ${month}.`, 'success');
+    if (FirestoreDB.isReady()) {
+      FirestoreDB.saveSyllabus(syllabus).catch(e => console.warn('saveSyllabus error:', e));
+    }
+  }
+
+  // Delete modal handlers
+  function openDeleteSubjectModal(sylId, subId) {
+    if (!checkSubscriptionWritable('Delete Subject')) return;
+    const syllabus = (state.syllabi || []).find(s => s.id === sylId);
+    if (!syllabus) return;
+    const subject = (syllabus.subjects || []).find(sub => sub.id === subId);
+    if (!subject) return;
+
+    pendingDeleteSyllabusItem = { type: 'subject', syllabusId: sylId, subjectId: subId, title: subject.name };
+    document.getElementById('syllabusDeleteModalTitle').textContent = 'Delete Subject';
+    document.getElementById('syllabusDeleteModalMessage').textContent = `Are you sure you want to delete "${subject.name}" and all its topics?`;
+    document.getElementById('syllabusDeleteModal')?.classList.remove('hidden');
+  }
+
+  function openDeleteTopicModal(sylId, subId, topId) {
+    if (!checkSubscriptionWritable('Delete Topic')) return;
+    const syllabus = (state.syllabi || []).find(s => s.id === sylId);
+    if (!syllabus) return;
+    const subject = (syllabus.subjects || []).find(sub => sub.id === subId);
+    if (!subject) return;
+    const topic = (subject.topics || []).find(t => t.id === topId);
+    if (!topic) return;
+
+    pendingDeleteSyllabusItem = { type: 'topic', syllabusId: sylId, subjectId: subId, topicId: topId, title: topic.title };
+    document.getElementById('syllabusDeleteModalTitle').textContent = 'Delete Topic';
+    document.getElementById('syllabusDeleteModalMessage').textContent = `Are you sure you want to delete topic "${topic.title}"?`;
+    document.getElementById('syllabusDeleteModal')?.classList.remove('hidden');
+  }
+
+  function closeSyllabusDeleteModal() {
+    pendingDeleteSyllabusItem = null;
+    document.getElementById('syllabusDeleteModal')?.classList.add('hidden');
+  }
+
+  async function handleConfirmSyllabusDelete() {
+    if (!pendingDeleteSyllabusItem) return;
+    const { type, syllabusId, subjectId, topicId, title } = pendingDeleteSyllabusItem;
+    const syllabus = (state.syllabi || []).find(s => s.id === syllabusId);
+    if (!syllabus) {
+      closeSyllabusDeleteModal();
+      return;
+    }
+
+    if (type === 'subject') {
+      syllabus.subjects = (syllabus.subjects || []).filter(s => s.id !== subjectId);
+    } else if (type === 'topic') {
+      const sub = (syllabus.subjects || []).find(s => s.id === subjectId);
+      if (sub) {
+        sub.topics = (sub.topics || []).filter(t => t.id !== topicId);
+      }
+    }
+
+    syllabus.updatedAt = new Date().toISOString();
+    saveStorage(STORAGE_KEYS.SYLLABUS, state.syllabi);
+    closeSyllabusDeleteModal();
+    renderSyllabusModule();
+    showToast(`Deleted ${title}.`, 'info');
+    if (FirestoreDB.isReady()) {
+      FirestoreDB.saveSyllabus(syllabus).catch(e => console.warn('saveSyllabus error:', e));
+    }
+  }
+
+  // Print syllabus document
+  function openPrintSyllabus() {
+    const syllabus = getCurrentSyllabus();
+    if (!syllabus || !syllabus.subjects || syllabus.subjects.length === 0) {
+      showToast('No syllabus content available to print. Please create a syllabus and add subjects first.', 'warn');
+      return;
+    }
+
+    const schoolName = (state.currentSchool && (state.currentSchool.schoolName || state.currentSchool.name)) || state.profile?.name || 'SchoolSteps';
+    const tagline = state.profile?.tagline || state.profile?.motto || (state.currentSchool && (state.currentSchool.tagline || state.currentSchool.motto)) || '';
+    const brandColor = state.profile?.brandColor || (state.currentSchool && state.currentSchool.brandColor) || '#0D9488';
+    const logoSrc = state.profile?.logoData || (state.currentSchool && state.currentSchool.logoData) || 'icon.svg';
+    const address = state.profile?.address || (state.currentSchool && state.currentSchool.address) || '';
+    const phone = state.profile?.phone || (state.currentSchool && state.currentSchool.phone) || '';
+
+    const logoEl = document.getElementById('sylPrintLogo');
+    if (logoEl) {
+      logoEl.src = logoSrc;
+      logoEl.onerror = () => { logoEl.src = 'icon.svg'; };
+    }
+
+    const nameEl = document.getElementById('sylPrintSchoolName');
+    if (nameEl) {
+      nameEl.textContent = schoolName;
+      nameEl.style.color = brandColor;
+    }
+
+    const taglineEl = document.getElementById('sylPrintTagline');
+    if (taglineEl) taglineEl.textContent = tagline;
+
+    const contactEl = document.getElementById('sylPrintContact');
+    if (contactEl) {
+      contactEl.textContent = [address, phone].filter(Boolean).join(' | ');
+    }
+
+    const classSecStr = (syllabus.section && syllabus.section !== 'ALL') ? `${syllabus.className} (Section ${syllabus.section})` : syllabus.className;
+    const metaEl = document.getElementById('sylPrintMeta');
+    if (metaEl) {
+      metaEl.textContent = `Class: ${classSecStr} | Academic Year: ${state.profile?.academicYear || '2026–2027'}`;
+    }
+
+    let totalClassTopics = 0;
+    let totalClassCompleted = 0;
+    (syllabus.subjects || []).forEach(sub => {
+      (sub.topics || []).forEach(top => {
+        totalClassTopics++;
+        if (top.completed) totalClassCompleted++;
+      });
+    });
+    const classPercent = totalClassTopics > 0 ? Math.round((totalClassCompleted / totalClassTopics) * 100) : 0;
+    const progressEl = document.getElementById('sylPrintProgress');
+    if (progressEl) {
+      progressEl.textContent = `Overall Completion: ${classPercent}% (${totalClassCompleted} of ${totalClassTopics} topics completed)`;
+    }
+
+    const bodyEl = document.getElementById('sylPrintBody');
+    if (bodyEl) {
+      bodyEl.innerHTML = (syllabus.subjects || []).map(subject => {
+        const subTopics = subject.topics || [];
+        const subTotal = subTopics.length;
+        const subDone = subTopics.filter(t => t.completed).length;
+        const subPercent = subTotal > 0 ? Math.round((subDone / subTotal) * 100) : 0;
+
+        const monthsMap = new Map();
+        subTopics.forEach(top => {
+          const m = (top.month && top.month.trim()) ? top.month.trim() : 'General';
+          if (!monthsMap.has(m)) monthsMap.set(m, []);
+          monthsMap.get(m).push(top);
+        });
+
+        let monthsHtml = '';
+        monthsMap.forEach((topics, monthLabel) => {
+          monthsHtml += `
+            <div class="syl-print-month-title">📅 Month: ${escapeHtml(monthLabel)}</div>
+            ${topics.map(t => `
+              <div class="syl-print-topic-row">
+                <span>${t.completed ? '☑' : '☐'} ${escapeHtml(t.title)}</span>
+                <span style="color: ${t.completed ? '#047857' : '#64748B'}; font-size: 0.78rem;">
+                  ${t.completed ? 'Completed' : 'In Progress'}
+                </span>
+              </div>
+            `).join('')}
+          `;
+        });
+
+        return `
+          <div class="syl-print-subject-block">
+            <div class="syl-print-subject-header" style="border-left-color: ${brandColor};">
+              <div>
+                <span class="syl-print-subject-name">${escapeHtml(subject.name)}</span>
+                ${subject.bookName ? `<span class="syl-print-book"> — Book: ${escapeHtml(subject.bookName)}</span>` : ''}
+              </div>
+              <span style="font-weight: 700; font-size: 0.85rem; color: ${brandColor};">${subPercent}% (${subDone}/${subTotal})</span>
+            </div>
+            ${monthsHtml || '<div style="font-style: italic; color: #94A3B8; font-size: 0.82rem; padding: 4px 8px;">No topics listed.</div>'}
+          </div>
+        `;
+      }).join('');
+    }
+
+    const printCard = document.querySelector('.syllabus-card-print');
+    if (printCard) {
+      printCard.style.borderTopColor = brandColor;
+    }
+
+    document.body.classList.add('printing-syllabus');
+    window.print();
+
+    const cleanup = () => {
+      document.body.classList.remove('printing-syllabus');
+      window.removeEventListener('afterprint', cleanup);
+    };
+    window.addEventListener('afterprint', cleanup);
+    setTimeout(cleanup, 1500);
+  }
+
+  function bindSyllabusEvents() {
+    // Selects
+    document.getElementById('syllabusClassSelect')?.addEventListener('change', (e) => {
+      state.syllabusSelectedClass = e.target.value;
+      renderSyllabusModule();
+    });
+
+    document.getElementById('syllabusSectionSelect')?.addEventListener('change', (e) => {
+      state.syllabusSelectedSection = e.target.value;
+      renderSyllabusModule();
+    });
+
+    // Create syllabus button
+    document.getElementById('btnCreateSyllabus')?.addEventListener('click', () => {
+      createSyllabusForClass(state.syllabusSelectedClass, state.syllabusSelectedSection);
+    });
+
+    // Add subject button in header
+    document.getElementById('btnSyllabusAddSubject')?.addEventListener('click', () => {
+      openAddSubjectModal();
+    });
+
+    // Print button
+    document.getElementById('btnPrintSyllabus')?.addEventListener('click', openPrintSyllabus);
+
+    // Subject modal events
+    document.getElementById('btnCloseSyllabusSubjectModal')?.addEventListener('click', closeSyllabusSubjectModal);
+    document.getElementById('btnCancelSyllabusSubject')?.addEventListener('click', closeSyllabusSubjectModal);
+    document.getElementById('syllabusSubjectForm')?.addEventListener('submit', handleSaveSyllabusSubject);
+
+    // Topic modal events
+    document.getElementById('btnCloseSyllabusTopicModal')?.addEventListener('click', closeSyllabusTopicModal);
+    document.getElementById('btnCancelSyllabusTopic')?.addEventListener('click', closeSyllabusTopicModal);
+    document.getElementById('syllabusTopicForm')?.addEventListener('submit', handleSaveSyllabusTopic);
+
+    // Delete modal events
+    document.getElementById('btnCloseSyllabusDeleteModal')?.addEventListener('click', closeSyllabusDeleteModal);
+    document.getElementById('btnCancelSyllabusDelete')?.addEventListener('click', closeSyllabusDeleteModal);
+    document.getElementById('btnConfirmSyllabusDelete')?.addEventListener('click', handleConfirmSyllabusDelete);
+  }
+
+  // Window exports for Syllabus module
+  window.__renderSyllabusModule = renderSyllabusModule;
+  window.renderSyllabusModule = renderSyllabusModule;
+  window.__openPrintSyllabus = openPrintSyllabus;
+  window.openPrintSyllabus = openPrintSyllabus;
+  window.__generateSyllabusWhatsAppMessage = generateSyllabusWhatsAppMessage;
+  window.generateSyllabusWhatsAppMessage = generateSyllabusWhatsAppMessage;
+  window.__getSyllabusWhatsAppUrl = getSyllabusWhatsAppUrl;
+  window.getSyllabusWhatsAppUrl = getSyllabusWhatsAppUrl;
+  window.__toggleTopicCompleted = toggleTopicCompleted;
+  window.toggleTopicCompleted = toggleTopicCompleted;
+  window.__createSyllabusForClass = createSyllabusForClass;
+  window.createSyllabusForClass = createSyllabusForClass;
+  window.openAddSubjectModal = openAddSubjectModal;
+  window.openEditSubjectModal = openEditSubjectModal;
+  window.openAddTopicModal = openAddTopicModal;
+  window.openEditTopicModal = openEditTopicModal;
+  window.openDeleteSubjectModal = openDeleteSubjectModal;
+  window.openDeleteTopicModal = openDeleteTopicModal;
+  window.getCurrentSyllabus = getCurrentSyllabus;
+  window.__getCurrentSyllabus = getCurrentSyllabus;
+
+  // ========================================================
     // App Render & Startup
   // ========================================================
   function renderApp() {
@@ -6400,6 +7200,7 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
     try { renderCommsModule(); } catch (e) { console.warn('renderCommsModule warning:', e); }
     try { renderFeesModule(); } catch (e) { console.warn('renderFeesModule warning:', e); }
     try { updateDashboardFeesStat(); } catch (e) { console.warn('updateDashboardFeesStat warning:', e); }
+    try { renderSyllabusModule(); } catch (e) { console.warn('renderSyllabusModule warning:', e); }
   }
 
   function initApp() {
@@ -6440,9 +7241,11 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
   window.__changeSchoolPlan = changeSchoolPlan;
   window.__renderStudentsList = renderStudentsList;
   window.__renderApp = renderApp;
+  window.renderApp = renderApp;
   window.__FirestoreDB = FirestoreDB;
   window.__PLATFORM_PAYMENT = PLATFORM_PAYMENT;
   window.__state = state;
+  window.state = state;
   window.__renderPtmModule = renderPtmModule;
   window.__handleOpenCreatePtm = handleOpenCreatePtm;
   window.__handleDeletePtm = handleDeletePtm;

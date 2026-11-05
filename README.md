@@ -3,50 +3,53 @@
 > **Run it. Track it. Report it. — All in one place.**  
 > The complete school management system for Pakistani schools.
 
-SchoolSteps is designed specifically for school owners and teachers tired of paper registers, diary marks, and manual report card preparation. This repository contains the complete **Phase 1 Pilot** implementation.
+SchoolSteps is designed specifically for school owners and teachers tired of paper registers, diary marks, and manual report card preparation. This repository contains the complete **SchoolSteps** web application.
 
 ---
 
-## 🚀 Phase 1 Pilot Scope (Included Modules)
-
-Per the Product Requirements Document (`SchoolSteps_PRD_v1_0.pdf`):
+## 🚀 Core Features & Modules
 
 ### 👥 Module 1: Student & Parent Database (M1)
 - **Single Source of Truth**: Enrolled student profiles with roll number, class, section, date of birth, admission number, and status.
 - **Parent & Guardian Contact**: Father and mother names, emergency contacts, home address, and WhatsApp contact numbers.
 - **Management Operations**: Add new students, edit existing details, and delete records with instant reactive updates.
 - **Search & Filtering**: Search in real time by student name, father name, or roll number; filter by Class and Section.
-- **Local Persistence & Cloud Sync**: Data stored securely in Cloud Firestore with multi-tenant isolation per school, backed by client `localStorage` caching for instant offline-first operation.
+- **Plan Enforcement**: Maximum 200 active students on Trial/Basic plans; unlimited on Pro.
 
 ### 📋 Module 2: Smart Attendance + Parent WhatsApp Alerts (M2)
 - **Mobile-First Touch Roster**: Big touch-friendly buttons for **Present**, **Absent**, and **Late** (with arrival timestamp log).
 - **Teacher Convenience**: "⚡ All Present" one-tap shortcut so teachers only need to mark absentees.
 - **Daily Summary**: Real-time counters showing total enrolled, present count & percentage, absent count, and late count.
-- **Parent WhatsApp Notification Hub**:
-  - Automatically generates authentic WhatsApp messages tailored per child and status:
-    - *Present*: `"Assalam-o-Alaikum! Ahmed Raza (Class 3-A) is marked Present today..."`
-    - *Absent*: `"Assalam-o-Alaikum! Ahmed Raza (Class 3-A) is marked ABSENT today. Please inform the class teacher if this is unexpected..."`
-    - *Late*: `"Assalam-o-Alaikum! Ahmed Raza (Class 3-A) arrived Late today..."`
-  - Live message preview cards with phone numbers formatted for instant delivery.
-  - **Direct `wa.me` links** (`https://wa.me/<phone>?text=...`) to open WhatsApp directly with prefilled messages.
-  - Quick message copy buttons and filtering by Absent, Late, or Present.
+- **Parent WhatsApp Notification Hub**: Tailored WhatsApp messages with direct `wa.me` links.
+- **Class-wise Monthly Attendance Sheet (New)**:
+  - Complete monthly attendance register with interactive P/A/L calendar grid (1..31 days) for any selected class, section, and month.
+  - Per-student attendance summaries (Present, Absent, Late totals, and attendance percentage).
+  - Clean distinction between marked days and unrecorded / holiday / future days.
+  - **A4 Landscape Print Layout**: Generates an official, print-ready attendance register featuring school branding, recorded days counter, and teacher/principal signature blocks.
 
 ### 📊 Module 3: Test Marks Entry & Branded Report Cards (M3 Basic)
-- **Subject Marks Entry Sheet**:
-  - Assessment setup per subject (Mathematics, English, Urdu, General Science, Islamiat, Social Studies, Computer).
-  - Configurable Total/Max Marks and Passing Marks.
-  - Live percentage calculation, grading scheme (`A+`, `A`, `B`, `C`, `D`, `F`), and pass/fail status.
-  - Individual teacher remarks with quick input.
-- **Simple School-Branded Report Card (Printable A4)**:
-  - White-label school letterhead: School Name, Crest/Logo, Motto, Campus Address & Contact.
-  - Comprehensive student details: Roll No, Class, Father Name, Admission No, and Attendance rate.
-  - Academic performance table with subject breakdowns, totals, overall percentage, and grade.
-  - Class position (1st, 2nd, 3rd) and teacher remarks.
-  - Grading legend and official signature lines (Class Teacher, Principal, Official Seal stamp).
-  - Print-optimized CSS (`@media print`) for clean, single-page A4 printing or PDF export.
+- **Subject Marks Entry Sheet**: Total/Max marks, passing marks, live percentages, grading (`A+`, `A`, `B`, `C`, `D`, `F`), and teacher remarks.
+- **School-Branded Report Card (Printable A4 Portrait)**: White-label letterhead, crest/logo, motto, marks breakdown, class positions, official seal, and signature lines.
+
+### 💳 Module 10: Fees & Financial Tracking (Admin-Only)
+- **Fee Structure Setup**: School-wide default monthly fees per class (Class 1 to 10) with custom per-student override support.
+- **Overview Dashboard**: Expected revenue, collected amount, pending balance, and collection percentage.
+- **Payment Records & Receipts**: Record single or partial installment payments with instant WhatsApp payment receipts.
+- **Defaulters List**: Instant overview of unpaid and partial students for any month with one-tap Urdu WhatsApp reminder messages and printable defaulters list.
+- **Fee Vouchers (Single & Class Bulk Print) (New)**:
+  - Generate official school fee vouchers for any month with customizable due date (default: 10th of the month).
+  - **Dual-Copy Print Layout**: Produces two side-by-side copies on a single portrait A4 page ("Parent Copy" and "School Copy") separated by a dashed cut line with scissor icon.
+  - Deterministic voucher numbering (`VCH-<YYYYMM>-<rollNo>`), fee particulars breakdown, amount in words in Pakistani Rupees (`numberToWordsPKR`), and cashier/bank/parent signature spaces.
+  - **Class Bulk Print**: Print vouchers for an entire class at once, with an option to filter out already paid students.
+
+### 📚 Module 8: Academic Syllabus Manager
+- Class-wise academic syllabus builder for Classes 1–10.
+- Manage subjects, recommended books, and curriculum topics paced by month.
+- Role-friendly: Both Admins and Teachers can add and edit syllabus topics and mark completion.
+- Official printable syllabus overview document.
 
 ### 🏫 White-Label School Profile & Customization
-- Built-in "School Profile" drawer allows schools to set their own school name, motto, principal signature name, and campus details, fulfilling the PRD white-label principle: *"ye aapke school ka apna system lagega."*
+- Built-in school profile settings allow schools to configure their school name, logo, motto/tagline, brand color, and campus contact details. Multi-tenant isolation ensures each school sees only its own records.
 
 ---
 
@@ -57,13 +60,6 @@ Built using the warm **HomeSteps** design family:
 - **Typography**: Friendly, readable fonts (`Fredoka` for headings, `Nunito` for content).
 - **Mobile-First UX**: Generous touch targets (>= 48px), fixed mobile bottom bar, and responsive layouts designed for teachers on smartphones.
 - **Full English UI**.
-
----
-
-## 🚫 Out of Scope for Phase 1 Pilot (Per PRD)
-- Multi-user authentication & role logins (scheduled for post-pilot roll-out).
-- Cloud Firestore backend (pilot runs on client localStorage).
-- Modules M4 through M9 (Auto-Delivery, PTM Scheduler, Communication Hub, Reviews, Syllabus Manager, Timetables).
 
 ---
 

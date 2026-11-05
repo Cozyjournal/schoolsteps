@@ -413,6 +413,53 @@
           </div>
         </div>
 
+        <!-- Class-wise Monthly Attendance Sheet -->
+        <div class="attendance-sheet-card card" id="monthlyAttSheetCard" style="margin-top: 20px;">
+          <div class="card-header" style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 14px; flex-wrap: wrap;">
+            <div>
+              <h3 style="font-family: var(--font-heading); font-size: 1.15rem; font-weight: 700; color: var(--text-heading); margin: 0 0 4px;">
+                📊 Class-wise Monthly Attendance Sheet
+              </h3>
+              <p style="font-size: 0.85rem; color: var(--text-muted); margin: 0;">
+                View and print the complete monthly attendance register (P/A/L calendar grid) for any class and section.
+              </p>
+            </div>
+            <div style="display: flex; gap: 8px;">
+              <button type="button" class="btn btn-secondary" id="btnPrintAttSheet" disabled>
+                <span>🖨 Print Sheet</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="toolbar-row" style="display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; margin-bottom: 12px;">
+            <div class="control-item" style="flex: 1; min-width: 140px;">
+              <label for="attSheetClassSelect" class="control-label">🏫 Class</label>
+              <select id="attSheetClassSelect" class="form-select">
+                <!-- Dynamically populated -->
+              </select>
+            </div>
+            <div class="control-item" style="flex: 1; min-width: 120px;">
+              <label for="attSheetSectionSelect" class="control-label">🏷️ Section</label>
+              <input type="text" id="attSheetSectionSelect" list="sectionSuggestions" class="form-input" placeholder="e.g. A" value="A" autocomplete="off">
+            </div>
+            <div class="control-item" style="flex: 1; min-width: 150px;">
+              <label for="attSheetMonthPicker" class="control-label">📅 Month</label>
+              <input type="month" id="attSheetMonthPicker" class="form-input">
+            </div>
+            <div class="control-item" style="display: flex; align-items: flex-end;">
+              <button type="button" class="btn btn-primary" id="btnLoadAttSheet">
+                <span>View Sheet</span>
+              </button>
+            </div>
+          </div>
+
+          <div id="attSheetContainer" class="att-sheet-container" style="min-height: 80px;">
+            <div class="empty-state" style="padding: 24px; text-align: center; color: var(--text-muted);">
+              Select a class, section, and month, then tap <strong>View Sheet</strong> to generate the monthly register.
+            </div>
+          </div>
+        </div>
+
         <!-- Parent WhatsApp Notification Center -->
         <div class="whatsapp-hub card" id="whatsappHubSection">
           <div class="hub-header">
@@ -1219,6 +1266,9 @@
                     <button type="button" class="btn btn-sm btn-subtle active" id="btnFeeSubNavOverview">💳 Overview</button>
                     <button type="button" class="btn btn-sm btn-subtle" id="btnFeeSubNavDefaulters">⚠️ Defaulters</button>
                   </div>
+                  <button type="button" class="btn btn-subtle btn-sm" id="btnBulkVouchers" title="Print Class Fee Vouchers">
+                    <span>🧾 Print Class Vouchers</span>
+                  </button>
                   <button type="button" class="btn btn-subtle btn-sm" id="btnEditFeeStructure">
                     <span>⚙️ Edit Fee Structure</span>
                   </button>
@@ -2477,6 +2527,60 @@
     </div>
   </div>
 
+  <!-- Fee Voucher Modal (Single & Class Bulk Print) -->
+  <div class="modal-overlay hidden" id="feeVoucherModal">
+    <div class="modal-card" style="max-width: 480px;">
+      <div class="modal-header">
+        <h3 class="modal-title" id="feeVoucherModalTitle">Print Fee Voucher</h3>
+        <button type="button" class="btn-close" id="btnCloseFeeVoucherModal">✕</button>
+      </div>
+      <form id="feeVoucherForm" class="modal-body" onsubmit="return false;" novalidate>
+        <input type="hidden" id="voucherMode" value="single" />
+        <input type="hidden" id="voucherStudentId" value="" />
+
+        <!-- Single Student Info Display -->
+        <div id="voucherSingleStudentInfo" style="margin-bottom: 14px; padding: 12px; background: var(--bg-hover, #F8FAFC); border: 1px solid var(--border-color, #E2E8F0); border-radius: 6px;">
+          <div style="font-size: 1rem; font-weight: 700; color: var(--text-heading);" id="voucherSingleName">—</div>
+          <div style="font-size: 0.85rem; color: var(--text-muted); margin-top: 3px;" id="voucherSingleMeta">—</div>
+        </div>
+
+        <!-- Bulk Class Select -->
+        <div id="voucherBulkClassGroup" class="form-group hidden">
+          <label for="voucherClassSelect" class="form-label required">Select Class</label>
+          <select id="voucherClassSelect" class="form-select">
+            <!-- Dynamically populated -->
+          </select>
+        </div>
+
+        <!-- Month Picker -->
+        <div class="form-group">
+          <label for="voucherMonthPicker" class="form-label required">Fee Month</label>
+          <input type="month" id="voucherMonthPicker" class="form-input" required />
+        </div>
+
+        <!-- Due Date Picker -->
+        <div class="form-group">
+          <label for="voucherDueDate" class="form-label required">Due Date</label>
+          <input type="date" id="voucherDueDate" class="form-input" required />
+          <span style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-top: 2px;">Default: 10th of the selected month</span>
+        </div>
+
+        <!-- Bulk Options -->
+        <div id="voucherBulkOptionsGroup" class="form-group hidden">
+          <label class="checkbox-pill" style="cursor: pointer; display: inline-flex; align-items: center; gap: 8px;">
+            <input type="checkbox" id="voucherIncludePaid" />
+            <span style="font-size: 0.88rem;">Include fully paid students</span>
+          </label>
+        </div>
+
+        <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 8px; padding-top: 14px;">
+          <button type="button" class="btn btn-subtle" id="btnCancelFeeVoucher">Cancel</button>
+          <button type="button" class="btn btn-primary" id="btnConfirmPrintVoucher">🖨 Print Voucher</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- Printable Fee Defaulters List (Only visible when printing defaulters) -->
   <div id="printableDefaulters" class="printable-defaulters no-screen">
     <div class="defaulters-card-print">
@@ -2537,6 +2641,50 @@
         <!-- Injected via JavaScript -->
       </div>
     </div>
+  </div>
+
+  <!-- Printable Class-wise Monthly Attendance Sheet -->
+  <div id="printableAttendanceSheet" class="printable-attendance-sheet no-screen">
+    <div class="att-sheet-card-print">
+      <div class="att-sheet-print-header">
+        <div class="att-sheet-logo-wrap">
+          <img id="attSheetPrintLogo" src="icon.svg" alt="Logo" class="att-sheet-logo-img" />
+        </div>
+        <div class="att-sheet-header-text">
+          <h2 id="attSheetPrintSchoolName" class="att-school-name">School Name</h2>
+          <div id="attSheetPrintTagline" class="att-tagline">Tagline</div>
+          <div id="attSheetPrintContact" class="att-contact">Address | Phone</div>
+        </div>
+        <div class="att-sheet-title-badge">
+          <div class="att-sheet-main-title">MONTHLY ATTENDANCE REGISTER</div>
+          <div id="attSheetPrintMeta" class="att-sheet-meta">Class 3 (A) • November 2026</div>
+          <div id="attSheetPrintRecordedDays" class="att-sheet-recorded-badge">Recorded Days: 0 of 30</div>
+        </div>
+      </div>
+
+      <div id="attSheetPrintTableWrap">
+        <!-- Rendered via JS -->
+      </div>
+
+      <div class="att-sheet-print-footer">
+        <div class="att-legend">
+          <strong>Legend:</strong> <span>P = Present</span> • <span>A = Absent</span> • <span>L = Late</span> • <span>Blank = Holiday / Unrecorded</span>
+        </div>
+        <div class="att-signatures">
+          <div>Teacher Signature: _______________________</div>
+          <div>Principal Signature: _______________________</div>
+        </div>
+        <div class="att-print-timestamp">
+          <span>Generated by SchoolSteps</span>
+          <span id="attSheetPrintFooterDate"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Printable Fee Vouchers (Single & Class Bulk Print) -->
+  <div id="printableFeeVoucher" class="printable-fee-voucher no-screen">
+    <!-- Populated dynamically via JS: contains one or more .voucher-student-sheet elements -->
   </div>
 
 </body>

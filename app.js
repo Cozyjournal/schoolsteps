@@ -2442,6 +2442,45 @@
       });
     }
 
+    // Populate attendance sheet class select
+    const attSheetClassSelect = document.getElementById('attSheetClassSelect');
+    if (attSheetClassSelect) {
+      const currentVal = attSheetClassSelect.value || 'Class 3';
+      attSheetClassSelect.innerHTML = '';
+      sortedClasses.forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c;
+        opt.textContent = c;
+        if (c === currentVal) opt.selected = true;
+        attSheetClassSelect.appendChild(opt);
+      });
+      if (!attSheetClassSelect.value && sortedClasses.length > 0) {
+        attSheetClassSelect.value = sortedClasses[0];
+      }
+    }
+
+    // Populate fee voucher bulk class select
+    const voucherClassSelect = document.getElementById('voucherClassSelect');
+    if (voucherClassSelect) {
+      const currentVal = voucherClassSelect.value || sortedClasses[0] || '';
+      voucherClassSelect.innerHTML = '';
+      sortedClasses.forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c;
+        opt.textContent = c;
+        if (c === currentVal) opt.selected = true;
+        voucherClassSelect.appendChild(opt);
+      });
+      if (!voucherClassSelect.value && sortedClasses.length > 0) {
+        voucherClassSelect.value = sortedClasses[0];
+      }
+    }
+
+    const attMonthPicker = document.getElementById('attSheetMonthPicker');
+    if (attMonthPicker && !attMonthPicker.value) {
+      attMonthPicker.value = getCurrentMonthKey();
+    }
+
     updateSectionSuggestions();
   }
 
@@ -4779,6 +4818,12 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
     document.getElementById('btnMarkAllPresent')?.addEventListener('click', handleMarkAllPresent);
     document.getElementById('btnSaveAttendance')?.addEventListener('click', handleSaveAttendance);
 
+    // Monthly Attendance Sheet
+    document.getElementById('btnLoadAttSheet')?.addEventListener('click', renderMonthlyAttendanceSheet);
+    document.getElementById('btnPrintAttSheet')?.addEventListener('click', openPrintAttendanceSheet);
+    document.getElementById('attSheetClassSelect')?.addEventListener('change', renderMonthlyAttendanceSheet);
+    document.getElementById('attSheetMonthPicker')?.addEventListener('change', renderMonthlyAttendanceSheet);
+
     // WhatsApp Filter tabs
     document.querySelectorAll('.wa-filter-btn').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -6113,6 +6158,7 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
               </div>
               <div class="fee-student-actions">
                 ${recordBtn}
+                <button type="button" class="btn btn-sm btn-subtle btn-fee-voucher" onclick="openFeeVoucherModal('${s.id}')" title="Print Fee Voucher">🧾 Voucher</button>
                 ${receiptBtn}
                 ${waReceiptBtn}
                 ${remindBtn}
@@ -6368,6 +6414,7 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
   }
 
   function openPrintReceipt(paymentId) {
+    removeAttSheetPageStyle();
     const payment = (state.feePayments || []).find(p => p.id === paymentId);
     if (!payment) {
       showToast('Payment record not found for receipt printing.', 'error');
@@ -6526,6 +6573,22 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
     document.getElementById('btnCloseDeleteFeePaymentModal')?.addEventListener('click', closeDeleteFeePaymentModal);
     document.getElementById('btnCancelDeleteFeePayment')?.addEventListener('click', closeDeleteFeePaymentModal);
     document.getElementById('btnConfirmDeleteFeePayment')?.addEventListener('click', handleConfirmDeleteFeePayment);
+
+    // Fee Vouchers
+    document.getElementById('btnBulkVouchers')?.addEventListener('click', openBulkVoucherModal);
+    document.getElementById('btnCloseFeeVoucherModal')?.addEventListener('click', closeFeeVoucherModal);
+    document.getElementById('btnCancelFeeVoucher')?.addEventListener('click', closeFeeVoucherModal);
+    document.getElementById('btnConfirmPrintVoucher')?.addEventListener('click', handlePrintFeeVouchers);
+    document.getElementById('voucherMonthPicker')?.addEventListener('change', (e) => {
+      const val = e.target.value;
+      if (val && val.includes('-')) {
+        const duePicker = document.getElementById('voucherDueDate');
+        if (duePicker) duePicker.value = `${val}-10`;
+      }
+    });
+    document.getElementById('feeVoucherModal')?.addEventListener('click', (e) => {
+      if (e.target.id === 'feeVoucherModal') closeFeeVoucherModal();
+    });
   }
 
   // Window exports for debugging & testing
@@ -6559,6 +6622,567 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
   window.formatMonthHuman = formatMonthHuman;
   window.getEffectiveMonthlyFee = getEffectiveMonthlyFee;
   window.__getEffectiveMonthlyFee = getEffectiveMonthlyFee;
+
+  // ========================================================
+  // CLASS-WISE MONTHLY ATTENDANCE SHEET & FEE VOUCHERS
+  // ========================================================
+
+  function removeAttSheetPageStyle() {
+    const existing = document.getElementById('attSheetPageStyle');
+    if (existing) existing.remove();
+  }
+
+  function getMonthlyAttendanceData() {
+    const classSelect = document.getElementById('attSheetClassSelect');
+    const sectionInput = document.getElementById('attSheetSectionSelect');
+    const monthPicker = document.getElementById('attSheetMonthPicker');
+
+    const selectedClass = (classSelect && classSelect.value) ? classSelect.value : 'Class 3';
+    const selectedSection = (sectionInput && sectionInput.value ? sectionInput.value : 'A').trim();
+    const selectedMonth = (monthPicker && monthPicker.value) ? monthPicker.value : getCurrentMonthKey();
+
+    const [yearStr, monthStr] = selectedMonth.split('-');
+    const year = parseInt(yearStr, 10);
+    const month = parseInt(monthStr, 10);
+    const daysInMonth = new Date(year, month, 0).getDate();
+    const todayStr = getTodayISO();
+
+    // Active students in class & section
+    const students = (state.students || []).filter(s =>
+      s.status === 'Active' &&
+      s.className === selectedClass &&
+      (s.section || 'A').trim().toLowerCase() === selectedSection.toLowerCase()
+    );
+
+    students.sort((a, b) => {
+      const rA = parseInt(a.rollNo || '0', 10);
+      const rB = parseInt(b.rollNo || '0', 10);
+      if (!isNaN(rA) && !isNaN(rB) && rA !== rB) return rA - rB;
+      return (a.name || '').localeCompare(b.name || '');
+    });
+
+    let recordedDaysCount = 0;
+    const dailyRecords = [];
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      const isFuture = dateStr > todayStr;
+      const attMap = isFuture ? {} : getAttendanceForDateAndClass(dateStr, selectedClass, selectedSection);
+      const hasRecord = !isFuture && Object.keys(attMap).length > 0;
+      if (hasRecord) recordedDaysCount++;
+      dailyRecords.push({ day: d, dateStr, isFuture, attMap, hasRecord });
+    }
+
+    const studentRows = students.map(student => {
+      let pCount = 0;
+      let aCount = 0;
+      let lCount = 0;
+      const dayStatuses = dailyRecords.map(rec => {
+        if (rec.isFuture || !rec.hasRecord) return { text: '', cls: '' };
+        const st = rec.attMap[student.id];
+        if (!st || !st.status) return { text: '', cls: '' };
+        if (st.status === 'Present') {
+          pCount++;
+          return { text: 'P', cls: 'cell-status-p' };
+        }
+        if (st.status === 'Absent') {
+          aCount++;
+          return { text: 'A', cls: 'cell-status-a' };
+        }
+        if (st.status === 'Late') {
+          lCount++;
+          return { text: 'L', cls: 'cell-status-l' };
+        }
+        return { text: '', cls: '' };
+      });
+
+      const totalAttended = pCount + lCount;
+      const totalRecorded = pCount + aCount + lCount;
+      const pct = totalRecorded > 0 ? Math.round((totalAttended / totalRecorded) * 100) : 0;
+      const pctDisplay = totalRecorded > 0 ? `${pct}%` : '—';
+
+      return {
+        student,
+        dayStatuses,
+        pCount,
+        aCount,
+        lCount,
+        pct,
+        pctDisplay
+      };
+    });
+
+    return {
+      selectedClass,
+      selectedSection,
+      selectedMonth,
+      year,
+      month,
+      daysInMonth,
+      students,
+      studentRows,
+      recordedDaysCount
+    };
+  }
+
+  function renderMonthlyAttendanceSheet() {
+    const container = document.getElementById('attSheetContainer');
+    const printBtn = document.getElementById('btnPrintAttSheet');
+    if (!container) return;
+
+    const data = getMonthlyAttendanceData();
+    const { selectedClass, selectedSection, selectedMonth, daysInMonth, students, studentRows, recordedDaysCount } = data;
+
+    if (students.length === 0) {
+      if (printBtn) printBtn.disabled = true;
+      container.innerHTML = `
+        <div class="empty-state" style="padding: 24px; text-align: center; color: var(--text-muted); border: 1px dashed var(--border-color, #E2E8F0); border-radius: 8px;">
+          <div style="font-size: 2rem; margin-bottom: 8px;">📋</div>
+          <div style="font-weight: 700; color: var(--text-heading); margin-bottom: 4px;">No Active Students in This Class</div>
+          <p style="margin: 0; font-size: 0.85rem;">No active students found in ${escapeHtml(selectedClass)} (Section ${escapeHtml(selectedSection)}).</p>
+        </div>
+      `;
+      return;
+    }
+
+    if (printBtn) printBtn.disabled = false;
+
+    let noticeHtml = '';
+    if (recordedDaysCount === 0) {
+      noticeHtml = `
+        <div style="margin-bottom: 12px; padding: 10px 14px; background: #FEF3C7; border: 1px solid #FCD34D; border-radius: 6px; font-size: 0.85rem; color: #92400E; display: flex; align-items: center; gap: 8px;">
+          <span>ℹ️</span>
+          <span>No attendance has been recorded for <strong>${escapeHtml(selectedClass)} (${escapeHtml(selectedSection)})</strong> in <strong>${formatMonthHuman(selectedMonth)}</strong> yet.</span>
+        </div>
+      `;
+    }
+
+    let daysTh = '';
+    for (let d = 1; d <= daysInMonth; d++) {
+      daysTh += `<th class="col-day">${d}</th>`;
+    }
+
+    const rowsHtml = studentRows.map(row => {
+      let daysTd = '';
+      row.dayStatuses.forEach(st => {
+        daysTd += `<td class="col-day ${st.cls}">${st.text}</td>`;
+      });
+      return `
+        <tr>
+          <td class="col-roll">${escapeHtml(row.student.rollNo || '—')}</td>
+          <td class="col-name">${escapeHtml(row.student.name)}</td>
+          ${daysTd}
+          <td class="col-stat" style="color: #059669;">${row.pCount}</td>
+          <td class="col-stat" style="color: #DC2626;">${row.aCount}</td>
+          <td class="col-stat" style="color: #D97706;">${row.lCount}</td>
+          <td class="col-stat">${row.pctDisplay}</td>
+        </tr>
+      `;
+    }).join('');
+
+    container.innerHTML = `
+      ${noticeHtml}
+      <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.82rem; color: var(--text-muted); margin-bottom: 6px; flex-wrap: wrap; gap: 8px;">
+        <div>Register for: <strong>${escapeHtml(selectedClass)} - Section ${escapeHtml(selectedSection)}</strong> • <strong>${formatMonthHuman(selectedMonth)}</strong></div>
+        <div>Enrolled: <strong>${students.length} students</strong> | Recorded Days: <strong>${recordedDaysCount} of ${daysInMonth}</strong></div>
+      </div>
+      <div class="monthly-att-table-wrap">
+        <table class="monthly-att-table">
+          <thead>
+            <tr>
+              <th class="col-roll">Roll</th>
+              <th class="col-name">Student Name</th>
+              ${daysTh}
+              <th class="col-stat" title="Present">P</th>
+              <th class="col-stat" title="Absent">A</th>
+              <th class="col-stat" title="Late">L</th>
+              <th class="col-stat" title="Attendance %">%</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rowsHtml}
+          </tbody>
+        </table>
+      </div>
+      <div class="att-sheet-legend-bar">
+        <div><strong style="color: var(--text-heading);">Legend:</strong></div>
+        <div><span style="color: #059669; font-weight: 700;">P</span> = Present</div>
+        <div><span style="color: #DC2626; font-weight: 700;">A</span> = Absent</div>
+        <div><span style="color: #D97706; font-weight: 700;">L</span> = Late</div>
+        <div><span style="color: #94A3B8; font-weight: 700;">Blank</span> = Unrecorded / Future / Holiday</div>
+      </div>
+    `;
+  }
+
+  function openPrintAttendanceSheet() {
+    const data = getMonthlyAttendanceData();
+    const { selectedClass, selectedSection, selectedMonth, daysInMonth, students, studentRows, recordedDaysCount } = data;
+
+    if (students.length === 0) {
+      showToast('No students to print in this class.', 'warn');
+      return;
+    }
+
+    const schoolName = (state.currentSchool && (state.currentSchool.schoolName || state.currentSchool.name)) || state.profile?.name || 'SchoolSteps';
+    const tagline = state.profile?.tagline || state.profile?.motto || (state.currentSchool && (state.currentSchool.tagline || state.currentSchool.motto)) || '';
+    const contact = state.profile?.address || state.profile?.phone || (state.currentSchool && (state.currentSchool.address || state.currentSchool.phone)) || '';
+    const logoUrl = state.profile?.logoUrl || (state.currentSchool && state.currentSchool.logoUrl) || 'icon.svg';
+
+    document.getElementById('attSheetPrintSchoolName').textContent = schoolName;
+    document.getElementById('attSheetPrintTagline').textContent = tagline;
+    document.getElementById('attSheetPrintContact').textContent = contact;
+    document.getElementById('attSheetPrintLogo').src = logoUrl;
+
+    document.getElementById('attSheetPrintMeta').textContent = `Class: ${selectedClass} (${selectedSection}) • Month: ${formatMonthHuman(selectedMonth)}`;
+    document.getElementById('attSheetPrintRecordedDays').textContent = `Recorded Days: ${recordedDaysCount} of ${daysInMonth}`;
+    document.getElementById('attSheetPrintFooterDate').textContent = `Printed: ${formatDateHuman(getTodayISO())}`;
+
+    let daysTh = '';
+    for (let d = 1; d <= daysInMonth; d++) {
+      daysTh += `<th style="width: 2.3%;">${d}</th>`;
+    }
+
+    const rowsHtml = studentRows.map(row => {
+      let daysTd = '';
+      row.dayStatuses.forEach(st => {
+        let cls = '';
+        if (st.text === 'P') cls = 'cell-p';
+        else if (st.text === 'A') cls = 'cell-a';
+        else if (st.text === 'L') cls = 'cell-l';
+        daysTd += `<td class="${cls}">${st.text}</td>`;
+      });
+      return `
+        <tr>
+          <td style="width: 3.5%;">${escapeHtml(row.student.rollNo || '—')}</td>
+          <td class="cell-name" style="width: 15%;">${escapeHtml(row.student.name)}</td>
+          ${daysTd}
+          <td style="width: 2.8%; color: #059669; font-weight: 700;">${row.pCount}</td>
+          <td style="width: 2.8%; color: #DC2626; font-weight: 700;">${row.aCount}</td>
+          <td style="width: 2.8%; color: #D97706; font-weight: 700;">${row.lCount}</td>
+          <td style="width: 3.5%; font-weight: 700;">${row.pctDisplay}</td>
+        </tr>
+      `;
+    }).join('');
+
+    const tableHtml = `
+      <table class="att-sheet-print-table">
+        <thead>
+          <tr>
+            <th style="width: 3.5%;">Roll</th>
+            <th style="width: 15%; text-align: left; padding-left: 4px;">Student Name</th>
+            ${daysTh}
+            <th style="width: 2.8%;">P</th>
+            <th style="width: 2.8%;">A</th>
+            <th style="width: 2.8%;">L</th>
+            <th style="width: 3.5%;">%</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rowsHtml}
+        </tbody>
+      </table>
+    `;
+
+    document.getElementById('attSheetPrintTableWrap').innerHTML = tableHtml;
+
+    // Inject landscape style and remove any previous
+    removeAttSheetPageStyle();
+    const styleEl = document.createElement('style');
+    styleEl.id = 'attSheetPageStyle';
+    styleEl.textContent = '@page { size: A4 landscape; margin: 8mm; }';
+    document.head.appendChild(styleEl);
+
+    document.body.classList.remove('printing-attendance-sheet', 'printing-fee-voucher', 'printing-fee-receipt', 'printing-defaulters', 'printing-syllabus');
+    const cleanup = () => {
+      document.body.classList.remove('printing-attendance-sheet');
+      removeAttSheetPageStyle();
+      window.removeEventListener('afterprint', cleanup);
+    };
+    window.addEventListener('afterprint', cleanup);
+    setTimeout(cleanup, 1500);
+
+    document.body.classList.add('printing-attendance-sheet');
+    window.print();
+  }
+
+  function openFeeVoucherModal(studentId) {
+    const student = (state.students || []).find(s => s.id === studentId);
+    if (!student) return;
+
+    const modal = document.getElementById('feeVoucherModal');
+    if (!modal) return;
+
+    document.getElementById('voucherMode').value = 'single';
+    document.getElementById('voucherStudentId').value = student.id;
+
+    document.getElementById('voucherSingleStudentInfo')?.classList.remove('hidden');
+    document.getElementById('voucherBulkClassGroup')?.classList.add('hidden');
+    document.getElementById('voucherBulkOptionsGroup')?.classList.add('hidden');
+
+    document.getElementById('feeVoucherModalTitle').textContent = 'Print Fee Voucher';
+    document.getElementById('btnConfirmPrintVoucher').textContent = '🖨 Print Voucher';
+
+    const effFee = getEffectiveMonthlyFee(student);
+    const feeText = effFee != null && effFee > 0 ? `Rs ${effFee.toLocaleString()}` : 'Fee not set';
+    document.getElementById('voucherSingleName').textContent = student.name;
+    document.getElementById('voucherSingleMeta').textContent = `Roll #${student.rollNo || '—'} • Class ${student.className} ${student.section || ''} • Monthly Fee: ${feeText}`;
+
+    const monthKey = state.feeSelectedMonth || getCurrentMonthKey();
+    const monthPicker = document.getElementById('voucherMonthPicker');
+    if (monthPicker) monthPicker.value = monthKey;
+
+    const duePicker = document.getElementById('voucherDueDate');
+    if (duePicker) duePicker.value = `${monthKey}-10`;
+
+    modal.classList.remove('hidden');
+  }
+
+  function openBulkVoucherModal() {
+    const modal = document.getElementById('feeVoucherModal');
+    if (!modal) return;
+
+    document.getElementById('voucherMode').value = 'bulk';
+    document.getElementById('voucherStudentId').value = '';
+
+    document.getElementById('voucherSingleStudentInfo')?.classList.add('hidden');
+    document.getElementById('voucherBulkClassGroup')?.classList.remove('hidden');
+    document.getElementById('voucherBulkOptionsGroup')?.classList.remove('hidden');
+
+    document.getElementById('feeVoucherModalTitle').textContent = 'Print Class Fee Vouchers';
+    document.getElementById('btnConfirmPrintVoucher').textContent = '🖨 Print Class Vouchers';
+
+    const classSelect = document.getElementById('voucherClassSelect');
+    if (classSelect) {
+      if (state.feeFilterClass && state.feeFilterClass !== 'ALL') {
+        classSelect.value = state.feeFilterClass;
+      }
+    }
+
+    const includePaid = document.getElementById('voucherIncludePaid');
+    if (includePaid) includePaid.checked = false;
+
+    const monthKey = state.feeSelectedMonth || getCurrentMonthKey();
+    const monthPicker = document.getElementById('voucherMonthPicker');
+    if (monthPicker) monthPicker.value = monthKey;
+
+    const duePicker = document.getElementById('voucherDueDate');
+    if (duePicker) duePicker.value = `${monthKey}-10`;
+
+    modal.classList.remove('hidden');
+  }
+
+  function closeFeeVoucherModal() {
+    const modal = document.getElementById('feeVoucherModal');
+    if (modal) modal.classList.add('hidden');
+  }
+
+  function handlePrintFeeVouchers() {
+    const mode = document.getElementById('voucherMode')?.value || 'single';
+    const monthKey = document.getElementById('voucherMonthPicker')?.value || getCurrentMonthKey();
+    const dueDateStr = document.getElementById('voucherDueDate')?.value || `${monthKey}-10`;
+
+    let studentsToPrint = [];
+
+    if (mode === 'single') {
+      const studentId = document.getElementById('voucherStudentId')?.value;
+      const student = (state.students || []).find(s => s.id === studentId);
+      if (!student) {
+        showToast('Student record not found.', 'error');
+        return;
+      }
+      const effFee = getEffectiveMonthlyFee(student);
+      if (effFee === null || effFee <= 0) {
+        showToast('Please set fee for this student or class first', 'error');
+        return;
+      }
+      studentsToPrint = [student];
+    } else {
+      const targetClass = document.getElementById('voucherClassSelect')?.value;
+      const includePaid = document.getElementById('voucherIncludePaid')?.checked;
+
+      const activeClassStudents = (state.students || []).filter(s =>
+        s.status === 'Active' && s.className === targetClass
+      );
+
+      if (activeClassStudents.length === 0) {
+        showToast(`No active students found in ${targetClass}.`, 'error');
+        return;
+      }
+
+      activeClassStudents.sort((a, b) => {
+        const rA = parseInt(a.rollNo || '0', 10);
+        const rB = parseInt(b.rollNo || '0', 10);
+        if (!isNaN(rA) && !isNaN(rB) && rA !== rB) return rA - rB;
+        return (a.name || '').localeCompare(b.name || '');
+      });
+
+      const validList = [];
+      activeClassStudents.forEach(s => {
+        const effFee = getEffectiveMonthlyFee(s);
+        if (effFee === null || effFee <= 0) return; // skip if fee not set
+        const sPayments = (state.feePayments || []).filter(p => p.studentId === s.id && p.month === monthKey);
+        const sPaid = sPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+        const remaining = Math.max(0, effFee - sPaid);
+        if (!includePaid && remaining <= 0) return; // skip fully paid if not included
+        validList.push(s);
+      });
+
+      if (validList.length === 0) {
+        showToast('No pending vouchers to print for this class', 'info');
+        return;
+      }
+
+      studentsToPrint = validList;
+    }
+
+    const schoolName = (state.currentSchool && (state.currentSchool.schoolName || state.currentSchool.name)) || state.profile?.name || 'SchoolSteps';
+    const tagline = state.profile?.tagline || state.profile?.motto || (state.currentSchool && (state.currentSchool.tagline || state.currentSchool.motto)) || '';
+    const contact = state.profile?.address || state.profile?.phone || (state.currentSchool && (state.currentSchool.address || state.currentSchool.phone)) || '';
+    const logoUrl = state.profile?.logoUrl || (state.currentSchool && state.currentSchool.logoUrl) || 'icon.svg';
+
+    const formattedDueDate = formatDateHuman(dueDateStr);
+    const issueDateStr = formatDateHuman(getTodayISO());
+    const monthHuman = formatMonthHuman(monthKey);
+
+    function buildVoucherCopyHtml(student, copyType, isSchoolCopy) {
+      const effFee = getEffectiveMonthlyFee(student) || 0;
+      const sPayments = (state.feePayments || []).filter(p => p.studentId === student.id && p.month === monthKey);
+      const sPaid = sPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+      const remainingBalance = Math.max(0, effFee - sPaid);
+      const isPaid = sPaid >= effFee && effFee > 0;
+      const rollDisplay = student.rollNo ? String(student.rollNo).trim() : '—';
+      const vchNumber = `VCH-${monthKey.replace('-', '')}-${student.rollNo ? String(student.rollNo).trim() : student.id}`;
+
+      let payableAmount = remainingBalance > 0 ? remainingBalance : (isPaid ? 0 : effFee);
+      let words = isPaid ? 'Fee Fully Paid (Zero Rupees Balance)' : numberToWordsPKR(payableAmount);
+
+      return `
+        <div class="voucher-copy ${isSchoolCopy ? 'voucher-copy-school' : ''}">
+          <div class="voucher-top-bar">
+            <div class="voucher-school-info">
+              <img src="${logoUrl}" alt="Logo" class="voucher-logo" />
+              <div>
+                <div class="voucher-school-name">${escapeHtml(schoolName)}</div>
+                ${tagline ? `<div class="voucher-tagline">${escapeHtml(tagline)}</div>` : ''}
+                ${contact ? `<div class="voucher-contact">${escapeHtml(contact)}</div>` : ''}
+              </div>
+            </div>
+            <div class="voucher-badge-box">
+              <div class="voucher-badge-title">FEE VOUCHER</div>
+              <div class="voucher-badge-type">${copyType}</div>
+              <div class="voucher-number">${vchNumber}</div>
+            </div>
+          </div>
+
+          <div class="voucher-meta-row">
+            <div>Month: <strong>${monthHuman}</strong></div>
+            <div>Issue Date: <strong>${issueDateStr}</strong></div>
+            <div>Due Date: <strong class="voucher-due-date">${formattedDueDate}</strong></div>
+          </div>
+
+          <div class="voucher-student-box">
+            <div class="voucher-student-grid">
+              <div>Student Name: <strong>${escapeHtml(student.name)}</strong></div>
+              <div>Roll No: <strong>${escapeHtml(rollDisplay)}</strong></div>
+              <div>Father's Name: <strong>${escapeHtml(student.fatherName || '—')}</strong></div>
+              <div>Class & Section: <strong>${escapeHtml(student.className)} ${escapeHtml(student.section || '')}</strong></div>
+            </div>
+          </div>
+
+          <table class="voucher-fee-table">
+            <thead>
+              <tr>
+                <th style="text-align: left;">Particulars</th>
+                <th style="text-align: right; width: 120px;">Amount (PKR)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Monthly Tuition Fee — ${monthHuman}</td>
+                <td style="text-align: right;">Rs ${effFee.toLocaleString()}</td>
+              </tr>
+              ${sPaid > 0 ? `
+              <tr>
+                <td>Amount Already Paid</td>
+                <td style="text-align: right; color: #059669;">- Rs ${sPaid.toLocaleString()}</td>
+              </tr>` : ''}
+              <tr class="voucher-total-row">
+                <td><strong>Net Payable by Due Date</strong></td>
+                <td style="text-align: right;"><strong>Rs ${remainingBalance.toLocaleString()}</strong></td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div class="voucher-amount-words">
+            Amount in words: <strong>${words}</strong>
+          </div>
+
+          <div class="voucher-footer">
+            <div class="voucher-instruction">
+              * Please pay the fee on or before the due date. A late fee may be charged after due date.
+            </div>
+            <div class="voucher-signatures">
+              <div>Accountant / Cashier</div>
+              <div>Bank / School Stamp</div>
+              <div>Depositor Signature</div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    const allSheetsHtml = studentsToPrint.map(student => {
+      const parentCopy = buildVoucherCopyHtml(student, 'PARENT COPY', false);
+      const schoolCopy = buildVoucherCopyHtml(student, 'SCHOOL COPY', true);
+      const cutLine = `<div class="voucher-cut-line"><span>✂ - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - ✂</span></div>`;
+
+      return `
+        <div class="voucher-student-sheet">
+          ${parentCopy}
+          ${cutLine}
+          ${schoolCopy}
+        </div>
+      `;
+    }).join('');
+
+    const printableEl = document.getElementById('printableFeeVoucher');
+    if (printableEl) {
+      printableEl.innerHTML = allSheetsHtml;
+    }
+
+    closeFeeVoucherModal();
+
+    // Remove any landscape page style and remove old print classes
+    removeAttSheetPageStyle();
+    document.body.classList.remove('printing-attendance-sheet', 'printing-fee-voucher', 'printing-fee-receipt', 'printing-defaulters', 'printing-syllabus');
+
+    const cleanup = () => {
+      document.body.classList.remove('printing-fee-voucher');
+      window.removeEventListener('afterprint', cleanup);
+    };
+    window.addEventListener('afterprint', cleanup);
+    setTimeout(cleanup, 1500);
+
+    document.body.classList.add('printing-fee-voucher');
+    window.print();
+  }
+
+  // Window exports for Attendance Sheet & Fee Vouchers
+  window.getMonthlyAttendanceData = getMonthlyAttendanceData;
+  window.__getMonthlyAttendanceData = getMonthlyAttendanceData;
+  window.renderMonthlyAttendanceSheet = renderMonthlyAttendanceSheet;
+  window.openPrintAttendanceSheet = openPrintAttendanceSheet;
+  window.openFeeVoucherModal = openFeeVoucherModal;
+  window.openBulkVoucherModal = openBulkVoucherModal;
+  window.closeFeeVoucherModal = closeFeeVoucherModal;
+  window.handlePrintFeeVouchers = handlePrintFeeVouchers;
+  window.removeAttSheetPageStyle = removeAttSheetPageStyle;
+  window.__renderMonthlyAttendanceSheet = renderMonthlyAttendanceSheet;
+  window.__openPrintAttendanceSheet = openPrintAttendanceSheet;
+  window.__openFeeVoucherModal = openFeeVoucherModal;
+  window.__openBulkVoucherModal = openBulkVoucherModal;
+  window.__closeFeeVoucherModal = closeFeeVoucherModal;
+  window.__handlePrintFeeVouchers = handlePrintFeeVouchers;
+
 
   // ========================================================
   // FEES ADD-ON: Defaulters List
@@ -6803,6 +7427,7 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
   }
 
   function openPrintDefaulters() {
+    removeAttSheetPageStyle();
     const month = state.feeSelectedMonth || getCurrentMonthKey();
     const filterClass = state.defaultersFilterClass || 'ALL';
     const data = computeDefaulters(month, filterClass);
@@ -7504,6 +8129,7 @@ Please review the syllabus and schedule to support your child's learning.
 
   // Print syllabus document
   function openPrintSyllabus() {
+    removeAttSheetPageStyle();
     const syllabus = getCurrentSyllabus();
     if (!syllabus || !syllabus.subjects || syllabus.subjects.length === 0) {
       showToast('No syllabus content available to print. Please create a syllabus and add subjects first.', 'warn');

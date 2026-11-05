@@ -2164,6 +2164,26 @@
         switchTab(targetTab);
       });
     });
+    updateFeesTabVisibility();
+  }
+
+  function updateFeesTabVisibility() {
+    const userRole = (state.currentUser && state.currentUser.role) || ((auth && auth.currentUser) ? getUserRole(auth.currentUser.email) : '');
+    const isAdmin = userRole === 'Admin' && !!state.currentSchoolId;
+
+    const desktopBtn = document.getElementById('tabBtnFees') || document.querySelector('.tab-btn[data-tab="tab-fees"]');
+    const mobileBtn = document.getElementById('mobileTabBtnFees') || document.querySelector('.mobile-tab-btn[data-tab="tab-fees"]');
+
+    if (isAdmin) {
+      desktopBtn?.classList.remove('hidden');
+      mobileBtn?.classList.remove('hidden');
+    } else {
+      desktopBtn?.classList.add('hidden');
+      mobileBtn?.classList.add('hidden');
+      if (state.activeTab === 'tab-fees') {
+        switchTab('tab-students');
+      }
+    }
   }
 
   function switchTab(tabId) {
@@ -2175,6 +2195,16 @@
       }
       loadPlatformSchools();
       loadPlatformPaymentRequests();
+    }
+
+    if (tabId === 'tab-fees') {
+      const userRole = (state.currentUser && state.currentUser.role) || ((auth && auth.currentUser) ? getUserRole(auth.currentUser.email) : '');
+      const isAdmin = userRole === 'Admin' && !!state.currentSchoolId;
+      if (!isAdmin) {
+        showToast('Access restricted: School Admin only.', 'error');
+        switchTab('tab-students');
+        return;
+      }
     }
 
     state.activeTab = tabId;
@@ -5474,6 +5504,7 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
 
         updateUserHeader(user.email, cachedRole);
         checkPlatformAdmin(user);
+        updateFeesTabVisibility();
 
         // THEN: setTimeout(() => { try { initData(); renderApp(); } catch(e) { console.error(e); } }, 500);
         setTimeout(() => {
@@ -5508,6 +5539,8 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
         state.feeSelectedMonth = getCurrentMonthKey();
         document.getElementById('tabBtnPlatform')?.classList.add('hidden');
         document.getElementById('mobileTabBtnPlatform')?.classList.add('hidden');
+        document.getElementById('tabBtnFees')?.classList.add('hidden');
+        document.getElementById('mobileTabBtnFees')?.classList.add('hidden');
         document.getElementById('subscriptionBanner')?.classList.add('hidden');
         document.getElementById('subscriptionModal')?.classList.add('hidden');
 
@@ -5775,6 +5808,14 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
   }
 
   function renderFeesModule() {
+    const userRole = (state.currentUser && state.currentUser.role) || ((auth && auth.currentUser) ? getUserRole(auth.currentUser.email) : '');
+    const isAdmin = userRole === 'Admin' && !!state.currentSchoolId;
+    if (!isAdmin) {
+      const feesContainer = document.querySelector('#tab-fees .fees-container');
+      if (feesContainer) feesContainer.classList.add('hidden');
+      return;
+    }
+
     if (!state.feeSelectedMonth) {
       state.feeSelectedMonth = getCurrentMonthKey();
     }
@@ -6441,6 +6482,8 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
   window.__getFeeReceiptWhatsAppUrl = getFeeReceiptWhatsAppUrl;
 
   // Global window bindings for HTML onclick handlers
+  window.updateFeesTabVisibility = updateFeesTabVisibility;
+  window.__updateFeesTabVisibility = updateFeesTabVisibility;
   window.renderFeesModule = renderFeesModule;
   window.openRecordPaymentModal = openRecordPaymentModal;
   window.openPrintReceipt = openPrintReceipt;
@@ -7596,6 +7639,11 @@ Please review the syllabus and schedule to support your child's learning.
       }
     } catch (e) {
       console.warn('userHeader update warning:', e);
+    }
+    try {
+      updateFeesTabVisibility();
+    } catch (e) {
+      console.warn('updateFeesTabVisibility render warning:', e);
     }
     try { renderClassDropdowns(); } catch (e) { console.warn('renderClassDropdowns warning:', e); }
     try { renderStudentsList(); } catch (e) { console.warn('renderStudentsList warning:', e); }

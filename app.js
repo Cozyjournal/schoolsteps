@@ -347,6 +347,8 @@
     feeSelectedMonth: '',
     feeFilterStatus: 'ALL',
     feeFilterClass: 'ALL',
+    feeActiveSubView: 'overview',
+    defaultersFilterClass: 'ALL',
     syllabi: [],
     syllabusSelectedClass: 'Class 1',
     syllabusSelectedSection: 'ALL'
@@ -5524,8 +5526,11 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
 
   function getEffectiveMonthlyFee(student) {
     if (!student) return null;
-    if (student.monthlyFee != null && Number(student.monthlyFee) > 0) {
-      return Number(student.monthlyFee);
+    if (student.monthlyFee !== undefined && student.monthlyFee !== null && student.monthlyFee !== '') {
+      const parsed = Number(student.monthlyFee);
+      if (!isNaN(parsed) && parsed >= 0) {
+        return parsed;
+      }
     }
     const feeByClass = (state.currentSchool && state.currentSchool.feeByClass) || {};
     const classFee = student.className ? feeByClass[student.className] : null;
@@ -5579,9 +5584,9 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
   }
 
   function getFeeWhatsAppReminderUrl(student, monthKey, effectiveFee, pendingAmount) {
-    const cleanPhone = sanitizePhoneForWhatsApp(student.whatsapp);
+    const cleanPhone = sanitizePhoneForWhatsApp(student.whatsapp || student.parentPhone);
     if (!cleanPhone) return '#';
-    const schoolName = (state.currentSchool && state.currentSchool.name) || state.profile?.name || 'School';
+    const schoolName = (state.currentSchool && (state.currentSchool.schoolName || state.currentSchool.name)) || state.profile?.name || 'SchoolSteps';
     const parentName = student.fatherName || student.parentName || 'محترم والدین';
     const monthHuman = formatMonthHuman(monthKey);
     const effFee = effectiveFee != null ? effectiveFee : (getEffectiveMonthlyFee(student) || 0);
@@ -5808,6 +5813,18 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
     }
 
     if (mainView) mainView.classList.remove('hidden');
+
+    // Sub-navigation view handling (Overview vs Defaulters)
+    const isDefaultersView = state.feeActiveSubView === 'defaulters';
+    document.getElementById('btnFeeSubNavOverview')?.classList.toggle('active', !isDefaultersView);
+    document.getElementById('btnFeeSubNavDefaulters')?.classList.toggle('active', isDefaultersView);
+    document.getElementById('feesOverviewSection')?.classList.toggle('hidden', isDefaultersView);
+    document.getElementById('feesDefaultersSection')?.classList.toggle('hidden', !isDefaultersView);
+
+    if (isDefaultersView) {
+      renderDefaultersList();
+      return;
+    }
 
     // Summary calculations using getEffectiveMonthlyFee
     const activeStudents = (state.students || []).filter(s => s.status === 'Active');
@@ -6389,6 +6406,17 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
       switchTab('tab-fees');
     });
 
+    // Defaulters Sub-navigation & Buttons
+    document.getElementById('btnFeeSubNavOverview')?.addEventListener('click', () => switchFeeSubView('overview'));
+    document.getElementById('btnFeeSubNavDefaulters')?.addEventListener('click', () => switchFeeSubView('defaulters'));
+    document.getElementById('btnDefaultersBackToOverview')?.addEventListener('click', () => switchFeeSubView('overview'));
+    document.getElementById('feeStatCardPending')?.addEventListener('click', () => switchFeeSubView('defaulters'));
+    document.getElementById('defaultersFilterClassSelect')?.addEventListener('change', (e) => {
+      state.defaultersFilterClass = e.target.value;
+      renderDefaultersList();
+    });
+    document.getElementById('btnPrintDefaulters')?.addEventListener('click', openPrintDefaulters);
+
     // Record Payment Modal
     document.getElementById('btnCloseRecordPaymentModal')?.addEventListener('click', closeRecordPaymentModal);
     document.getElementById('btnCancelRecordPayment')?.addEventListener('click', closeRecordPaymentModal);
@@ -6413,6 +6441,7 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
   window.__getFeeReceiptWhatsAppUrl = getFeeReceiptWhatsAppUrl;
 
   // Global window bindings for HTML onclick handlers
+  window.renderFeesModule = renderFeesModule;
   window.openRecordPaymentModal = openRecordPaymentModal;
   window.openPrintReceipt = openPrintReceipt;
   window.openDeleteFeePaymentModal = openDeleteFeePaymentModal;
@@ -6424,6 +6453,362 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
   window.formatMonthHuman = formatMonthHuman;
   window.getEffectiveMonthlyFee = getEffectiveMonthlyFee;
   window.__getEffectiveMonthlyFee = getEffectiveMonthlyFee;
+
+  // ========================================================
+  // FEES ADD-ON: Defaulters List
+  // ========================================================
+
+  function switchFeeSubView(subView) {
+    state.feeActiveSubView = subView === 'defaulters' ? 'defaulters' : 'overview';
+    renderFeesModule();
+  }
+
+  function computeDefaulters(monthKey, classFilter) {
+    const month = monthKey || state.feeSelectedMonth || getCurrentMonthKey();
+    const filterClass = classFilter || state.defaultersFilterClass || 'ALL';
+    const activeStudents = (state.students || []).filter(s => s.status === 'Active');
+    const monthPayments = (state.feePayments || []).filter(p => p.month === month);
+
+    let candidates = activeStudents;
+    if (filterClass && filterClass !== 'ALL') {
+      candidates = candidates.filter(s => s.className === filterClass);
+    }
+
+    const defaulters = [];
+    candidates.forEach(s => {
+      const effFee = getEffectiveMonthlyFee(s);
+      if (effFee === null || effFee <= 0) return; // Waived or not set
+
+      const sPayments = monthPayments.filter(p => p.studentId === s.id);
+      const sPaid = sPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+      const pending = Math.max(0, effFee - sPaid);
+
+      if (pending > 0) {
+        defaulters.push({
+          student: s,
+          effFee: effFee,
+          paid: sPaid,
+          pending: pending,
+          isPartial: sPaid > 0,
+          payments: sPayments,
+          hasCustomFee: s.monthlyFee != null && Number(s.monthlyFee) > 0
+        });
+      }
+    });
+
+    // Sort: Pending amount highest first; ties: class then name A-Z
+    defaulters.sort((a, b) => {
+      if (b.pending !== a.pending) return b.pending - a.pending;
+      const classA = a.student.className || '';
+      const classB = b.student.className || '';
+      const numA = parseInt((classA.match(/\d+/) || [999])[0], 10);
+      const numB = parseInt((classB.match(/\d+/) || [999])[0], 10);
+      if (!isNaN(numA) && !isNaN(numB) && numA !== numB) {
+        return numA - numB;
+      }
+      const classCmp = classA.localeCompare(classB);
+      if (classCmp !== 0) return classCmp;
+      return (a.student.name || '').localeCompare(b.student.name || '');
+    });
+
+    const totalCount = defaulters.length;
+    const totalPending = defaulters.reduce((sum, d) => sum + d.pending, 0);
+
+    return {
+      defaulters,
+      totalCount,
+      totalPending,
+      month,
+      filterClass
+    };
+  }
+
+  function renderDefaultersList() {
+    const month = state.feeSelectedMonth || getCurrentMonthKey();
+    const filterClass = state.defaultersFilterClass || 'ALL';
+
+    // Populate Class Filter Dropdown
+    const classFilterSelect = document.getElementById('defaultersFilterClassSelect');
+    if (classFilterSelect) {
+      const activeStudents = (state.students || []).filter(s => s.status === 'Active');
+      const classesInUse = Array.from(new Set(activeStudents.map(s => s.className))).filter(Boolean);
+      classesInUse.sort((a, b) => {
+        const numA = parseInt((a.match(/\d+/) || [999])[0], 10);
+        const numB = parseInt((b.match(/\d+/) || [999])[0], 10);
+        if (!isNaN(numA) && !isNaN(numB) && numA !== numB) return numA - numB;
+        return a.localeCompare(b);
+      });
+
+      let optionsHtml = '<option value="ALL">All Classes</option>';
+      classesInUse.forEach(c => {
+        optionsHtml += `<option value="${escapeHtml(c)}" ${c === filterClass ? 'selected' : ''}>${escapeHtml(c)}</option>`;
+      });
+      classFilterSelect.innerHTML = optionsHtml;
+    }
+
+    // Compute Defaulters
+    const data = computeDefaulters(month, filterClass);
+    const defaulters = data.defaulters;
+    const totalCount = data.totalCount;
+    const totalPending = data.totalPending;
+
+    // Update Summary Header
+    const countDisplay = document.getElementById('defaultersCountDisplay');
+    if (countDisplay) countDisplay.textContent = totalCount;
+
+    const pendingDisplay = document.getElementById('defaultersTotalPendingDisplay');
+    if (pendingDisplay) pendingDisplay.textContent = `Rs ${totalPending.toLocaleString()}`;
+
+    const contextDisplay = document.getElementById('defaultersContextDisplay');
+    if (contextDisplay) {
+      const monthStr = formatMonthHuman(month);
+      const classStr = filterClass === 'ALL' ? 'All Classes' : filterClass;
+      contextDisplay.textContent = `Month: ${monthStr} • ${classStr}`;
+    }
+
+    // Containers
+    const container = document.getElementById('defaultersListContainer');
+    const emptyState = document.getElementById('defaultersEmptyState');
+    const emptyText = document.getElementById('defaultersEmptyStateText');
+
+    if (totalCount === 0) {
+      if (emptyState) emptyState.classList.remove('hidden');
+      if (emptyText) {
+        const classDesc = filterClass === 'ALL' ? 'in all classes' : `in ${filterClass}`;
+        emptyText.textContent = `No pending fee defaulters found ${classDesc} for ${formatMonthHuman(month)}.`;
+      }
+      if (container) container.innerHTML = '';
+      return;
+    }
+
+    if (emptyState) emptyState.classList.add('hidden');
+    if (!container) return;
+
+    // 1. Desktop Table
+    const tableRowsHtml = defaulters.map((d, index) => {
+      const s = d.student;
+      const cleanPhone = sanitizePhoneForWhatsApp(s.whatsapp || s.parentPhone);
+      const phoneDisplay = s.whatsapp || s.parentPhone || '—';
+      const waUrl = cleanPhone ? getFeeWhatsAppReminderUrl(s, month, d.effFee, d.pending) : '#';
+
+      const partialBadge = d.isPartial ? ` <span class="badge badge-fee-partial" style="font-size: 0.72rem; padding: 2px 6px;">◐ Partial</span>` : '';
+      const customBadge = d.hasCustomFee ? ` <span class="badge badge-custom" style="font-size: 0.7rem; padding: 1px 5px;">Custom</span>` : '';
+
+      const remindBtn = cleanPhone ?
+        `<a href="${waUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-subtle" title="Send WhatsApp Fee Reminder">💬 Remind</a>` :
+        `<button type="button" class="btn btn-sm btn-subtle" disabled title="No parent WhatsApp number on record">No number</button>`;
+
+      return `
+        <tr>
+          <td>
+            <strong>${escapeHtml(s.name)}</strong>${partialBadge}
+            <div style="font-size: 0.76rem; color: var(--text-muted);">Roll #${escapeHtml(s.rollNo || '—')}${s.fatherName ? ' • ' + escapeHtml(s.fatherName) : ''}</div>
+          </td>
+          <td>${escapeHtml(s.className || '—')} ${escapeHtml(s.section || '')}</td>
+          <td>Rs ${d.effFee.toLocaleString()}${customBadge}</td>
+          <td>Rs ${d.paid.toLocaleString()}</td>
+          <td class="defaulter-pending-col">Rs ${d.pending.toLocaleString()}</td>
+          <td>${escapeHtml(phoneDisplay)}</td>
+          <td>${remindBtn}</td>
+        </tr>
+      `;
+    }).join('');
+
+    const desktopTableHtml = `
+      <div class="defaulters-desktop-table">
+        <div class="defaulters-table-wrap">
+          <table class="defaulters-table">
+            <thead>
+              <tr>
+                <th>Student Name</th>
+                <th>Class</th>
+                <th>Monthly Fee</th>
+                <th>Paid</th>
+                <th>Pending</th>
+                <th>Parent WhatsApp</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${tableRowsHtml}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+
+    // 2. Mobile Cards (360px)
+    const mobileCardsHtml = `
+      <div class="defaulters-mobile-cards">
+        ${defaulters.map(d => {
+          const s = d.student;
+          const cleanPhone = sanitizePhoneForWhatsApp(s.whatsapp || s.parentPhone);
+          const phoneDisplay = s.whatsapp || s.parentPhone || 'No number';
+          const waUrl = cleanPhone ? getFeeWhatsAppReminderUrl(s, month, d.effFee, d.pending) : '#';
+
+          const partialBadge = d.isPartial ? ` <span class="badge badge-fee-partial" style="font-size: 0.72rem; padding: 2px 6px;">◐ Partial</span>` : '';
+          const customBadge = d.hasCustomFee ? ` <span class="badge badge-custom" style="font-size: 0.7rem; padding: 1px 5px;">Custom</span>` : '';
+
+          const remindBtn = cleanPhone ?
+            `<a href="${waUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-subtle btn-block" style="text-align: center; justify-content: center; min-height: 38px;" title="Send WhatsApp Fee Reminder">💬 Send WhatsApp Reminder</a>` :
+            `<button type="button" class="btn btn-sm btn-subtle btn-block" disabled style="min-height: 38px;">No number</button>`;
+
+          return `
+            <div class="defaulter-card">
+              <div class="defaulter-card-header">
+                <div>
+                  <div class="defaulter-card-title">${escapeHtml(s.name)}${partialBadge}</div>
+                  <div class="defaulter-card-meta">
+                    <span>${escapeHtml(s.className || '')} ${escapeHtml(s.section || '')}</span>
+                    <span>•</span>
+                    <span>Roll #${escapeHtml(s.rollNo || '—')}</span>
+                    ${s.fatherName ? `<span>•</span><span>Parent: ${escapeHtml(s.fatherName)}</span>` : ''}
+                  </div>
+                </div>
+              </div>
+              <div class="defaulter-card-grid">
+                <div class="defaulter-card-grid-item">
+                  <span class="defaulter-card-grid-label">Fee</span>
+                  <span class="defaulter-card-grid-val">Rs ${d.effFee.toLocaleString()}${customBadge}</span>
+                </div>
+                <div class="defaulter-card-grid-item">
+                  <span class="defaulter-card-grid-label">Paid</span>
+                  <span class="defaulter-card-grid-val">Rs ${d.paid.toLocaleString()}</span>
+                </div>
+                <div class="defaulter-card-grid-item">
+                  <span class="defaulter-card-grid-label">Pending</span>
+                  <span class="defaulter-card-grid-val" style="color: #B45309;">Rs ${d.pending.toLocaleString()}</span>
+                </div>
+              </div>
+              <div style="font-size: 0.8rem; color: var(--text-muted); display: flex; align-items: center; gap: 6px;">
+                <span>📱 Contact:</span>
+                <strong style="color: var(--text-heading);">${escapeHtml(phoneDisplay)}</strong>
+              </div>
+              <div class="defaulter-card-actions">
+                ${remindBtn}
+              </div>
+            </div>
+          `;
+        }).join('')}
+      </div>
+    `;
+
+    container.innerHTML = desktopTableHtml + mobileCardsHtml;
+  }
+
+  function openPrintDefaulters() {
+    const month = state.feeSelectedMonth || getCurrentMonthKey();
+    const filterClass = state.defaultersFilterClass || 'ALL';
+    const data = computeDefaulters(month, filterClass);
+
+    const schoolName = (state.currentSchool && (state.currentSchool.schoolName || state.currentSchool.name)) || state.profile?.name || 'SchoolSteps';
+    const tagline = state.profile?.tagline || state.profile?.motto || (state.currentSchool && (state.currentSchool.tagline || state.currentSchool.motto)) || '';
+    const logoSrc = state.profile?.logoData || (state.currentSchool && state.currentSchool.logoData) || 'icon.svg';
+    const address = state.profile?.address || (state.currentSchool && state.currentSchool.address) || '';
+    const phone = state.profile?.phone || (state.currentSchool && state.currentSchool.phone) || '';
+
+    const logoEl = document.getElementById('defPrintLogo');
+    if (logoEl) {
+      logoEl.src = logoSrc;
+      logoEl.onerror = () => { logoEl.src = 'icon.svg'; };
+    }
+
+    const nameEl = document.getElementById('defPrintSchoolName');
+    if (nameEl) nameEl.textContent = schoolName;
+
+    const tagEl = document.getElementById('defPrintTagline');
+    if (tagEl) tagEl.textContent = tagline;
+
+    const contactEl = document.getElementById('defPrintContact');
+    if (contactEl) contactEl.textContent = [address, phone].filter(Boolean).join(' | ');
+
+    const metaEl = document.getElementById('defPrintMeta');
+    if (metaEl) {
+      const monthStr = formatMonthHuman(month);
+      const classStr = filterClass === 'ALL' ? 'All Classes' : filterClass;
+      metaEl.textContent = `Month: ${monthStr} | Class: ${classStr} | Printed: ${new Date().toLocaleDateString('en-GB')}`;
+    }
+
+    const countEl = document.getElementById('defPrintCount');
+    if (countEl) countEl.textContent = `${data.totalCount} Students`;
+
+    const pendingEl = document.getElementById('defPrintTotalPending');
+    if (pendingEl) pendingEl.textContent = `Rs ${data.totalPending.toLocaleString()}`;
+
+    const dateFooterEl = document.getElementById('defPrintFooterDate');
+    if (dateFooterEl) dateFooterEl.textContent = new Date().toLocaleString();
+
+    const tableWrap = document.getElementById('defPrintTableWrap');
+    if (tableWrap) {
+      if (data.totalCount === 0) {
+        tableWrap.innerHTML = `
+          <div style="text-align: center; padding: 24px 12px; color: #64748B; font-style: italic;">
+            All fees clear for this month. No pending fee defaulters.
+          </div>
+        `;
+      } else {
+        const rows = data.defaulters.map((d, i) => `
+          <tr>
+            <td style="text-align: center; width: 36px;">${i + 1}</td>
+            <td>
+              <strong>${escapeHtml(d.student.name)}</strong>
+              ${d.isPartial ? ' (Partial)' : ''}
+              <div style="font-size: 0.72rem; color: #64748B;">Roll #${escapeHtml(d.student.rollNo || '—')}</div>
+            </td>
+            <td>${escapeHtml(d.student.className || '')} ${escapeHtml(d.student.section || '')}</td>
+            <td>Rs ${d.effFee.toLocaleString()}</td>
+            <td>Rs ${d.paid.toLocaleString()}</td>
+            <td style="font-weight: 700; color: #B45309;">Rs ${d.pending.toLocaleString()}</td>
+            <td>${escapeHtml(d.student.whatsapp || d.student.parentPhone || '—')}</td>
+          </tr>
+        `).join('');
+
+        tableWrap.innerHTML = `
+          <table class="def-print-table">
+            <thead>
+              <tr>
+                <th style="width: 36px; text-align: center;">#</th>
+                <th>Student Name</th>
+                <th>Class</th>
+                <th>Monthly Fee</th>
+                <th>Paid</th>
+                <th>Pending</th>
+                <th>Parent Contact</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rows}
+              <tr style="background: #F8FAFC; font-weight: 700;">
+                <td colspan="5" style="text-align: right; padding-right: 12px;">Total Pending Dues:</td>
+                <td style="color: #B45309;">Rs ${data.totalPending.toLocaleString()}</td>
+                <td></td>
+              </tr>
+            </tbody>
+          </table>
+        `;
+      }
+    }
+
+    document.body.classList.add('printing-defaulters');
+    window.print();
+
+    const cleanup = () => {
+      document.body.classList.remove('printing-defaulters');
+      window.removeEventListener('afterprint', cleanup);
+    };
+    window.addEventListener('afterprint', cleanup);
+    setTimeout(cleanup, 1500);
+  }
+
+  // Window exports for Defaulters module
+  window.computeDefaulters = computeDefaulters;
+  window.__computeDefaulters = computeDefaulters;
+  window.renderDefaultersList = renderDefaultersList;
+  window.__renderDefaultersList = renderDefaultersList;
+  window.openPrintDefaulters = openPrintDefaulters;
+  window.__openPrintDefaulters = openPrintDefaulters;
+  window.switchFeeSubView = switchFeeSubView;
+  window.__switchFeeSubView = switchFeeSubView;
 
   // ========================================================
   // MODULE 8: Syllabus Manager (M8)

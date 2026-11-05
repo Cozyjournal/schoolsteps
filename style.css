@@ -4495,3 +4495,214 @@ h1, h2, h3, h4, h5, h6 {
     justify-content: flex-end;
   }
 }
+
+
+/* ========================================================
+   Defaulters List (Fees Add-On)
+   ======================================================== */
+.defaulters-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  background: #FFFFFF;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+}
+
+.defaulters-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.86rem;
+}
+
+.defaulters-table th {
+  background: #F8FAFC;
+  padding: 10px 12px;
+  text-align: left;
+  font-weight: 700;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-soft);
+  white-space: nowrap;
+}
+
+.defaulters-table td {
+  padding: 11px 12px;
+  border-bottom: 1px solid var(--border-soft);
+  color: var(--text-heading);
+  vertical-align: middle;
+}
+
+.defaulters-table tr:last-child td {
+  border-bottom: none;
+}
+
+.defaulters-table tr:hover {
+  background: #F8FAFC;
+}
+
+.defaulter-pending-col {
+  color: #B45309;
+  font-weight: 700;
+}
+
+/* Defaulters Mobile Cards (for 360px) */
+.defaulters-mobile-cards {
+  display: none;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.defaulter-card {
+  background: #FFFFFF;
+  border: 1px solid var(--border-soft);
+  border-left: 4px solid #F59E0B;
+  border-radius: var(--radius-md);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+}
+
+.defaulter-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.defaulter-card-title {
+  font-weight: 700;
+  font-size: 0.98rem;
+  color: var(--text-heading);
+}
+
+.defaulter-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+.defaulter-card-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  background: #F8FAFC;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 0.82rem;
+}
+
+.defaulter-card-grid-item {
+  display: flex;
+  flex-direction: column;
+}
+
+.defaulter-card-grid-label {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.defaulter-card-grid-val {
+  font-weight: 700;
+  color: var(--text-heading);
+  margin-top: 2px;
+}
+
+.defaulter-card-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.defaulter-card-actions .btn {
+  flex: 1 1 auto;
+  text-align: center;
+  justify-content: center;
+  min-height: 38px;
+}
+
+@media (max-width: 640px) {
+  .defaulters-desktop-table {
+    display: none !important;
+  }
+  .defaulters-mobile-cards {
+    display: flex !important;
+  }
+}
+
+@media (min-width: 641px) {
+  .defaulters-desktop-table {
+    display: block !important;
+  }
+  .defaulters-mobile-cards {
+    display: none !important;
+  }
+}
+
+/* Printable Defaulters Styles */
+body.printing-defaulters #tab-reports,
+body.printing-defaulters .app-container,
+body.printing-defaulters .modal-overlay,
+body.printing-defaulters .mobile-bottom-bar,
+body.printing-defaulters #printableFeeReceipt,
+body.printing-defaulters #printableSyllabus {
+  display: none !important;
+}
+
+body.printing-defaulters #printableDefaulters {
+  display: block !important;
+}
+
+@media print {
+  body.printing-defaulters {
+    background: #FFFFFF !important;
+    padding: 0 !important;
+    color: #1E293B !important;
+  }
+  body.printing-defaulters .app-container,
+  body.printing-defaulters .modal-overlay,
+  body.printing-defaulters .mobile-bottom-bar,
+  body.printing-defaulters #tab-reports,
+  body.printing-defaulters #printableFeeReceipt,
+  body.printing-defaulters #printableSyllabus {
+    display: none !important;
+  }
+  body.printing-defaulters .printable-defaulters,
+  body.printing-defaulters #printableDefaulters {
+    display: block !important;
+    width: 100% !important;
+    max-width: 800px !important;
+    margin: 0 auto !important;
+    padding: 10mm 15mm !important;
+    background: #FFFFFF !important;
+    color: #1E293B !important;
+    box-sizing: border-box !important;
+  }
+  .defaulters-card-print {
+    border: 1px solid #CBD5E1;
+    border-top: 6px solid #F59E0B;
+    border-radius: 6px;
+    padding: 20px;
+    background: #FFFFFF;
+  }
+  .def-print-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.82rem;
+  }
+  .def-print-table th {
+    background: #F1F5F9;
+    padding: 6px 8px;
+    text-align: left;
+    border: 1px solid #CBD5E1;
+    font-weight: 700;
+  }
+  .def-print-table td {
+    padding: 6px 8px;
+    border: 1px solid #CBD5E1;
+  }
+}

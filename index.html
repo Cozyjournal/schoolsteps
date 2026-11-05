@@ -1213,7 +1213,11 @@
                   <button type="button" class="btn btn-subtle btn-sm" id="btnFeeNextMonth" title="Next Month">▶</button>
                   <span id="feeMonthHumanDisplay" style="font-family: var(--font-heading); font-size: 1.1rem; font-weight: 700; color: var(--text-heading); margin-left: 4px;"></span>
                 </div>
-                <div>
+                <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                  <div class="btn-group" role="group" id="feeSubNavGroup">
+                    <button type="button" class="btn btn-sm btn-subtle active" id="btnFeeSubNavOverview">💳 Overview</button>
+                    <button type="button" class="btn btn-sm btn-subtle" id="btnFeeSubNavDefaulters">⚠️ Defaulters</button>
+                  </div>
                   <button type="button" class="btn btn-subtle btn-sm" id="btnEditFeeStructure">
                     <span>⚙️ Edit Fee Structure</span>
                   </button>
@@ -1221,20 +1225,22 @@
               </div>
             </div>
 
-            <!-- 4 Summary Cards -->
-            <div class="stats-grid" style="margin-bottom: 20px;">
-              <div class="stat-card">
-                <div class="stat-val stat-val-blue" id="feeStatExpected">Rs 0</div>
-                <div class="stat-lbl">Expected Total</div>
-              </div>
-              <div class="stat-card">
-                <div class="stat-val stat-val-green" id="feeStatCollected">Rs 0</div>
-                <div class="stat-lbl">Collected</div>
-              </div>
-              <div class="stat-card">
-                <div class="stat-val stat-val-amber" id="feeStatPending">Rs 0</div>
-                <div class="stat-lbl" id="feeStatPendingLbl">Pending (0 pending)</div>
-              </div>
+            <!-- Fee Overview Section -->
+            <div id="feesOverviewSection">
+              <!-- 4 Summary Cards -->
+              <div class="stats-grid" style="margin-bottom: 20px;">
+                <div class="stat-card">
+                  <div class="stat-val stat-val-blue" id="feeStatExpected">Rs 0</div>
+                  <div class="stat-lbl">Expected Total</div>
+                </div>
+                <div class="stat-card">
+                  <div class="stat-val stat-val-green" id="feeStatCollected">Rs 0</div>
+                  <div class="stat-lbl">Collected</div>
+                </div>
+                <div class="stat-card" id="feeStatCardPending" style="cursor: pointer;" title="Click to view Defaulters List">
+                  <div class="stat-val stat-val-amber" id="feeStatPending">Rs 0</div>
+                  <div class="stat-lbl" id="feeStatPendingLbl">Pending (0 pending)</div>
+                </div>
               <div class="stat-card">
                 <div class="stat-val stat-val-teal" id="feeStatPercent">0%</div>
                 <div class="stat-lbl">Collection %</div>
@@ -1289,8 +1295,71 @@
                 <!-- Rendered via JS -->
               </div>
             </div>
+          </div><!-- /feesOverviewSection -->
 
+          <!-- Defaulters List Section -->
+          <div id="feesDefaultersSection" class="hidden">
+            <!-- Defaulters Filter Toolbar -->
+            <div class="card toolbar-card" style="margin-bottom: 16px;">
+              <div class="toolbar-row" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+                <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                  <label for="defaultersFilterClassSelect" style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted); margin: 0;">Class Filter:</label>
+                  <select id="defaultersFilterClassSelect" class="form-select" style="max-width: 160px; font-size: 0.85rem; padding: 6px 10px;">
+                    <option value="ALL">All Classes</option>
+                  </select>
+                </div>
+                <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                  <button type="button" class="btn btn-sm btn-primary" id="btnPrintDefaulters">
+                    <span>🖨️ Print List</span>
+                  </button>
+                  <button type="button" class="btn btn-sm btn-subtle" id="btnDefaultersBackToOverview">
+                    <span>← Back to Overview</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Defaulters Summary Header Card -->
+            <div class="card" id="defaultersSummaryCard" style="margin-bottom: 16px; padding: 18px 20px; background: linear-gradient(135deg, var(--bg-card, #FFFFFF) 0%, #FFFBEB 100%); border-left: 4px solid #F59E0B;">
+              <div class="defaulters-summary-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+                <div>
+                  <h3 style="font-family: var(--font-heading); font-size: 1.15rem; font-weight: 700; color: var(--text-heading); margin: 0 0 4px;">
+                    ⚠️ Fee Defaulters List
+                  </h3>
+                  <p style="font-size: 0.85rem; color: var(--text-muted); margin: 0;" id="defaultersContextDisplay">
+                    Showing pending fee dues
+                  </p>
+                </div>
+                <div style="display: flex; gap: 18px; align-items: center; flex-wrap: wrap;">
+                  <div style="text-align: right;">
+                    <div style="font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); font-weight: 600;">Defaulters Count</div>
+                    <div style="font-size: 1.4rem; font-weight: 800; color: var(--text-heading);" id="defaultersCountDisplay">0</div>
+                  </div>
+                  <div style="height: 36px; width: 1px; background: var(--border-soft);"></div>
+                  <div style="text-align: right;">
+                    <div style="font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.5px; color: #B45309; font-weight: 600;">Total Pending</div>
+                    <div style="font-size: 1.4rem; font-weight: 800; color: #B45309;" id="defaultersTotalPendingDisplay">Rs 0</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Empty State (when 0 defaulters) -->
+            <div id="defaultersEmptyState" class="card empty-state hidden" style="text-align: center; padding: 48px 24px;">
+              <div style="font-size: 2.8rem; margin-bottom: 12px;">🎉</div>
+              <h3 class="card-title" style="margin-bottom: 8px;">All fees clear for this month 🎉</h3>
+              <p class="card-subtitle" id="defaultersEmptyStateText" style="max-width: 480px; margin: 0 auto; font-size: 0.95rem;">
+                No pending fee defaulters found for the selected filter.
+              </p>
+            </div>
+
+            <!-- Defaulters List Container -->
+            <div id="defaultersListContainer" class="defaulters-list-container">
+              <!-- Populated dynamically via JS -->
+            </div>
           </div>
+
+        </div>
         </div>
       </section>
 
@@ -2401,6 +2470,44 @@
       <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 8px; padding: 12px 20px;">
         <button type="button" class="btn btn-subtle" id="btnCancelSyllabusDelete">Cancel</button>
         <button type="button" class="btn btn-danger" id="btnConfirmSyllabusDelete">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Printable Fee Defaulters List (Only visible when printing defaulters) -->
+  <div id="printableDefaulters" class="printable-defaulters no-screen">
+    <div class="defaulters-card-print">
+      <div class="def-print-header" style="display: flex; justify-content: space-between; align-items: flex-start; padding-bottom: 14px; border-bottom: 2px solid var(--primary, #0D9488); margin-bottom: 16px;">
+        <div style="display: flex; gap: 14px; align-items: center;">
+          <img id="defPrintLogo" src="icon.svg" alt="Logo" style="width: 50px; height: 50px; object-fit: contain; border-radius: 4px;" />
+          <div>
+            <h2 id="defPrintSchoolName" style="font-size: 1.35rem; font-weight: 800; color: var(--primary, #0D9488); margin: 0 0 3px;">SchoolSteps</h2>
+            <div id="defPrintTagline" style="font-size: 0.82rem; color: #64748B; font-style: italic;"></div>
+            <div id="defPrintContact" style="font-size: 0.78rem; color: #64748B; margin-top: 2px;"></div>
+          </div>
+        </div>
+        <div style="text-align: right;">
+          <div style="font-size: 1.15rem; font-weight: 800; letter-spacing: 0.5px; color: #1E293B;">FEE DEFAULTERS LIST</div>
+          <div id="defPrintMeta" style="font-size: 0.82rem; color: #475569; margin-top: 4px; font-weight: 600;"></div>
+        </div>
+      </div>
+
+      <div id="defPrintSummaryBox" style="display: flex; justify-content: space-between; background: #F8FAFC; border: 1px solid #CBD5E1; border-radius: 6px; padding: 10px 14px; margin-bottom: 16px;">
+        <div style="font-size: 0.88rem; font-weight: 600; color: #334155;">
+          Total Defaulters: <strong id="defPrintCount" style="color: #0F172A;">0</strong>
+        </div>
+        <div style="font-size: 0.88rem; font-weight: 600; color: #334155;">
+          Total Pending: <strong id="defPrintTotalPending" style="color: #B45309;">Rs 0</strong>
+        </div>
+      </div>
+
+      <div id="defPrintTableWrap">
+        <!-- Injected via JS -->
+      </div>
+
+      <div style="margin-top: 24px; padding-top: 12px; border-top: 1px dashed #CBD5E1; display: flex; justify-content: space-between; font-size: 0.75rem; color: #94A3B8;">
+        <span>Generated by SchoolSteps</span>
+        <span id="defPrintFooterDate"></span>
       </div>
     </div>
   </div>

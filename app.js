@@ -538,6 +538,37 @@
   // ========================================================
   // Subscription, Billing & Platform Admin Module
   // ========================================================
+  const STUDENT_LIMIT_NON_PRO = 200;
+
+  function getActiveStudentsCount() {
+    return (state.students || []).filter(s => (s.status || 'Active') === 'Active').length;
+  }
+
+  function isSchoolStudentCapped() {
+    const school = state.currentSchool;
+    const sub = state.subscription || (school ? computeSubscriptionStatus(school) : null);
+    if (!sub) return true; // Fail safe toward the limit if not yet loaded
+    const plan = sub.plan || school?.plan || 'basic';
+    const status = sub.status || sub.subStatus || school?.subStatus || 'trial';
+
+    // Pro schools with active or grace paid subscription are unlimited;
+    // Trial schools and Basic-plan schools are capped at STUDENT_LIMIT_NON_PRO.
+    if (plan === 'pro' && status !== 'trial') {
+      return false; // Unlimited on Pro
+    }
+    return true; // Capped on Trial or Basic
+  }
+
+  function updateStudentLimitIndicator() {
+    const el = document.getElementById('studentLimitIndicator');
+    if (!el) return;
+    const activeCount = getActiveStudentsCount();
+    if (isSchoolStudentCapped()) {
+      el.textContent = `Students: ${activeCount} / ${STUDENT_LIMIT_NON_PRO}`;
+    } else {
+      el.textContent = `Students: ${activeCount} · Unlimited (Pro)`;
+    }
+  }
 
   function computeSubscriptionStatus(school) {
     if (!school) {
@@ -2451,6 +2482,7 @@
     document.getElementById('statTotalClasses').textContent = classSet.size;
     document.getElementById('studentCountBadge').textContent = totalCount;
     updateDashboardFeesStat();
+    updateStudentLimitIndicator();
 
     if (summarySpan) {
       summarySpan.textContent = `Showing ${filtered.length} of ${totalCount} enrolled students`;
@@ -2554,6 +2586,11 @@
 
   function openAddStudentModal() {
     if (!checkSubscriptionWritable('Add Student')) return;
+    if (isSchoolStudentCapped() && getActiveStudentsCount() >= STUDENT_LIMIT_NON_PRO) {
+      showToast('Student limit reached — Trial/Basic includes up to 200 students. Upgrade to Pro for unlimited students.', 'error');
+      openSubscriptionModal();
+      return;
+    }
     state.editingStudentId = null;
     document.getElementById('studentModalTitle').textContent = 'Add New Student';
     document.getElementById('studentForm').reset();
@@ -2638,6 +2675,19 @@
       // Update
       const idx = state.students.findIndex(s => s.id === state.editingStudentId);
       if (idx !== -1) {
+        const existingStudent = state.students[idx];
+        const oldStatus = existingStudent.status || 'Active';
+        const newStatus = payload.status || 'Active';
+        const isReactivating = oldStatus !== 'Active' && newStatus === 'Active';
+
+        if (isReactivating && isSchoolStudentCapped()) {
+          if (getActiveStudentsCount() >= STUDENT_LIMIT_NON_PRO) {
+            showToast('Student limit reached — Trial/Basic includes up to 200 students. Upgrade to Pro for unlimited students.', 'error');
+            openSubscriptionModal();
+            return;
+          }
+        }
+
         state.students[idx] = {
           ...state.students[idx],
           ...payload
@@ -2646,6 +2696,15 @@
       }
     } else {
       // Add new
+      if (!checkSubscriptionWritable('Add Student')) return;
+      if (isSchoolStudentCapped()) {
+        const willBeActive = (payload.status || 'Active') === 'Active';
+        if (willBeActive && getActiveStudentsCount() >= STUDENT_LIMIT_NON_PRO) {
+          showToast('Student limit reached — Trial/Basic includes up to 200 students. Upgrade to Pro for unlimited students.', 'error');
+          openSubscriptionModal();
+          return;
+        }
+      }
       const newId = 'stud-' + Date.now();
       const newStudent = {
         id: newId,
@@ -6482,6 +6541,10 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
   window.__getFeeReceiptWhatsAppUrl = getFeeReceiptWhatsAppUrl;
 
   // Global window bindings for HTML onclick handlers
+  window.STUDENT_LIMIT_NON_PRO = STUDENT_LIMIT_NON_PRO;
+  window.getActiveStudentsCount = getActiveStudentsCount;
+  window.isSchoolStudentCapped = isSchoolStudentCapped;
+  window.updateStudentLimitIndicator = updateStudentLimitIndicator;
   window.updateFeesTabVisibility = updateFeesTabVisibility;
   window.__updateFeesTabVisibility = updateFeesTabVisibility;
   window.renderFeesModule = renderFeesModule;
@@ -7645,6 +7708,11 @@ Please review the syllabus and schedule to support your child's learning.
     } catch (e) {
       console.warn('updateFeesTabVisibility render warning:', e);
     }
+    try {
+      updateStudentLimitIndicator();
+    } catch (e) {
+      console.warn('updateStudentLimitIndicator render warning:', e);
+    }
     try { renderClassDropdowns(); } catch (e) { console.warn('renderClassDropdowns warning:', e); }
     try { renderStudentsList(); } catch (e) { console.warn('renderStudentsList warning:', e); }
     try { renderAttendanceRoster(); } catch (e) { console.warn('renderAttendanceRoster warning:', e); }
@@ -7695,6 +7763,7 @@ Please review the syllabus and schedule to support your child's learning.
   window.__extendSchoolPaidPeriod = extendSchoolPaidPeriod;
   window.__changeSchoolPlan = changeSchoolPlan;
   window.__renderStudentsList = renderStudentsList;
+  window.renderStudentsList = renderStudentsList;
   window.__renderApp = renderApp;
   window.renderApp = renderApp;
   window.__FirestoreDB = FirestoreDB;

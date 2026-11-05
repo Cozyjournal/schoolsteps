@@ -147,6 +147,12 @@ service cloud.firestore {
       allow update: if hasSchool() && resource.data.schoolId == getUserSchoolId() && request.resource.data.schoolId == getUserSchoolId();
     }
 
+    match /syllabi/{docId} {
+      allow read, delete: if hasSchool() && resource.data.schoolId == getUserSchoolId();
+      allow create: if hasSchool() && request.resource.data.schoolId == getUserSchoolId();
+      allow update: if hasSchool() && resource.data.schoolId == getUserSchoolId() && request.resource.data.schoolId == getUserSchoolId();
+    }
+
     match /settings/{docId} {
       allow read, write: if isSignedIn() && hasSchool() && (
         !('schoolId' in resource.data) || resource.data.schoolId == getUserSchoolId()

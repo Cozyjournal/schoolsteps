@@ -6914,8 +6914,10 @@ Please review the syllabus and schedule to support your child's learning.
     }
 
     // Role
-    const userRole = (state.currentUser && state.currentUser.role) || ((auth && auth.currentUser) ? getUserRole(auth.currentUser.email) : 'Admin');
+    const userRole = (state.currentUser && state.currentUser.role) || ((auth && auth.currentUser) ? getUserRole(auth.currentUser.email) : '');
     const isAdmin = userRole === 'Admin';
+    const hasValidSchool = !!state.currentSchoolId;
+    const canEditSyllabus = hasValidSchool && (userRole === 'Admin' || userRole === 'Teacher');
 
     // WhatsApp link
     if (btnShareWa) {
@@ -6930,7 +6932,7 @@ Please review the syllabus and schedule to support your child's learning.
       mainView?.classList.add('hidden');
       btnAddSubject?.classList.add('hidden');
 
-      if (isAdmin) {
+      if (canEditSyllabus) {
         if (emptyTitle) emptyTitle.textContent = 'No Syllabus Created';
         if (emptyText) emptyText.textContent = `No syllabus has been set up for ${state.syllabusSelectedClass} yet. Click "Create Syllabus" to define subjects, books, and monthly topics.`;
         btnCreateSyllabus?.classList.remove('hidden');
@@ -6945,7 +6947,7 @@ Please review the syllabus and schedule to support your child's learning.
     // Main view
     emptyState?.classList.add('hidden');
     mainView?.classList.remove('hidden');
-    btnAddSubject?.classList.toggle('hidden', !isAdmin);
+    btnAddSubject?.classList.toggle('hidden', !canEditSyllabus);
 
     // Compute metrics
     const subjects = syllabus.subjects || [];
@@ -6995,7 +6997,7 @@ Please review the syllabus and schedule to support your child's learning.
       container.innerHTML = `
         <div class="empty-state" style="padding: 32px 16px; background: var(--bg-card); border: 1px dashed var(--border-soft); border-radius: var(--radius-lg);">
           <p style="font-size: 0.95rem; color: var(--text-muted); margin-bottom: 12px;">No subjects added to this syllabus yet.</p>
-          ${isAdmin ? `<button type="button" class="btn btn-sm btn-primary" onclick="openAddSubjectModal('${syllabus.id}')">➕ Add Subject</button>` : ''}
+          ${canEditSyllabus ? `<button type="button" class="btn btn-sm btn-primary" onclick="openAddSubjectModal('${syllabus.id}')">➕ Add Subject</button>` : ''}
         </div>
       `;
       return;
@@ -7019,7 +7021,7 @@ Please review the syllabus and schedule to support your child's learning.
       if (topics.length === 0) {
         topicsHtml = `
           <div style="font-size: 0.85rem; color: var(--text-muted); font-style: italic; padding: 10px 0;">
-            No topics added yet. ${isAdmin ? `Click "+ Add Topic" to add curriculum chapters.` : ''}
+            No topics added yet. ${canEditSyllabus ? `Click "+ Add Topic" to add curriculum chapters.` : ''}
           </div>
         `;
       } else {
@@ -7039,8 +7041,10 @@ Please review the syllabus and schedule to support your child's learning.
                     <span class="badge ${top.completed ? 'badge-pass' : 'badge-subtle'}" style="font-size: 0.72rem;">
                       ${top.completed ? '✓ Completed' : 'In Progress'}
                     </span>
-                    ${isAdmin ? `
+                    ${canEditSyllabus ? `
                       <button type="button" class="btn btn-sm btn-subtle" onclick="openEditTopicModal('${syllabus.id}', '${subject.id}', '${top.id}')" title="Edit Topic" style="padding: 2px 7px;">✏️</button>
+                    ` : ''}
+                    ${isAdmin ? `
                       <button type="button" class="btn btn-sm btn-danger" onclick="openDeleteTopicModal('${syllabus.id}', '${subject.id}', '${top.id}')" title="Delete Topic" style="padding: 2px 7px;">🗑️</button>
                     ` : ''}
                   </div>
@@ -7065,9 +7069,11 @@ Please review the syllabus and schedule to support your child's learning.
             </div>
             <div class="syllabus-subject-actions">
               <span class="badge syllabus-subject-badge ${subPercent === 100 ? 'badge-pass' : 'badge-subtle'}" style="font-size: 0.85rem; font-weight: 700;">${subPercent}%</span>
-              ${isAdmin ? `
+              ${canEditSyllabus ? `
                 <button type="button" class="btn btn-sm btn-subtle" onclick="openAddTopicModal('${syllabus.id}', '${subject.id}')">➕ Add Topic</button>
                 <button type="button" class="btn btn-sm btn-subtle" onclick="openEditSubjectModal('${syllabus.id}', '${subject.id}')" title="Rename Subject">✏️</button>
+              ` : ''}
+              ${isAdmin ? `
                 <button type="button" class="btn btn-sm btn-danger" onclick="openDeleteSubjectModal('${syllabus.id}', '${subject.id}')" title="Delete Subject" style="padding: 4px 8px;">🗑️</button>
               ` : ''}
             </div>
@@ -7315,6 +7321,11 @@ Please review the syllabus and schedule to support your child's learning.
   // Delete modal handlers
   function openDeleteSubjectModal(sylId, subId) {
     if (!checkSubscriptionWritable('Delete Subject')) return;
+    const role = (state.currentUser && state.currentUser.role) || ((auth && auth.currentUser) ? getUserRole(auth.currentUser.email) : '');
+    if (role !== 'Admin') {
+      showToast('Only administrators can delete syllabus subjects.', 'error');
+      return;
+    }
     const syllabus = (state.syllabi || []).find(s => s.id === sylId);
     if (!syllabus) return;
     const subject = (syllabus.subjects || []).find(sub => sub.id === subId);
@@ -7328,6 +7339,11 @@ Please review the syllabus and schedule to support your child's learning.
 
   function openDeleteTopicModal(sylId, subId, topId) {
     if (!checkSubscriptionWritable('Delete Topic')) return;
+    const role = (state.currentUser && state.currentUser.role) || ((auth && auth.currentUser) ? getUserRole(auth.currentUser.email) : '');
+    if (role !== 'Admin') {
+      showToast('Only administrators can delete syllabus topics.', 'error');
+      return;
+    }
     const syllabus = (state.syllabi || []).find(s => s.id === sylId);
     if (!syllabus) return;
     const subject = (syllabus.subjects || []).find(sub => sub.id === subId);
@@ -7348,6 +7364,12 @@ Please review the syllabus and schedule to support your child's learning.
 
   async function handleConfirmSyllabusDelete() {
     if (!pendingDeleteSyllabusItem) return;
+    const role = (state.currentUser && state.currentUser.role) || ((auth && auth.currentUser) ? getUserRole(auth.currentUser.email) : '');
+    if (role !== 'Admin') {
+      closeSyllabusDeleteModal();
+      showToast('Only administrators can delete syllabus items.', 'error');
+      return;
+    }
     const { type, syllabusId, subjectId, topicId, title } = pendingDeleteSyllabusItem;
     const syllabus = (state.syllabi || []).find(s => s.id === syllabusId);
     if (!syllabus) {

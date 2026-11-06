@@ -407,7 +407,13 @@
               <span class="pill-count" id="countTotal">0</span>
             </div>
           </div>
-          <div id="attBulkWhatsAppWrap" class="hidden" style="margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border-soft); display: flex; justify-content: flex-end;">
+          <div id="attBulkWhatsAppWrap" class="hidden" style="margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border-soft); display: flex; justify-content: flex-end; align-items: center; gap: 8px; flex-wrap: wrap;">
+            <select id="attBulkWAStatusSelect" class="form-select" style="width: auto; padding: 6px 12px; font-size: 0.85rem; font-weight: 600; color: var(--text-heading); cursor: pointer;">
+              <option value="Absent" selected>Absent</option>
+              <option value="Present">Present</option>
+              <option value="Late">Late</option>
+              <option value="All Marked">All Marked</option>
+            </select>
             <button type="button" class="btn btn-sm btn-whatsapp" id="btnBulkAbsentWhatsApp">
               <span>📩 WhatsApp Absent Parents (0)</span>
             </button>

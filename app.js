@@ -3004,28 +3004,69 @@
     renderWhatsAppMessagesList(enrolled, selectedDate, selectedClass, selectedSection);
   }
 
+  let lastAttendanceCounts = { total: 0, present: 0, absent: 0, late: 0 };
+
   function updateAttendanceSummaryCounters(total, present, absent, late) {
-    document.getElementById('countTotal').textContent = total;
-    document.getElementById('countPresent').textContent = present;
-    document.getElementById('countAbsent').textContent = absent;
-    document.getElementById('countLate').textContent = late;
+    if (total !== undefined && total !== null) {
+      lastAttendanceCounts = {
+        total: Number(total) || 0,
+        present: Number(present) || 0,
+        absent: Number(absent) || 0,
+        late: Number(late) || 0
+      };
+    }
+    const t = lastAttendanceCounts.total;
+    const p = lastAttendanceCounts.present;
+    const a = lastAttendanceCounts.absent;
+    const l = lastAttendanceCounts.late;
 
-    const rate = total > 0 ? Math.round(((present + late) / total) * 100) : 0;
-    document.getElementById('attRatePercent').textContent = `${rate}%`;
+    const countTotalEl = document.getElementById('countTotal');
+    if (countTotalEl) countTotalEl.textContent = t;
+    const countPresentEl = document.getElementById('countPresent');
+    if (countPresentEl) countPresentEl.textContent = p;
+    const countAbsentEl = document.getElementById('countAbsent');
+    if (countAbsentEl) countAbsentEl.textContent = a;
+    const countLateEl = document.getElementById('countLate');
+    if (countLateEl) countLateEl.textContent = l;
 
-    // Bulk WhatsApp Absent Parents button
+    const rate = t > 0 ? Math.round(((p + l) / t) * 100) : 0;
+    const rateEl = document.getElementById('attRatePercent');
+    if (rateEl) rateEl.textContent = `${rate}%`;
+
+    // Dynamic Bulk WhatsApp Attendance button & group selector
     const wrapEl = document.getElementById('attBulkWhatsAppWrap');
     const btnEl = document.getElementById('btnBulkAbsentWhatsApp');
+    const selectEl = document.getElementById('attBulkWAStatusSelect');
+    const selectedGroup = (selectEl && selectEl.value) || 'Absent';
+
+    let count = 0;
+    let label = 'Absent Parents';
+    if (selectedGroup === 'Present') {
+      count = p;
+      label = 'Present Parents';
+    } else if (selectedGroup === 'Late') {
+      count = l;
+      label = 'Late Parents';
+    } else if (selectedGroup === 'All Marked') {
+      count = p + l + a;
+      label = 'All Parents';
+    } else {
+      // 'Absent' (default)
+      count = a;
+      label = 'Absent Parents';
+    }
+
     if (btnEl) {
       const span = btnEl.querySelector('span') || btnEl;
-      span.textContent = `📩 WhatsApp Absent Parents (${absent || 0})`;
-      if (absent > 0) {
-        btnEl.classList.remove('hidden');
-        if (wrapEl) wrapEl.classList.remove('hidden');
-      } else {
-        btnEl.classList.add('hidden');
-        if (wrapEl) wrapEl.classList.add('hidden');
-      }
+      span.textContent = `📩 WhatsApp ${label} (${count})`;
+    }
+
+    if (count > 0) {
+      if (btnEl) btnEl.classList.remove('hidden');
+      if (wrapEl) wrapEl.classList.remove('hidden');
+    } else {
+      if (btnEl) btnEl.classList.add('hidden');
+      if (wrapEl) wrapEl.classList.add('hidden');
     }
   }
 
@@ -5920,7 +5961,7 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
     }
   }
 
-  function getAbsentWhatsAppUrl(student, dateStr) {
+  function getAttendanceWhatsAppUrl(student, dateStr, status = 'Absent', timeStr = '') {
     if (!student) return '#';
     const cleanPhone = sanitizePhoneForWhatsApp(student.whatsapp || student.parentPhone);
     if (!cleanPhone) return '#';
@@ -5931,12 +5972,38 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
     const classPart = classSec ? ` (${classSec})` : '';
     const dateHuman = formatHumanFullDate(dateStr) || dateStr;
 
-    const text = `السلام علیکم ${parentName}،
+    let text = '';
+    const normStatus = (status || 'Absent').trim();
+
+    if (normStatus === 'Present') {
+      let recordedTime = (timeStr || student.time || student.attendanceTime || '').trim();
+      if (!recordedTime && state.attendance) {
+        const key = getAttendanceRecordKey(dateStr, student.className, student.section || 'A');
+        recordedTime = ((state.attendance[key] && state.attendance[key][student.id] && state.attendance[key][student.id].time) || '').trim();
+      }
+      const timePart = recordedTime ? ` (حاضری کا وقت: ${recordedTime})` : '';
+      text = `السلام علیکم ${parentName}،
+یہ ${schoolName} کی طرف سے اطلاع ہے کہ ${studentName}${classPart} آج ${dateHuman} کو اسکول حاضر ہے۔${timePart}
+شکریہ!
+— ${schoolName}`;
+    } else if (normStatus === 'Late') {
+      text = `السلام علیکم ${parentName}،
+یہ ${schoolName} کی طرف سے اطلاع ہے کہ ${studentName}${classPart} کی آج ${dateHuman} کو حاضری دیر سے (Late) لگی ہے۔
+برائے مہربانی وقت کی پابندی کا خیال رکھیں۔ شکریہ!
+— ${schoolName}`;
+    } else {
+      // Absent — the EXISTING text, byte-identical
+      text = `السلام علیکم ${parentName}،
 یہ ${schoolName} کی طرف سے اطلاع ہے کہ ${studentName}${classPart} آج ${dateHuman} کو اسکول سے غیر حاضر ہے۔
 برائے مہربانی غیر حاضری کی وجہ سے آگاہ کر دیں۔ شکریہ!
 — ${schoolName}`;
+    }
 
     return `https://wa.me/${cleanPhone}?text=${encodeURIComponent(text)}`;
+  }
+
+  function getAbsentWhatsAppUrl(student, dateStr) {
+    return getAttendanceWhatsAppUrl(student, dateStr, 'Absent');
   }
 
   function generateFeeReceiptMessage(payment, student) {
@@ -10384,10 +10451,12 @@ Please review the syllabus and schedule to support your child's learning.
     const dateInput = document.getElementById('attDatePicker');
     const classSelect = document.getElementById('attClassSelect');
     const sectionSelect = document.getElementById('attSectionSelect');
+    const statusSelect = document.getElementById('attBulkWAStatusSelect');
 
     const selectedDate = (dateInput && dateInput.value) || getTodayISO();
     const selectedClass = (classSelect && classSelect.value) || 'Class 3';
     const selectedSection = (sectionSelect && sectionSelect.value ? sectionSelect.value : 'A').trim();
+    const selectedGroup = (statusSelect && statusSelect.value) || 'Absent';
 
     const enrolled = (state.students || []).filter(s =>
       s.className === selectedClass &&
@@ -10397,24 +10466,51 @@ Please review the syllabus and schedule to support your child's learning.
     enrolled.sort((a, b) => parseInt(a.rollNo || '0', 10) - parseInt(b.rollNo || '0', 10));
 
     const attRecord = getAttendanceForDateAndClass(selectedDate, selectedClass, selectedSection);
-    const absentStudents = enrolled.filter(s => {
+    const targetStudents = enrolled.filter(s => {
       const rec = attRecord[s.id];
-      return rec && rec.status === 'Absent';
+      if (!rec || !rec.status) return false;
+      if (selectedGroup === 'Present') return rec.status === 'Present';
+      if (selectedGroup === 'Late') return rec.status === 'Late';
+      if (selectedGroup === 'Absent') return rec.status === 'Absent';
+      if (selectedGroup === 'All Marked') {
+        return rec.status === 'Present' || rec.status === 'Late' || rec.status === 'Absent';
+      }
+      return false;
     });
 
-    if (absentStudents.length === 0) {
-      showToast('No absent students found for this class and date.', 'info');
+    if (targetStudents.length === 0) {
+      if (selectedGroup === 'Present') {
+        showToast('No present students found for this class and date.', 'info');
+      } else if (selectedGroup === 'Late') {
+        showToast('No late students found for this class and date.', 'info');
+      } else if (selectedGroup === 'All Marked') {
+        showToast('No marked attendance records found for this class and date.', 'info');
+      } else {
+        showToast('No absent students found for this class and date.', 'info');
+      }
       return;
     }
 
-    const dateHuman = formatHumanFullDate(selectedDate);
-    const items = absentStudents.map(s => {
+    const dateHuman = formatHumanFullDate(selectedDate) || selectedDate;
+    const items = targetStudents.map(s => {
+      const rec = attRecord[s.id] || {};
+      const status = rec.status || (selectedGroup === 'All Marked' ? 'Present' : selectedGroup);
+      const recTime = (rec.time || '').trim();
+
       const rawPhone = s.whatsapp || s.parentPhone || '';
       const cleanPhone = sanitizePhoneForWhatsApp(rawPhone);
       const isValid = Boolean(cleanPhone && cleanPhone.length >= 10);
-      const waUrl = isValid ? getAbsentWhatsAppUrl(s, selectedDate) : '#';
+      const waUrl = isValid ? getAttendanceWhatsAppUrl(s, selectedDate, status, recTime) : '#';
       const parentName = s.fatherName || s.parentName || 'محترم والدین';
-      const detailLine = `Absent on: ${dateHuman}`;
+
+      let detailLine = '';
+      if (status === 'Present') {
+        detailLine = recTime ? `Present on: ${dateHuman} • ${recTime}` : `Present on: ${dateHuman}`;
+      } else if (status === 'Late') {
+        detailLine = `Late on: ${dateHuman}`;
+      } else {
+        detailLine = `Absent on: ${dateHuman}`;
+      }
 
       return {
         id: s.id,
@@ -10433,9 +10529,22 @@ Please review the syllabus and schedule to support your child's learning.
       };
     });
 
+    let modalType = 'absent';
+    let modalTitle = '📩 Send Absent Alerts';
+    if (selectedGroup === 'Present') {
+      modalType = 'present';
+      modalTitle = '📩 Send Present Confirmations';
+    } else if (selectedGroup === 'Late') {
+      modalType = 'late';
+      modalTitle = '📩 Send Late Notices';
+    } else if (selectedGroup === 'All Marked') {
+      modalType = 'attendance-all';
+      modalTitle = '📩 Send Attendance Messages';
+    }
+
     openBulkWhatsAppModal({
-      type: 'absent',
-      title: '📩 Send Absent Alerts',
+      type: modalType,
+      title: modalTitle,
       subtitle: 'Progress is only kept for this session — nothing is saved.',
       items: items
     });
@@ -10444,6 +10553,9 @@ Please review the syllabus and schedule to support your child's learning.
   function bindBulkWhatsAppEvents() {
     document.getElementById('btnBulkFeeWhatsApp')?.addEventListener('click', handleOpenBulkFeeWhatsApp);
     document.getElementById('btnBulkAbsentWhatsApp')?.addEventListener('click', handleOpenBulkAbsentWhatsApp);
+    document.getElementById('attBulkWAStatusSelect')?.addEventListener('change', () => {
+      updateAttendanceSummaryCounters();
+    });
     document.getElementById('btnCloseBulkWhatsAppModal')?.addEventListener('click', closeBulkWhatsAppModal);
     document.getElementById('btnCancelBulkWA')?.addEventListener('click', closeBulkWhatsAppModal);
     document.getElementById('btnBulkWASelectAll')?.addEventListener('click', handleBulkWASelectAll);
@@ -11094,6 +11206,10 @@ Please review the syllabus and schedule to support your child's learning.
   window.closeBulkWhatsAppModal = closeBulkWhatsAppModal;
   window.getAbsentWhatsAppUrl = getAbsentWhatsAppUrl;
   window.__getAbsentWhatsAppUrl = getAbsentWhatsAppUrl;
+  window.getAttendanceWhatsAppUrl = getAttendanceWhatsAppUrl;
+  window.__getAttendanceWhatsAppUrl = getAttendanceWhatsAppUrl;
+  window.sanitizePhoneForWhatsApp = sanitizePhoneForWhatsApp;
+  window.formatHumanFullDate = formatHumanFullDate;
   window.__openBulkWhatsAppModal = openBulkWhatsAppModal;
   window.__closeBulkWhatsAppModal = closeBulkWhatsAppModal;
   window.__getBulkWhatsAppSession = () => bulkWASession;

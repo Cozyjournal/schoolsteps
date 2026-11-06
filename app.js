@@ -432,6 +432,7 @@
         document.removeEventListener('keydown', handleKeyDown);
       }
 
+      FirestoreDB.hideSyncOverlay();
       modal.classList.remove('hidden');
       if (nameInput) {
         nameInput.value = '';
@@ -1373,7 +1374,7 @@
       return false;
     },
 
-    async syncAndLoad(currentUser, showOverlay = false) {
+    async syncAndLoad(currentUser, showOverlay = false, isAuthoritativeGate = false) {
       if (!db) {
         console.warn('Firestore is not available; falling back to local storage.');
         initData();
@@ -1386,19 +1387,30 @@
 
       const emailLower = currentUser.email.toLowerCase();
 
-      // Look up user document in users collection
+      // Look up authoritative user document in users collection
       let userData = null;
       try {
         const userDocRef = db.collection('users').doc(emailLower);
         const userSnap = await userDocRef.get();
         if (userSnap.exists) {
           userData = userSnap.data();
-          if (userData.role) {
-            localStorage.setItem(ROLE_STORAGE_PREFIX + emailLower, userData.role);
-          }
+          const authoritativeRole = (userData && userData.role) ? userData.role : 'Admin';
+          state.currentUser = { email: currentUser.email, role: authoritativeRole };
+          localStorage.setItem(ROLE_STORAGE_PREFIX + emailLower, authoritativeRole);
+          updateUserHeader(currentUser.email, authoritativeRole);
+          updateFeesTabVisibility();
+          updateImportButtonsVisibility();
+        } else {
+          const fallbackRole = 'Admin';
+          state.currentUser = { email: currentUser.email, role: fallbackRole };
+          localStorage.setItem(ROLE_STORAGE_PREFIX + emailLower, fallbackRole);
+          updateUserHeader(currentUser.email, fallbackRole);
         }
       } catch (err) {
         console.warn('User record lookup warning:', err);
+        if (isAuthoritativeGate) {
+          throw err;
+        }
       }
 
       // Check for schoolId on user document
@@ -1406,6 +1418,9 @@
         console.log('User has no schoolId — triggering onboarding migration modal');
         const onboardedSchool = await promptSchoolOnboarding(currentUser);
         if (!onboardedSchool) {
+          if (isAuthoritativeGate) {
+            throw new Error('ONBOARDING_CANCELLED');
+          }
           return;
         }
       } else {
@@ -1431,11 +1446,10 @@
                 paidUntil: state.currentSchool.paidUntil || null
               };
               Object.assign(state.currentSchool, billingMigration);
-              try {
-                await db.collection('schools').doc(state.currentSchoolId).set(billingMigration, { merge: true });
-                console.log('One-time migration: Initialized trial billing fields for existing school');
-              } catch (migErr) {
-                console.warn('One-time billing migration write warning:', migErr);
+              if (state.currentUser && state.currentUser.role === 'Admin') {
+                db.collection('schools').doc(state.currentSchoolId).set(billingMigration, { merge: true }).catch(migErr => {
+                  console.warn('One-time billing migration write warning:', migErr);
+                });
               }
             }
 
@@ -1455,9 +1469,14 @@
             saveStorage(STORAGE_KEYS.PROFILE, state.profile);
             applySchoolBranding(state.profile);
             updateSubscriptionState(state.currentSchool);
+            updateFeesTabVisibility();
+            updateImportButtonsVisibility();
           }
         } catch (err) {
           console.warn('School profile fetch warning:', err);
+          if (isAuthoritativeGate) {
+            throw err;
+          }
         }
       }
 
@@ -5386,7 +5405,6 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
         // Sign In
         const userCredential = await auth.signInWithEmailAndPassword(email, password);
         if (userCredential && userCredential.user) {
-          setUserRole(userCredential.user.email, selectedRole);
           showToast('Signed in successfully!', 'success');
         }
       }
@@ -5515,7 +5533,19 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
       hideSyncIndicator();
       isBackgroundSyncing = false;
 
-      // Re-render silently with merged cloud data
+      // Re-apply shell branding, header, role, tab visibility, and re-render
+      if (state.profile || state.currentSchool) {
+        applySchoolBranding(state.profile || state.currentSchool);
+      }
+      if (state.currentUser && state.currentUser.role) {
+        updateUserHeader(user.email, state.currentUser.role);
+      }
+      checkPlatformAdmin(user);
+      if (state.currentSchool) {
+        updateSubscriptionState(state.currentSchool);
+      }
+      updateFeesTabVisibility();
+      updateImportButtonsVisibility();
       renderApp();
       console.log('Firestore background sync completed successfully.');
     } catch (err) {
@@ -5538,21 +5568,27 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
     }
   }
 
-  function showDataLoadError(message) {
+  function showDataLoadError(message, retryFn) {
     let box = document.getElementById('dataLoadErrorBox');
     let textEl = document.getElementById('dataLoadErrorText');
+    let retryBtn = document.getElementById('btnRetryDataLoad');
     if (!box) {
       box = document.createElement('div');
       box.id = 'dataLoadErrorBox';
       box.className = 'auth-error-box';
       box.style.margin = '12px 14px 0';
+      box.style.display = 'flex';
+      box.style.alignItems = 'center';
+      box.style.gap = '10px';
+      box.style.flexWrap = 'wrap';
       box.setAttribute('role', 'alert');
       box.innerHTML = `
         <span class="error-icon">⚠️</span>
-        <div style="flex: 1;">
+        <div style="flex: 1; min-width: 200px;">
           <strong style="display: block; font-weight: 700; margin-bottom: 2px;">Data Loading Error</strong>
           <span id="dataLoadErrorText" class="error-text"></span>
         </div>
+        <button type="button" class="btn btn-sm btn-primary hidden" id="btnRetryDataLoad" style="white-space: nowrap;">Retry</button>
         <button type="button" class="btn-close" id="btnCloseDataLoadError" aria-label="Dismiss" style="background: none; border: none; font-size: 1rem; cursor: pointer; color: #DC2626; padding: 0 4px; line-height: 1;">✕</button>
       `;
       const appContainer = document.getElementById('appContainer');
@@ -5563,9 +5599,22 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
         appContainer.insertBefore(box, appContainer.firstChild);
       }
       textEl = document.getElementById('dataLoadErrorText');
+      retryBtn = document.getElementById('btnRetryDataLoad');
     }
     if (textEl) {
       textEl.textContent = message;
+    }
+    if (retryBtn) {
+      if (typeof retryFn === 'function') {
+        retryBtn.classList.remove('hidden');
+        retryBtn.onclick = () => {
+          hideDataLoadError();
+          retryFn();
+        };
+      } else {
+        retryBtn.classList.add('hidden');
+        retryBtn.onclick = null;
+      }
     }
     box.classList.remove('hidden');
 
@@ -5582,6 +5631,91 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
     if (box) box.classList.add('hidden');
   }
 
+  async function loadAuthoritativeInitialData(user) {
+    return await FirestoreDB.syncAndLoad(user, false, true);
+  }
+
+  let authGatingInFlight = false;
+
+  async function handleAuthUserGated(user, isRetry = false) {
+    if (!user) return;
+    if (authGatingInFlight) return;
+    authGatingInFlight = true;
+
+    const authScreen = document.getElementById('authScreen');
+    const appContainer = document.getElementById('appContainer');
+    const mobileBottomBar = document.getElementById('mobileBottomBar');
+    const mainContent = document.querySelector('.main-content');
+
+    // 1. Keep auth screen hidden, hide error box, show friendly sync overlay
+    authScreen?.classList.add('hidden');
+    hideDataLoadError();
+
+    // App shell remains hidden until authoritative user & school docs resolve
+    appContainer?.classList.add('hidden');
+    mobileBottomBar?.classList.add('hidden');
+    if (mainContent) mainContent.classList.remove('hidden');
+
+    FirestoreDB.showSyncOverlay('Loading SchoolSteps', 'Loading your school records from Cloud Firestore...');
+
+    let timeoutId = null;
+    const timeoutPromise = new Promise((_, reject) => {
+      timeoutId = setTimeout(() => {
+        reject(new Error('DATA_LOAD_TIMEOUT'));
+      }, 10000);
+    });
+
+    try {
+      await Promise.race([
+        loadAuthoritativeInitialData(user),
+        timeoutPromise
+      ]);
+      if (timeoutId) clearTimeout(timeoutId);
+
+      // 2. Both authoritative user doc and school doc have resolved
+      // Unhide app shell & bottom bar
+      appContainer?.classList.remove('hidden');
+      mobileBottomBar?.classList.remove('hidden');
+      if (mainContent) mainContent.classList.remove('hidden');
+
+      // Re-apply shell branding, header, role badge, tabs from fetched authoritative data
+      if (state.profile) {
+        applySchoolBranding(state.profile);
+      }
+      if (state.currentUser && state.currentUser.role) {
+        updateUserHeader(user.email, state.currentUser.role);
+      }
+      checkPlatformAdmin(user);
+      if (state.currentSchool) {
+        updateSubscriptionState(state.currentSchool);
+      }
+      updateFeesTabVisibility();
+      updateImportButtonsVisibility();
+
+      // Render the app with real data
+      renderApp();
+
+      // Start background sync routine for subsequent periodic updates
+      startBackgroundSync(user);
+    } catch (err) {
+      if (timeoutId) clearTimeout(timeoutId);
+      console.error('Initial authoritative data load failed or timed out:', err);
+
+      // Fail-safe: unhide appContainer so error box is visible, but keep mainContent and mobileBottomBar hidden so no empty school is painted
+      appContainer?.classList.remove('hidden');
+      mobileBottomBar?.classList.add('hidden');
+      if (mainContent) mainContent.classList.add('hidden');
+
+      showDataLoadError(
+        'Unable to load your school records from Cloud Firestore. Please check your internet connection.',
+        () => handleAuthUserGated(user, true)
+      );
+    } finally {
+      authGatingInFlight = false;
+      FirestoreDB.hideSyncOverlay();
+    }
+  }
+
   function initAuthGating() {
     const authScreen = document.getElementById('authScreen');
     const appContainer = document.getElementById('appContainer');
@@ -5595,35 +5729,7 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
 
     auth.onAuthStateChanged((user) => {
       if (user) {
-        const emailLower = user.email.toLowerCase();
-        const cachedRole = getUserRole(emailLower);
-        const cachedSchoolId = localStorage.getItem(SCHOOL_STORAGE_PREFIX + emailLower);
-        if (cachedSchoolId) {
-          state.currentSchoolId = cachedSchoolId;
-        }
-
-        // FIRST line: hide login, show app. Nothing before it.
-        authScreen?.classList.add('hidden');
-        appContainer?.classList.remove('hidden');
-        mobileBottomBar?.classList.remove('hidden');
-
-        updateUserHeader(user.email, cachedRole);
-        checkPlatformAdmin(user);
-        updateFeesTabVisibility();
-        updateImportButtonsVisibility();
-
-        // THEN: setTimeout(() => { try { initData(); renderApp(); } catch(e) { console.error(e); } }, 500);
-        setTimeout(() => {
-          try {
-            initData();
-            renderApp();
-          } catch (e) {
-            console.error(e);
-          }
-        }, 500);
-
-        // THEN: start background sync.
-        startBackgroundSync(user);
+        handleAuthUserGated(user);
       } else {
         stopBackgroundSync();
         FirestoreDB.hideSyncOverlay();
@@ -5638,17 +5744,59 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
         applyThemeBrandColor('#0D9488');
         document.title = 'SchoolSteps';
 
+        state.currentUser = null;
         state.currentSchoolId = null;
         state.currentSchool = null;
+        state.profile = Object.assign({}, DEFAULT_SCHOOL_PROFILE);
+        state.students = [];
+        state.tests = [];
+        state.marks = {};
+        state.attendance = {};
+        state.dispatchLogs = {};
+        state.ptmEvents = [];
+        state.callLogs = [];
+        state.syllabi = [];
         state.isPlatformAdmin = false;
         state.feePayments = [];
         state.feeSelectedMonth = getCurrentMonthKey();
+
+        // Clear header and dashboard identity elements
+        const headerSchoolName = document.getElementById('headerSchoolName');
+        if (headerSchoolName) headerSchoolName.textContent = 'SchoolSteps';
+        const headerSchoolTagline = document.getElementById('headerSchoolTagline');
+        if (headerSchoolTagline) {
+          headerSchoolTagline.textContent = '';
+          headerSchoolTagline.style.display = 'none';
+        }
+        const headerSchoolLogo = document.getElementById('headerSchoolLogo');
+        if (headerSchoolLogo) headerSchoolLogo.src = 'icon.svg';
+
+        const dashboardSchoolName = document.getElementById('dashboardSchoolName');
+        if (dashboardSchoolName) dashboardSchoolName.textContent = 'School Overview';
+        const dashboardSchoolTagline = document.getElementById('dashboardSchoolTagline');
+        if (dashboardSchoolTagline) {
+          dashboardSchoolTagline.textContent = '';
+          dashboardSchoolTagline.style.display = 'none';
+        }
+        const dashboardSchoolLogo = document.getElementById('dashboardSchoolLogo');
+        if (dashboardSchoolLogo) dashboardSchoolLogo.src = 'icon.svg';
+
+        const roleBadge = document.getElementById('userRoleBadge');
+        if (roleBadge) roleBadge.textContent = '';
+        const emailSub = document.getElementById('userEmailSub');
+        if (emailSub) emailSub.textContent = '';
+        const limitInd = document.getElementById('studentLimitIndicator');
+        if (limitInd) limitInd.textContent = '';
+
         document.getElementById('tabBtnPlatform')?.classList.add('hidden');
         document.getElementById('mobileTabBtnPlatform')?.classList.add('hidden');
         document.getElementById('tabBtnFees')?.classList.add('hidden');
         document.getElementById('mobileTabBtnFees')?.classList.add('hidden');
         document.getElementById('subscriptionBanner')?.classList.add('hidden');
         document.getElementById('subscriptionModal')?.classList.add('hidden');
+
+        // Ensure main-content hidden class is cleared for next login
+        document.querySelector('.main-content')?.classList.remove('hidden');
 
         const pwField = document.getElementById('authPassword');
         if (pwField) pwField.value = '';
@@ -8332,7 +8480,7 @@ Please review the syllabus and schedule to support your child's learning.
     }
     try {
       if (auth && auth.currentUser) {
-        const role = getUserRole(auth.currentUser.email);
+        const role = (state.currentUser && state.currentUser.role) || getUserRole(auth.currentUser.email);
         updateUserHeader(auth.currentUser.email, role);
       }
     } catch (e) {
@@ -8374,6 +8522,8 @@ Please review the syllabus and schedule to support your child's learning.
   window.__hideSyncIndicator = hideSyncIndicator;
   window.__startBackgroundSync = startBackgroundSync;
   window.__showDataLoadError = showDataLoadError;
+  window.__handleAuthUserGated = handleAuthUserGated;
+  window.__loadAuthoritativeInitialData = loadAuthoritativeInitialData;
   window.__hideDataLoadError = hideDataLoadError;
   window.__promptSchoolOnboarding = promptSchoolOnboarding;
   window.__deleteStudent = deleteStudent;

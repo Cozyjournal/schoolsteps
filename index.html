@@ -149,7 +149,7 @@
         </div>
         <div class="header-actions">
           <div class="user-pill" id="userHeaderPill">
-            <span class="user-role-badge badge" id="userRoleBadge">Teacher</span>
+            <span class="user-role-badge badge" id="userRoleBadge"></span>
             <span class="badge badge-pilot hidden" id="syncStatusBadge">Syncing...</span>
             <span class="user-email-sub" id="userEmailSub"></span>
           </div>
@@ -244,12 +244,13 @@
     </div>
 
     <!-- App Data Load Error Box (shown at top of app if data loading fails) -->
-    <div id="dataLoadErrorBox" class="auth-error-box hidden" style="margin: 12px 14px 0;" role="alert">
+    <div id="dataLoadErrorBox" class="auth-error-box hidden" style="margin: 12px 14px 0; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;" role="alert">
       <span class="error-icon">⚠️</span>
-      <div style="flex: 1;">
+      <div style="flex: 1; min-width: 200px;">
         <strong style="display: block; font-weight: 700; margin-bottom: 2px;">Data Loading Error</strong>
         <span id="dataLoadErrorText" class="error-text"></span>
       </div>
+      <button type="button" class="btn btn-sm btn-primary hidden" id="btnRetryDataLoad" style="white-space: nowrap;">Retry</button>
       <button type="button" class="btn-close" id="btnCloseDataLoadError" aria-label="Dismiss" style="background: none; border: none; font-size: 1rem; cursor: pointer; color: #DC2626; padding: 0 4px; line-height: 1;">✕</button>
     </div>
 

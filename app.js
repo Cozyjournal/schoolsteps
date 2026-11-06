@@ -4806,6 +4806,7 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
     bindFeesEvents();
     bindBulkWhatsAppEvents();
     bindPromotionEvents();
+    bindExportDataEvents();
     bindSyllabusEvents();
 
     const subModal = document.getElementById('subscriptionModal');
@@ -8721,6 +8722,10 @@ Please review the syllabus and schedule to support your child's learning.
       btn.classList.toggle('hidden', !isAdmin);
     });
 
+    document.querySelectorAll('.btn-export-trigger').forEach(btn => {
+      btn.classList.toggle('hidden', !isAdmin);
+    });
+
     if (!isAdmin) {
       const modal = document.getElementById('importModal');
       if (modal && !modal.classList.contains('hidden')) {
@@ -8729,6 +8734,10 @@ Please review the syllabus and schedule to support your child's learning.
       const promoModal = document.getElementById('promotionModal');
       if (promoModal && !promoModal.classList.contains('hidden')) {
         closePromotionModal();
+      }
+      const exportModal = document.getElementById('exportDataModal');
+      if (exportModal && !exportModal.classList.contains('hidden')) {
+        closeExportDataModal();
       }
     }
   }
@@ -11183,6 +11192,629 @@ Please review the syllabus and schedule to support your child's learning.
     });
   }
 
+  // ========================================================
+  // DATA EXPORT (ROADMAP ITEM #4)
+  // ========================================================
+
+  function handleOpenExportDataModal() {
+    const userRole = (state.currentUser && state.currentUser.role) || ((auth && auth.currentUser) ? getUserRole(auth.currentUser.email) : '');
+    const isAdmin = userRole === 'Admin' && !!state.currentSchoolId;
+    if (!isAdmin) {
+      showToast('Access restricted: School Admin only.', 'error');
+      return;
+    }
+    openExportDataModal();
+  }
+
+  function openExportDataModal() {
+    // 1. Calculate live counts
+    const studentsCount = (state.students || []).length;
+    const feesCount = (state.feePayments || []).length;
+
+    let attCount = 0;
+    Object.values(state.attendance || {}).forEach(dateMap => {
+      if (dateMap) {
+        Object.values(dateMap).forEach(rec => {
+          if (rec && rec.status) attCount++;
+        });
+      }
+    });
+
+    let marksCount = 0;
+    const testList = state.tests || [];
+    Object.keys(state.marks || {}).forEach(k => {
+      if (testList.some(t => k.startsWith(t.id + '_'))) marksCount++;
+    });
+
+    let sylCount = 0;
+    (state.syllabi || []).forEach(s => {
+      (s.subjects || []).forEach(sub => {
+        sylCount += (sub.topics || []).length;
+      });
+    });
+
+    // 2. Update labels
+    const lblStudents = document.getElementById('exportLblStudents');
+    if (lblStudents) lblStudents.textContent = `Students (${studentsCount}) — all statuses, including Graduated`;
+
+    const lblFees = document.getElementById('exportLblFees');
+    if (lblFees) lblFees.textContent = `Fee Payments (${feesCount})`;
+
+    const lblAtt = document.getElementById('exportLblAttendance');
+    if (lblAtt) lblAtt.textContent = `Attendance (${attCount} marked records, flattened across all dates)`;
+
+    const lblMarks = document.getElementById('exportLblMarks');
+    if (lblMarks) lblMarks.textContent = `Marks (${marksCount} entries)`;
+
+    const lblSyl = document.getElementById('exportLblSyllabus');
+    if (lblSyl) lblSyl.textContent = `Syllabus (${sylCount} topics)`;
+
+    const lblSchool = document.getElementById('exportLblSchoolInfo');
+    if (lblSchool) lblSchool.textContent = 'School Info & Fee Structure';
+
+    // 3. Reset all checkboxes to checked
+    const optIds = ['exportOptStudents', 'exportOptFees', 'exportOptAttendance', 'exportOptMarks', 'exportOptSyllabus', 'exportOptSchoolInfo'];
+    optIds.forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.checked = true;
+    });
+
+    // 4. Update button state
+    updateExportDownloadButtonState();
+
+    const btnDownload = document.getElementById('btnDownloadExportData');
+    if (btnDownload) {
+      btnDownload.disabled = false;
+      btnDownload.innerHTML = '<span>📥 Download Excel</span>';
+    }
+
+    // 5. Show modal
+    const modal = document.getElementById('exportDataModal');
+    if (modal) modal.classList.remove('hidden');
+  }
+
+  function closeExportDataModal() {
+    const modal = document.getElementById('exportDataModal');
+    if (modal) modal.classList.add('hidden');
+  }
+
+  function updateExportDownloadButtonState() {
+    const optIds = ['exportOptStudents', 'exportOptFees', 'exportOptAttendance', 'exportOptMarks', 'exportOptSyllabus', 'exportOptSchoolInfo'];
+    const anyChecked = optIds.some(id => document.getElementById(id)?.checked);
+    const btn = document.getElementById('btnDownloadExportData');
+    if (btn) btn.disabled = !anyChecked;
+  }
+
+  function compareClassNames(cA, cB) {
+    const numA = parseInt(((cA || '').match(/\d+/) || [999])[0], 10);
+    const numB = parseInt(((cB || '').match(/\d+/) || [999])[0], 10);
+    if (!isNaN(numA) && !isNaN(numB) && numA !== numB) {
+      return numA - numB;
+    }
+    return (cA || '').localeCompare(cB || '');
+  }
+
+  function buildStudentsExportSheet() {
+    const headers = [
+      'Admission No',
+      'Student Name',
+      'Class',
+      'Section',
+      'Roll No',
+      'Father Name',
+      'WhatsApp Number',
+      'Monthly Fee (Custom)',
+      'Fee Note',
+      'Effective Monthly Fee',
+      'Status'
+    ];
+
+    const copy = [...(state.students || [])];
+    copy.sort((a, b) => {
+      const classCmp = compareClassNames(a.className || '', b.className || '');
+      if (classCmp !== 0) return classCmp;
+      const secCmp = (a.section || 'A').localeCompare(b.section || 'A');
+      if (secCmp !== 0) return secCmp;
+      return (parseInt(a.rollNo || '0', 10) || 0) - (parseInt(b.rollNo || '0', 10) || 0);
+    });
+
+    const rows = [headers];
+    copy.forEach(s => {
+      const customFee = (s.monthlyFee != null && s.monthlyFee !== '') ? Number(s.monthlyFee) : '';
+      const effectiveFee = Number(getEffectiveMonthlyFee(s)) || 0;
+      rows.push([
+        s.admissionNo || '',
+        s.name || '',
+        s.className || '',
+        s.section || 'A',
+        s.rollNo || '',
+        s.fatherName || s.parentName || '',
+        s.whatsapp || s.parentPhone || '',
+        customFee,
+        s.feeNote || '',
+        effectiveFee,
+        s.status || 'Active'
+      ]);
+    });
+
+    const cols = [
+      { wch: 15 },
+      { wch: 22 },
+      { wch: 10 },
+      { wch: 10 },
+      { wch: 10 },
+      { wch: 20 },
+      { wch: 16 },
+      { wch: 20 },
+      { wch: 20 },
+      { wch: 22 },
+      { wch: 12 }
+    ];
+
+    return { name: 'Students', rows, cols };
+  }
+
+  function buildFeesExportSheet() {
+    const headers = [
+      'Receipt No',
+      'Student Name',
+      'Class',
+      'Section',
+      'Roll No',
+      'Month',
+      'Amount (Rs)',
+      'Paid Date',
+      'Method',
+      'Received By',
+      'Note'
+    ];
+
+    const copy = [...(state.feePayments || [])];
+    const studentMap = new Map((state.students || []).map(s => [s.id, s]));
+
+    copy.sort((a, b) => {
+      const mCmp = (a.month || '').localeCompare(b.month || '');
+      if (mCmp !== 0) return mCmp;
+      const stA = studentMap.get(a.studentId);
+      const stB = studentMap.get(b.studentId);
+      const cA = stA ? stA.className : (a.className || '');
+      const cB = stB ? stB.className : (b.className || '');
+      const classCmp = compareClassNames(cA, cB);
+      if (classCmp !== 0) return classCmp;
+      const rA = parseInt((stA ? stA.rollNo : a.rollNo) || '0', 10) || 0;
+      const rB = parseInt((stB ? stB.rollNo : b.rollNo) || '0', 10) || 0;
+      return rA - rB;
+    });
+
+    const rows = [headers];
+    copy.forEach(p => {
+      const st = studentMap.get(p.studentId);
+      const receiptNo = 'REC-' + (p.id ? p.id.replace(/.*_fee_/, '').slice(0, 8).toUpperCase() : '1001');
+      const stName = st ? st.name : (p.studentName || '—');
+      const stClass = st ? st.className : (p.className || '—');
+      const stSec = st ? (st.section || 'A') : (p.section || '—');
+      const stRoll = st ? (st.rollNo || '—') : (p.rollNo || '—');
+      const amount = Number(p.amount) || 0;
+
+      rows.push([
+        receiptNo,
+        stName,
+        stClass,
+        stSec,
+        stRoll,
+        p.month || '',
+        amount,
+        p.paidDate || '',
+        p.method || 'Cash',
+        p.receivedBy || '',
+        p.note || ''
+      ]);
+    });
+
+    const cols = [
+      { wch: 15 },
+      { wch: 22 },
+      { wch: 10 },
+      { wch: 10 },
+      { wch: 10 },
+      { wch: 12 },
+      { wch: 14 },
+      { wch: 14 },
+      { wch: 12 },
+      { wch: 16 },
+      { wch: 25 }
+    ];
+
+    return { name: 'Fee Payments', rows, cols };
+  }
+
+  function buildAttendanceExportSheet() {
+    const headers = [
+      'Date',
+      'Class',
+      'Section',
+      'Student Name',
+      'Roll No',
+      'Status',
+      'Time'
+    ];
+
+    const studentMap = new Map((state.students || []).map(s => [s.id, s]));
+    const records = [];
+
+    Object.entries(state.attendance || {}).forEach(([key, dateMap]) => {
+      if (!dateMap) return;
+      const parts = key.split('_');
+      const dateStr = parts[0] || '';
+      const className = parts[1] || '';
+      const section = parts.slice(2).join('_') || 'A';
+
+      Object.entries(dateMap).forEach(([studentId, rec]) => {
+        if (!rec || !rec.status) return;
+        const st = studentMap.get(studentId);
+        records.push({
+          date: dateStr,
+          className: className,
+          section: section,
+          studentName: st ? st.name : 'Unknown',
+          rollNo: st ? (st.rollNo || '—') : '—',
+          status: rec.status || '',
+          time: rec.time || ''
+        });
+      });
+    });
+
+    records.sort((a, b) => {
+      const dCmp = a.date.localeCompare(b.date);
+      if (dCmp !== 0) return dCmp;
+      const cCmp = compareClassNames(a.className, b.className);
+      if (cCmp !== 0) return cCmp;
+      const rA = parseInt(a.rollNo, 10) || 0;
+      const rB = parseInt(b.rollNo, 10) || 0;
+      return rA - rB;
+    });
+
+    const rows = [headers];
+    records.forEach(r => {
+      rows.push([
+        r.date,
+        r.className,
+        r.section,
+        r.studentName,
+        r.rollNo,
+        r.status,
+        r.time
+      ]);
+    });
+
+    const cols = [
+      { wch: 14 },
+      { wch: 12 },
+      { wch: 10 },
+      { wch: 22 },
+      { wch: 10 },
+      { wch: 12 },
+      { wch: 12 }
+    ];
+
+    return { name: 'Attendance', rows, cols };
+  }
+
+  function buildMarksExportSheet() {
+    const headers = [
+      'Test Title',
+      'Subject',
+      'Class',
+      'Section',
+      'Test Date',
+      'Max Marks',
+      'Student Name',
+      'Roll No',
+      'Obtained',
+      'Remarks'
+    ];
+
+    const studentMap = new Map((state.students || []).map(s => [s.id, s]));
+    const records = [];
+
+    Object.entries(state.marks || {}).forEach(([key, rec]) => {
+      if (!rec) return;
+      let matchedTest = null;
+      let studentId = '';
+      for (const t of (state.tests || [])) {
+        if (key.startsWith(t.id + '_')) {
+          matchedTest = t;
+          studentId = key.substring(t.id.length + 1);
+          break;
+        }
+      }
+      if (!matchedTest) return;
+
+      const st = studentMap.get(studentId);
+      const rawObtained = rec.marks != null ? rec.marks : (rec.obtained != null ? rec.obtained : 0);
+      const obtained = rawObtained !== '' ? Number(rawObtained) : 0;
+      const maxMarks = Number(matchedTest.maxMarks) || 0;
+
+      records.push({
+        title: matchedTest.title || '',
+        subject: matchedTest.subject || '',
+        className: matchedTest.className || matchedTest.class || '',
+        section: matchedTest.section || 'All',
+        date: matchedTest.date || '',
+        maxMarks: maxMarks,
+        studentName: st ? st.name : 'Unknown',
+        rollNo: st ? (st.rollNo || '—') : '—',
+        obtained: obtained,
+        remarks: rec.remarks || ''
+      });
+    });
+
+    records.sort((a, b) => {
+      const dCmp = a.date.localeCompare(b.date);
+      if (dCmp !== 0) return dCmp;
+      const cCmp = compareClassNames(a.className, b.className);
+      if (cCmp !== 0) return cCmp;
+      const rA = parseInt(a.rollNo, 10) || 0;
+      const rB = parseInt(b.rollNo, 10) || 0;
+      return rA - rB;
+    });
+
+    const rows = [headers];
+    records.forEach(r => {
+      rows.push([
+        r.title,
+        r.subject,
+        r.className,
+        r.section,
+        r.date,
+        r.maxMarks,
+        r.studentName,
+        r.rollNo,
+        r.obtained,
+        r.remarks
+      ]);
+    });
+
+    const cols = [
+      { wch: 22 },
+      { wch: 16 },
+      { wch: 12 },
+      { wch: 10 },
+      { wch: 14 },
+      { wch: 12 },
+      { wch: 22 },
+      { wch: 10 },
+      { wch: 12 },
+      { wch: 20 }
+    ];
+
+    return { name: 'Marks', rows, cols };
+  }
+
+  function buildSyllabusExportSheet() {
+    const headers = [
+      'Class',
+      'Subject',
+      'Book',
+      'Topic',
+      'Month',
+      'Status'
+    ];
+
+    const records = [];
+
+    (state.syllabi || []).forEach(syl => {
+      const cName = syl.className || syl.class || '';
+      (syl.subjects || []).forEach(sub => {
+        const subName = sub.name || '';
+        const bookName = sub.book || sub.bookTitle || '';
+        (sub.topics || []).forEach((top, idx) => {
+          records.push({
+            className: cName,
+            subject: subName,
+            book: bookName,
+            topic: top.title || '',
+            month: top.month || '',
+            status: top.completed ? 'Completed' : 'Pending',
+            orderIndex: idx
+          });
+        });
+      });
+    });
+
+    records.sort((a, b) => {
+      const cCmp = compareClassNames(a.className, b.className);
+      if (cCmp !== 0) return cCmp;
+      const sCmp = a.subject.localeCompare(b.subject);
+      if (sCmp !== 0) return sCmp;
+      return a.orderIndex - b.orderIndex;
+    });
+
+    const rows = [headers];
+    records.forEach(r => {
+      rows.push([
+        r.className,
+        r.subject,
+        r.book,
+        r.topic,
+        r.month,
+        r.status
+      ]);
+    });
+
+    const cols = [
+      { wch: 12 },
+      { wch: 18 },
+      { wch: 20 },
+      { wch: 28 },
+      { wch: 14 },
+      { wch: 14 }
+    ];
+
+    return { name: 'Syllabus', rows, cols };
+  }
+
+  function buildSchoolInfoExportSheet() {
+    const school = state.currentSchool || {};
+    const sub = state.subscription || {};
+    const schoolName = school.schoolName || school.name || state.profile?.name || 'SchoolSteps';
+    const schoolCode = school.schoolCode || school.code || 'BHS01';
+    const tagline = school.tagline || school.motto || state.profile?.tagline || '';
+    const plan = sub.plan || school.plan || 'Basic';
+    const subStatus = sub.status || school.subscriptionStatus || 'Active';
+    const todayHuman = formatHumanFullDate(getTodayISO()) || getTodayISO();
+
+    const rows = [
+      ['School Name', schoolName],
+      ['School Code', schoolCode],
+      ['Tagline', tagline],
+      ['Plan', plan],
+      ['Subscription Status', subStatus],
+      ['Export Date', todayHuman],
+      [],
+      ['Class', 'Monthly Fee (Rs)']
+    ];
+
+    const knownClasses = sortClasses(getKnownClassNames());
+    const feeByClass = school.feeByClass || {};
+
+    knownClasses.forEach(c => {
+      const feeVal = feeByClass[c];
+      const numFee = (feeVal !== undefined && feeVal !== null && feeVal !== '') ? Number(feeVal) : '';
+      rows.push([c, numFee]);
+    });
+
+    const cols = [
+      { wch: 22 },
+      { wch: 30 }
+    ];
+
+    return { name: 'School Info', rows, cols };
+  }
+
+  function exportSheetsAsCsv(sheets, schoolCode, todayStr) {
+    sheets.forEach(({ name, rows }) => {
+      const csvContent = rows.map(r => r.map(cell => {
+        const str = String(cell == null ? '' : cell).replace(/"/g, '""');
+        return str.includes(',') || str.includes('\n') || str.includes('\r') || str.includes('"') ? `"${str}"` : str;
+      }).join(',')).join('\r\n');
+
+      const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      const safeSheetName = name.replace(/\s+/g, '-');
+      link.download = `SchoolSteps-Export-${schoolCode}-${safeSheetName}-${todayStr}.csv`;
+      link.href = url;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    });
+  }
+
+  async function executeExportData() {
+    const optStudents = document.getElementById('exportOptStudents')?.checked;
+    const optFees = document.getElementById('exportOptFees')?.checked;
+    const optAttendance = document.getElementById('exportOptAttendance')?.checked;
+    const optMarks = document.getElementById('exportOptMarks')?.checked;
+    const optSyllabus = document.getElementById('exportOptSyllabus')?.checked;
+    const optSchoolInfo = document.getElementById('exportOptSchoolInfo')?.checked;
+
+    if (!optStudents && !optFees && !optAttendance && !optMarks && !optSyllabus && !optSchoolInfo) {
+      showToast('Please select at least one dataset to export.', 'warn');
+      return;
+    }
+
+    const downloadBtn = document.getElementById('btnDownloadExportData');
+    const originalBtnHtml = downloadBtn ? downloadBtn.innerHTML : '<span>📥 Download Excel</span>';
+    if (downloadBtn) {
+      downloadBtn.disabled = true;
+      downloadBtn.textContent = 'Preparing…';
+    }
+
+    // Yield so button state renders
+    await new Promise(r => setTimeout(r, 60));
+
+    try {
+      const school = state.currentSchool || {};
+      const schoolCode = (school.schoolCode || school.code || 'school').trim() || 'school';
+      const todayStr = getTodayISO();
+
+      // Datasets in exact requested order:
+      // Students, Fee Payments, Attendance, Marks, Syllabus, School Info
+      const sheetsToExport = [];
+      if (optStudents) sheetsToExport.push(buildStudentsExportSheet());
+      if (optFees) sheetsToExport.push(buildFeesExportSheet());
+      if (optAttendance) sheetsToExport.push(buildAttendanceExportSheet());
+      if (optMarks) sheetsToExport.push(buildMarksExportSheet());
+      if (optSyllabus) sheetsToExport.push(buildSyllabusExportSheet());
+      if (optSchoolInfo) sheetsToExport.push(buildSchoolInfoExportSheet());
+
+      let xlsxSuccess = false;
+      if (window.XLSX && window.XLSX.utils) {
+        try {
+          const wb = XLSX.utils.book_new();
+          sheetsToExport.forEach(({ name, rows, cols }) => {
+            const ws = XLSX.utils.aoa_to_sheet(rows);
+            if (cols) ws['!cols'] = cols;
+            XLSX.utils.book_append_sheet(wb, ws, name);
+          });
+          const fileName = `SchoolSteps-Export-${schoolCode}-${todayStr}.xlsx`;
+          XLSX.writeFile(wb, fileName, { bookType: 'xlsx' });
+          xlsxSuccess = true;
+          showToast('School data exported successfully!', 'success');
+        } catch (xlsxErr) {
+          console.warn('XLSX build error, falling back to CSV:', xlsxErr);
+          xlsxSuccess = false;
+        }
+      }
+
+      if (!xlsxSuccess) {
+        exportSheetsAsCsv(sheetsToExport, schoolCode, todayStr);
+        showToast('Excel library unavailable — downloaded as CSV files instead.', 'info');
+      }
+
+      closeExportDataModal();
+    } catch (err) {
+      console.error('Export failed:', err);
+      showToast('Export failed. Please try again.', 'error');
+    } finally {
+      if (downloadBtn) {
+        downloadBtn.disabled = false;
+        downloadBtn.innerHTML = originalBtnHtml;
+      }
+    }
+  }
+
+  function bindExportDataEvents() {
+    document.getElementById('btnExportData')?.addEventListener('click', handleOpenExportDataModal);
+    document.getElementById('btnCloseExportDataModal')?.addEventListener('click', closeExportDataModal);
+    document.getElementById('btnCancelExportData')?.addEventListener('click', closeExportDataModal);
+    document.getElementById('btnDownloadExportData')?.addEventListener('click', executeExportData);
+
+    const optIds = ['exportOptStudents', 'exportOptFees', 'exportOptAttendance', 'exportOptMarks', 'exportOptSyllabus', 'exportOptSchoolInfo'];
+    optIds.forEach(id => {
+      document.getElementById(id)?.addEventListener('change', updateExportDownloadButtonState);
+    });
+
+    // Backdrop click
+    document.getElementById('exportDataModal')?.addEventListener('click', (e) => {
+      if (e.target.id === 'exportDataModal') {
+        closeExportDataModal();
+      }
+    });
+
+    // Escape key
+    document.addEventListener('keydown', (e) => {
+      if ((e.key === 'Escape' || e.key === 'Esc')) {
+        const modal = document.getElementById('exportDataModal');
+        if (modal && !modal.classList.contains('hidden')) {
+          closeExportDataModal();
+        }
+      }
+    });
+  }
+
   // Window exports for HTML onclick handlers
   window.openImportModal = openImportModal;
   window.closeImportModal = closeImportModal;
@@ -11228,6 +11860,16 @@ Please review the syllabus and schedule to support your child's learning.
   window.handleImportDragLeave = handleImportDragLeave;
   window.handleImportDrop = handleImportDrop;
   window.FirestoreDB = FirestoreDB;
+  window.handleOpenExportDataModal = handleOpenExportDataModal;
+  window.openExportDataModal = openExportDataModal;
+  window.closeExportDataModal = closeExportDataModal;
+  window.executeExportData = executeExportData;
+  window.__buildStudentsExportSheet = buildStudentsExportSheet;
+  window.__buildFeesExportSheet = buildFeesExportSheet;
+  window.__buildAttendanceExportSheet = buildAttendanceExportSheet;
+  window.__buildMarksExportSheet = buildMarksExportSheet;
+  window.__buildSyllabusExportSheet = buildSyllabusExportSheet;
+  window.__buildSchoolInfoExportSheet = buildSchoolInfoExportSheet;
 
 
   function start() {

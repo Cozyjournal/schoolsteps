@@ -312,6 +312,10 @@
                 <span class="icon">🎓</span>
                 <span>Promote Classes</span>
               </button>
+              <button type="button" class="btn btn-subtle btn-export-trigger hidden" id="btnExportData" onclick="handleOpenExportDataModal()" title="Download all school data as Excel">
+                <span class="icon">📤</span>
+                <span>Export Data</span>
+              </button>
               <button type="button" class="btn btn-subtle btn-import-trigger" id="btnImportStudents" onclick="openImportModal('students')" title="Import students from Excel or CSV">
                 <span class="icon">📥</span>
                 <span>Import</span>
@@ -2515,6 +2519,69 @@
             </button>
           </div>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Data Export Modal (Roadmap Item #4) -->
+  <div class="modal-overlay hidden" id="exportDataModal" role="dialog" aria-modal="true" aria-labelledby="exportDataModalTitle">
+    <div class="modal-card" style="max-width: 540px; width: 95%;">
+      <div class="modal-header">
+        <div>
+          <h3 class="modal-title" id="exportDataModalTitle">📤 Export School Data</h3>
+          <p style="font-size: 0.825rem; color: var(--text-muted); margin: 3px 0 0 0;">Exports the data currently loaded for this school. Nothing is changed.</p>
+        </div>
+        <button class="btn-close" id="btnCloseExportDataModal" type="button" aria-label="Close">✕</button>
+      </div>
+
+      <div class="modal-body" style="padding: 18px 20px;">
+        <div style="font-size: 0.85rem; font-weight: 700; color: var(--text-heading); margin-bottom: 10px;">
+          Select Datasets to Include:
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; padding: 10px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border-soft); background: var(--bg-card);">
+            <input type="checkbox" id="exportOptStudents" checked style="accent-color: var(--teal-primary, #0D9488); width: 18px; height: 18px; cursor: pointer;">
+            <span style="font-size: 0.88rem; font-weight: 600; color: var(--text-heading);" id="exportLblStudents">Students (0) — all statuses, including Graduated</span>
+          </label>
+
+          <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; padding: 10px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border-soft); background: var(--bg-card);">
+            <input type="checkbox" id="exportOptFees" checked style="accent-color: var(--teal-primary, #0D9488); width: 18px; height: 18px; cursor: pointer;">
+            <span style="font-size: 0.88rem; font-weight: 600; color: var(--text-heading);" id="exportLblFees">Fee Payments (0)</span>
+          </label>
+
+          <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; padding: 10px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border-soft); background: var(--bg-card);">
+            <input type="checkbox" id="exportOptAttendance" checked style="accent-color: var(--teal-primary, #0D9488); width: 18px; height: 18px; cursor: pointer;">
+            <span style="font-size: 0.88rem; font-weight: 600; color: var(--text-heading);" id="exportLblAttendance">Attendance (0 marked records, flattened across all dates)</span>
+          </label>
+
+          <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; padding: 10px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border-soft); background: var(--bg-card);">
+            <input type="checkbox" id="exportOptMarks" checked style="accent-color: var(--teal-primary, #0D9488); width: 18px; height: 18px; cursor: pointer;">
+            <span style="font-size: 0.88rem; font-weight: 600; color: var(--text-heading);" id="exportLblMarks">Marks (0 entries)</span>
+          </label>
+
+          <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; padding: 10px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border-soft); background: var(--bg-card);">
+            <input type="checkbox" id="exportOptSyllabus" checked style="accent-color: var(--teal-primary, #0D9488); width: 18px; height: 18px; cursor: pointer;">
+            <span style="font-size: 0.88rem; font-weight: 600; color: var(--text-heading);" id="exportLblSyllabus">Syllabus (0 topics)</span>
+          </label>
+
+          <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; padding: 10px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border-soft); background: var(--bg-card);">
+            <input type="checkbox" id="exportOptSchoolInfo" checked style="accent-color: var(--teal-primary, #0D9488); width: 18px; height: 18px; cursor: pointer;">
+            <span style="font-size: 0.88rem; font-weight: 600; color: var(--text-heading);" id="exportLblSchoolInfo">School Info & Fee Structure</span>
+          </label>
+        </div>
+
+        <div style="font-size: 0.78rem; color: var(--text-muted); margin-top: 14px; display: flex; align-items: center; gap: 6px;">
+          <span>🔒</span>
+          <span>This file contains parent phone numbers — keep it private.</span>
+        </div>
+      </div>
+
+      <div class="modal-footer" style="padding: 14px 20px; border-top: 1px solid var(--border-soft); display: flex; justify-content: flex-end; gap: 10px;">
+        <button type="button" class="btn btn-subtle" id="btnCancelExportData">Cancel</button>
+        <button type="button" class="btn btn-primary" id="btnDownloadExportData">
+          <span>📥 Download Excel</span>
+        </button>
       </div>
     </div>
   </div>

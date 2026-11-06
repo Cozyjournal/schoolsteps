@@ -2215,6 +2215,7 @@
         switchTab('tab-students');
       }
     }
+    updateImportButtonsVisibility();
   }
 
   function switchTab(tabId) {
@@ -5609,6 +5610,7 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
         updateUserHeader(user.email, cachedRole);
         checkPlatformAdmin(user);
         updateFeesTabVisibility();
+        updateImportButtonsVisibility();
 
         // THEN: setTimeout(() => { try { initData(); renderApp(); } catch(e) { console.error(e); } }, 500);
         setTimeout(() => {
@@ -7055,6 +7057,13 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
       let payableAmount = remainingBalance > 0 ? remainingBalance : (isPaid ? 0 : effFee);
       let words = isPaid ? 'Fee Fully Paid (Zero Rupees Balance)' : numberToWordsPKR(payableAmount);
 
+      const hasCustomFee = student.monthlyFee != null && Number(student.monthlyFee) > 0;
+      const feeNoteText = (hasCustomFee && student.feeNote && String(student.feeNote).trim()) ? String(student.feeNote).trim() : '';
+      const feeNoteRow = feeNoteText ? `
+              <tr class="voucher-note-row">
+                <td colspan="2" style="font-size: 7.5pt; color: #475569; padding: 2px 6px;">Note: ${escapeHtml(feeNoteText)}</td>
+              </tr>` : '';
+
       return `
         <div class="voucher-copy ${isSchoolCopy ? 'voucher-copy-school' : ''}">
           <div class="voucher-top-bar">
@@ -7099,7 +7108,7 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
               <tr>
                 <td>Monthly Tuition Fee — ${monthHuman}</td>
                 <td style="text-align: right;">Rs ${effFee.toLocaleString()}</td>
-              </tr>
+              </tr>${feeNoteRow}
               ${sPaid > 0 ? `
               <tr>
                 <td>Amount Already Paid</td>
@@ -8331,6 +8340,7 @@ Please review the syllabus and schedule to support your child's learning.
     }
     try {
       updateFeesTabVisibility();
+      updateImportButtonsVisibility();
     } catch (e) {
       console.warn('updateFeesTabVisibility render warning:', e);
     }
@@ -8403,6 +8413,1393 @@ Please review the syllabus and schedule to support your child's learning.
   window.renderPtmModule = renderPtmModule;
   window.handleOpenCreatePtm = handleOpenCreatePtm;
   window.handleDeletePtm = handleDeletePtm;
+
+
+  // ========================================================
+  // MODULE: Bulk Excel & CSV Importer (Students + Fees + Syllabus)
+  // ========================================================
+
+  state.importActiveType = 'students';
+  state.importParsedRows = [];
+  state.importRawFileRows = [];
+  state.importClassMappings = {};
+  state.importFileName = '';
+  state.importReport = null;
+
+  function updateImportButtonsVisibility() {
+    const userRole = (state.currentUser && state.currentUser.role) || ((auth && auth.currentUser) ? getUserRole(auth.currentUser.email) : '');
+    const isAdmin = userRole === 'Admin' && !!state.currentSchoolId;
+
+    document.querySelectorAll('.btn-import-trigger').forEach(btn => {
+      btn.classList.toggle('hidden', !isAdmin);
+    });
+
+    if (!isAdmin) {
+      const modal = document.getElementById('importModal');
+      if (modal && !modal.classList.contains('hidden')) {
+        closeImportModal();
+      }
+    }
+  }
+
+  function openImportModal(type = 'students') {
+    const userRole = (state.currentUser && state.currentUser.role) || ((auth && auth.currentUser) ? getUserRole(auth.currentUser.email) : '');
+    const isAdmin = userRole === 'Admin' && !!state.currentSchoolId;
+    if (!isAdmin) {
+      showToast('Access restricted: School Admin only.', 'error');
+      return;
+    }
+
+    const modal = document.getElementById('importModal');
+    if (!modal) return;
+
+    state.importActiveType = type;
+    state.importParsedRows = [];
+    state.importRawFileRows = [];
+    state.importClassMappings = {};
+    state.importFileName = '';
+    state.importReport = null;
+
+    resetImportToUpload();
+    modal.classList.remove('hidden');
+  }
+
+  function closeImportModal() {
+    const modal = document.getElementById('importModal');
+    if (modal) modal.classList.add('hidden');
+    resetImportToUpload();
+  }
+
+  function switchImportType(type) {
+    state.importActiveType = type;
+    state.importParsedRows = [];
+    state.importRawFileRows = [];
+    state.importClassMappings = {};
+    resetImportToUpload();
+  }
+
+  function resetImportToUpload() {
+    const stepUpload = document.getElementById('importStepUpload');
+    const stepPreview = document.getElementById('importStepPreview');
+    const stepReport = document.getElementById('importStepReport');
+    const typeTabs = document.getElementById('importTypeTabs');
+    const uploadErr = document.getElementById('importUploadError');
+    const fileInput = document.getElementById('importFileInput');
+
+    if (stepUpload) stepUpload.classList.remove('hidden');
+    if (stepPreview) stepPreview.classList.add('hidden');
+    if (stepReport) stepReport.classList.add('hidden');
+    if (typeTabs) typeTabs.classList.remove('hidden');
+    if (uploadErr) uploadErr.classList.add('hidden');
+    if (fileInput) fileInput.value = '';
+
+    // Update active tab button
+    document.querySelectorAll('#importTypeTabs .sub-tab-btn').forEach(btn => {
+      const bType = btn.getAttribute('data-type');
+      btn.classList.toggle('active', bType === state.importActiveType);
+    });
+
+    // Update title & instructions text based on active type
+    const titleEl = document.getElementById('importModalTitle');
+    const subTitleEl = document.getElementById('importModalSubtitle');
+    const insTitle = document.getElementById('importInstructionsTitle');
+    const insText = document.getElementById('importInstructionsText');
+
+    if (state.importActiveType === 'students') {
+      if (titleEl) titleEl.textContent = 'Bulk Import Students';
+      if (subTitleEl) subTitleEl.textContent = 'Enroll students in bulk via Excel (.xlsx) or CSV';
+      if (insTitle) insTitle.textContent = 'Step 1: Download Students Template';
+      if (insText) insText.textContent = 'Download the template, fill in student names, classes, roll numbers, and parent details, then upload below. Roll No is auto-assigned if left blank. Max 2,000 rows.';
+    } else if (state.importActiveType === 'fees') {
+      if (titleEl) titleEl.textContent = 'Bulk Import Fee Payment History';
+      if (subTitleEl) subTitleEl.textContent = 'Record historical fee payments in bulk via Excel or CSV';
+      if (insTitle) insTitle.textContent = 'Step 1: Download Payment History Template';
+      if (insText) insText.textContent = 'Download the template, fill in Student Name, Class, Month (YYYY-MM), Amount, and Payment Date (YYYY-MM-DD), then upload below. Max 2,000 rows.';
+    } else if (state.importActiveType === 'syllabus') {
+      if (titleEl) titleEl.textContent = 'Bulk Import Syllabus Curriculum';
+      if (subTitleEl) subTitleEl.textContent = 'Set up academic subjects & topics in bulk via Excel or CSV';
+      if (insTitle) insTitle.textContent = 'Step 1: Download Syllabus Template';
+      if (insText) insText.textContent = 'Download the template, fill in Class, Subject, and Topic, then upload below. Max 2,000 rows.';
+    }
+  }
+
+  function showImportError(msg) {
+    const errBox = document.getElementById('importUploadError');
+    const errText = document.getElementById('importUploadErrorText');
+    if (errBox && errText) {
+      errText.textContent = msg;
+      errBox.classList.remove('hidden');
+    } else {
+      showToast(msg, 'error');
+    }
+  }
+
+  // Template definitions
+  const IMPORT_TEMPLATES = {
+    students: {
+      fileName: 'SchoolSteps_Students_Template',
+      headers: ['Student Name*', 'Class*', 'Section', 'Roll No', 'Father Name', 'Guardian Phone (WhatsApp)', 'Monthly Fee', 'Fee Note', 'Status'],
+      sampleRows: [
+        ['Muhammad Ali', 'Class 3', 'A', '101', 'Tariq Mehmood', '03001234567', 2500, '', 'Active'],
+        ['Fatima Zahra', 'Class 3', 'A', '', 'Zahid Hussain', '03219876543', '', 'Sibling Discount', 'Active'],
+        ['Usman Ghani', 'Class 4', 'B', '201', 'Ghani Khan', '03335557771', 3000, '', 'Active']
+      ]
+    },
+    fees: {
+      fileName: 'SchoolSteps_Fee_Payments_Template',
+      headers: ['Student Name*', 'Class*', 'Month*', 'Amount*', 'Date*'],
+      sampleRows: [
+        ['Muhammad Ali', 'Class 3', '2026-11', 2500, '2026-11-05'],
+        ['Usman Ghani', 'Class 4', '2026-11', 1500, '2026-11-04']
+      ]
+    },
+    syllabus: {
+      fileName: 'SchoolSteps_Syllabus_Template',
+      headers: ['Class*', 'Subject*', 'Topic*'],
+      sampleRows: [
+        ['Class 3', 'Mathematics', 'Chapter 1: Whole Numbers & Place Values'],
+        ['Class 3', 'Mathematics', 'Chapter 2: Addition & Subtraction Operations'],
+        ['Class 3', 'General Science', 'Unit 1: Human Body & Sensory Organs'],
+        ['Class 4', 'English', 'Chapter 1: The Clever Fox (Reading & Comprehension)']
+      ]
+    }
+  };
+
+  function downloadImportTemplate(type = 'students', format = 'xlsx') {
+    const tpl = IMPORT_TEMPLATES[type] || IMPORT_TEMPLATES.students;
+    const rows = [tpl.headers, ...tpl.sampleRows];
+
+    if (window.XLSX) {
+      try {
+        const wb = XLSX.utils.book_new();
+        const ws = XLSX.utils.aoa_to_sheet(rows);
+        XLSX.utils.book_append_sheet(wb, ws, 'Template');
+        if (format === 'csv') {
+          XLSX.writeFile(wb, `${tpl.fileName}.csv`, { bookType: 'csv' });
+        } else {
+          XLSX.writeFile(wb, `${tpl.fileName}.xlsx`, { bookType: 'xlsx' });
+        }
+        return;
+      } catch (err) {
+        console.warn('XLSX download error, falling back to CSV Blob:', err);
+      }
+    }
+
+    // Fallback CSV download via Blob
+    const csvContent = rows.map(r => r.map(cell => {
+      const str = String(cell == null ? '' : cell).replace(/"/g, '""');
+      return str.includes(',') || str.includes('\n') || str.includes('"') ? `"${str}"` : str;
+    }).join(',')).join('\r\n');
+
+    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${tpl.fileName}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
+
+  function handleImportFileSelect(e) {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+
+    const fileName = file.name || '';
+    const ext = fileName.substring(fileName.lastIndexOf('.')).toLowerCase();
+
+    if (ext !== '.xlsx' && ext !== '.xls' && ext !== '.csv') {
+      showImportError(`Unsupported file type "${ext || 'unknown'}". Please upload an Excel (.xlsx, .xls) or CSV (.csv) file.`);
+      e.target.value = '';
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = function(evt) {
+      try {
+        if (!window.XLSX) {
+          showImportError('Excel parser (SheetJS) is still loading. Please try again in a few seconds.');
+          return;
+        }
+        const data = new Uint8Array(evt.target.result);
+        const wb = XLSX.read(data, { type: 'array' });
+        if (!wb.SheetNames || wb.SheetNames.length === 0) {
+          showImportError('The uploaded workbook contains no sheets.');
+          return;
+        }
+        const sheet = wb.Sheets[wb.SheetNames[0]];
+        const rawRows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+        processRawImportRows(rawRows, fileName);
+      } catch (err) {
+        console.error('File parse error:', err);
+        showImportError('Failed to read file contents. Please verify it is a valid Excel or CSV document.');
+      }
+    };
+    reader.onerror = function() {
+      showImportError('Error reading file from disk.');
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
+  function normalizeHeaderName(str) {
+    return String(str || '')
+      .trim()
+      .toLowerCase()
+      .replace(/[_\-\*\(\)]/g, ' ')
+      .replace(/\s+/g, ' ');
+  }
+
+  function parseCellDate(rawVal) {
+    if (rawVal == null || rawVal === '') return '';
+    if (typeof rawVal === 'number') {
+      const d = new Date(Math.round((rawVal - 25569) * 86400 * 1000));
+      if (!isNaN(d.getTime())) {
+        const y = d.getUTCFullYear();
+        const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+        const day = String(d.getUTCDate()).padStart(2, '0');
+        return `${y}-${m}-${day}`;
+      }
+    }
+    let str = String(rawVal).trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+    const m1 = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+    if (m1) {
+      return `${m1[3]}-${m1[2].padStart(2, '0')}-${m1[1].padStart(2, '0')}`;
+    }
+    const m2 = str.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/);
+    if (m2) {
+      return `${m2[1]}-${m2[2].padStart(2, '0')}-${m2[3].padStart(2, '0')}`;
+    }
+    return str;
+  }
+
+  function parseCellMonth(rawVal) {
+    if (rawVal == null || rawVal === '') return '';
+    if (typeof rawVal === 'number') {
+      const d = new Date(Math.round((rawVal - 25569) * 86400 * 1000));
+      if (!isNaN(d.getTime())) {
+        const y = d.getUTCFullYear();
+        const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+        return `${y}-${m}`;
+      }
+    }
+    let str = String(rawVal).trim();
+    if (/^\d{4}-\d{2}$/.test(str)) return str;
+    const m1 = str.match(/^(\d{4})[\/\-](\d{1,2})/);
+    if (m1) return `${m1[1]}-${m1[2].padStart(2, '0')}`;
+    return str;
+  }
+
+  function processRawImportRows(rawRows, fileName) {
+    const uploadErr = document.getElementById('importUploadError');
+    if (uploadErr) uploadErr.classList.add('hidden');
+
+    if (!rawRows || rawRows.length === 0) {
+      showImportError('The uploaded file is empty.');
+      return;
+    }
+
+    const headerRow = rawRows[0] || [];
+    const dataRows = rawRows.slice(1).filter(r => r && r.some(c => String(c).trim() !== ''));
+
+    if (dataRows.length === 0) {
+      showImportError('The file contains headers but no data rows.');
+      return;
+    }
+
+    if (dataRows.length > 2000) {
+      showImportError(`File exceeds maximum limit of 2,000 rows (found ${dataRows.length} rows). Please split the file into smaller batches.`);
+      return;
+    }
+
+    // Header validation per type
+    const normalizedHeaders = headerRow.map(h => normalizeHeaderName(h));
+    const type = state.importActiveType;
+
+    const findColIdx = (variants) => {
+      for (let i = 0; i < normalizedHeaders.length; i++) {
+        const h = normalizedHeaders[i];
+        if (variants.some(v => h === v || h.startsWith(v))) return i;
+      }
+      return -1;
+    };
+
+    if (type === 'students') {
+      const nameIdx = findColIdx(['student name', 'name', 'studentname', 'student']);
+      const classIdx = findColIdx(['class', 'classname', 'grade']);
+      if (nameIdx === -1) {
+        showImportError('Missing required column header: "Student Name". Please use the official template.');
+        return;
+      }
+      if (classIdx === -1) {
+        showImportError('Missing required column header: "Class". Please use the official template.');
+        return;
+      }
+    } else if (type === 'fees') {
+      const nameIdx = findColIdx(['student name', 'name', 'student']);
+      const classIdx = findColIdx(['class', 'classname', 'grade']);
+      const monthIdx = findColIdx(['month', 'fee month']);
+      const amountIdx = findColIdx(['amount', 'fee amount', 'paid amount', 'paid']);
+      const dateIdx = findColIdx(['date', 'payment date', 'paid date']);
+
+      if (nameIdx === -1) { showImportError('Missing required column header: "Student Name". Please use the official template.'); return; }
+      if (classIdx === -1) { showImportError('Missing required column header: "Class". Please use the official template.'); return; }
+      if (monthIdx === -1) { showImportError('Missing required column header: "Month". Please use the official template.'); return; }
+      if (amountIdx === -1) { showImportError('Missing required column header: "Amount". Please use the official template.'); return; }
+      if (dateIdx === -1) { showImportError('Missing required column header: "Date". Please use the official template.'); return; }
+    } else if (type === 'syllabus') {
+      const classIdx = findColIdx(['class', 'classname', 'grade']);
+      const subjectIdx = findColIdx(['subject', 'subject name']);
+      const topicIdx = findColIdx(['topic', 'topic title', 'chapter']);
+
+      if (classIdx === -1) { showImportError('Missing required column header: "Class". Please use the official template.'); return; }
+      if (subjectIdx === -1) { showImportError('Missing required column header: "Subject". Please use the official template.'); return; }
+      if (topicIdx === -1) { showImportError('Missing required column header: "Topic". Please use the official template.'); return; }
+    }
+
+    state.importRawFileRows = rawRows;
+    state.importFileName = fileName;
+    state.importClassMappings = {};
+
+    validateImportRows();
+  }
+
+  function getKnownClassNames() {
+    const classSet = new Set(ALL_DEFAULT_CLASSES || ['Class 1', 'Class 2', 'Class 3', 'Class 4', 'Class 5', 'Class 6', 'Class 7', 'Class 8', 'Class 9', 'Class 10']);
+    (state.students || []).forEach(s => {
+      if (s.className) classSet.add(s.className);
+    });
+    (state.syllabi || []).forEach(s => {
+      if (s.className) classSet.add(s.className);
+    });
+    return Array.from(classSet);
+  }
+
+  function validateImportRows() {
+    const rawRows = state.importRawFileRows;
+    if (!rawRows || rawRows.length < 2) return;
+
+    const headerRow = rawRows[0] || [];
+    const normalizedHeaders = headerRow.map(h => normalizeHeaderName(h));
+    const dataRows = rawRows.slice(1).filter(r => r && r.some(c => String(c).trim() !== ''));
+    const type = state.importActiveType;
+
+    const findColIdx = (variants) => {
+      for (let i = 0; i < normalizedHeaders.length; i++) {
+        const h = normalizedHeaders[i];
+        if (variants.some(v => h === v || h.startsWith(v))) return i;
+      }
+      return -1;
+    };
+
+    const knownClasses = getKnownClassNames();
+    const unseenClassesFound = new Set();
+    const validated = [];
+
+    if (type === 'students') {
+      const nameIdx = findColIdx(['student name', 'name', 'studentname', 'student']);
+      const classIdx = findColIdx(['class', 'classname', 'grade']);
+      const secIdx = findColIdx(['section', 'sec']);
+      const rollIdx = findColIdx(['roll no', 'roll', 'rollno', 'roll number']);
+      const fatherIdx = findColIdx(['father name', 'father', 'fathername', 'parent name', 'guardian name']);
+      const phoneIdx = findColIdx(['guardian phone', 'phone', 'whatsapp', 'mobile', 'contact', 'guardian phone whatsapp']);
+      const feeIdx = findColIdx(['monthly fee', 'fee', 'monthlyfee', 'tuition fee']);
+      const noteIdx = findColIdx(['fee note', 'feenote', 'note', 'discount note', 'remarks']);
+      const statusIdx = findColIdx(['status']);
+
+      // Pre-seed assigned rolls map from existing active students in DB
+      const classSecRolls = new Map();
+      (state.students || []).forEach(s => {
+        if (s.status === 'Active' && s.className) {
+          const key = `${s.className.toLowerCase()}__${(s.section || 'A').toUpperCase()}`;
+          if (!classSecRolls.has(key)) classSecRolls.set(key, new Set());
+          const num = parseInt(s.rollNo, 10);
+          if (!isNaN(num)) classSecRolls.get(key).add(num);
+          classSecRolls.get(key).add(String(s.rollNo).trim());
+        }
+      });
+
+      // Track duplicate detection within file
+      const seenTriplesInFile = new Set();
+      const seenRollsInFile = new Set();
+
+      dataRows.forEach((row, idx) => {
+        const rowNum = idx + 2;
+        const rawName = String(row[nameIdx] || '').trim();
+        let rawClass = String(row[classIdx] || '').trim();
+        let rawSec = secIdx !== -1 ? String(row[secIdx] || '').trim() : '';
+        const rawRoll = rollIdx !== -1 ? String(row[rollIdx] || '').trim() : '';
+        const rawFather = fatherIdx !== -1 ? String(row[fatherIdx] || '').trim() : '';
+        const rawPhone = phoneIdx !== -1 ? String(row[phoneIdx] || '').trim() : '';
+        const rawFee = feeIdx !== -1 ? String(row[feeIdx] || '').trim() : '';
+        const rawNote = noteIdx !== -1 ? String(row[noteIdx] || '').trim() : '';
+        const rawStatus = statusIdx !== -1 ? String(row[statusIdx] || '').trim() : '';
+
+        // Class mapping check
+        if (rawClass && !knownClasses.some(k => k.toLowerCase() === rawClass.toLowerCase())) {
+          unseenClassesFound.add(rawClass);
+          const mapped = state.importClassMappings[rawClass];
+          if (mapped) {
+            if (mapped === '__SKIP__') {
+              validated.push({
+                rowNum,
+                status: 'skipped',
+                name: rawName,
+                className: rawClass,
+                section: rawSec || 'A',
+                rollNo: rawRoll,
+                reason: `Skipped (Class "${rawClass}" skipped by mapping)`
+              });
+              return;
+            } else if (mapped !== '__CREATE__') {
+              rawClass = mapped;
+            }
+          }
+        }
+
+        const errors = [];
+        const warnings = [];
+
+        if (!rawName) errors.push('Student Name is required');
+        if (!rawClass) errors.push('Class is required');
+
+        const section = rawSec || 'A';
+        const classSecKey = `${rawClass.toLowerCase()}__${section.toUpperCase()}`;
+        if (!classSecRolls.has(classSecKey)) classSecRolls.set(classSecKey, new Set());
+        const assignedSet = classSecRolls.get(classSecKey);
+
+        // Phone sanitization / normalization
+        let cleanPhone = rawPhone.replace(/[\s\-\(\)\.]/g, '');
+        if (rawPhone && cleanPhone !== rawPhone) {
+          warnings.push(`Phone normalized: ${cleanPhone}`);
+        }
+        if (cleanPhone && !/^\+?\d{7,15}$/.test(cleanPhone)) {
+          errors.push(`Invalid phone format "${rawPhone}" (must be 7-15 digits)`);
+        }
+
+        // Roll number handling
+        let finalRoll = rawRoll;
+        let autoRoll = false;
+        if (!rawRoll) {
+          let candidate = 1;
+          while (assignedSet.has(candidate) || assignedSet.has(String(candidate))) {
+            candidate++;
+          }
+          finalRoll = String(candidate);
+          assignedSet.add(candidate);
+          assignedSet.add(finalRoll);
+          autoRoll = true;
+        } else {
+          // Duplicate Roll check against DB
+          const isDupInDB = (state.students || []).some(s =>
+            s.status === 'Active' &&
+            (s.className || '').toLowerCase() === rawClass.toLowerCase() &&
+            (s.section || 'A').toUpperCase() === section.toUpperCase() &&
+            String(s.rollNo).trim() === finalRoll
+          );
+          if (isDupInDB) {
+            errors.push(`Duplicate Roll No #${finalRoll} in ${rawClass} ${section} (already assigned in database)`);
+          }
+
+          // Duplicate Roll check within file
+          const fileRollKey = `${classSecKey}__${finalRoll}`;
+          if (seenRollsInFile.has(fileRollKey)) {
+            errors.push(`Duplicate Roll No #${finalRoll} within file for ${rawClass} ${section}`);
+          } else {
+            seenRollsInFile.add(fileRollKey);
+          }
+
+          const parsedRoll = parseInt(finalRoll, 10);
+          if (!isNaN(parsedRoll)) assignedSet.add(parsedRoll);
+          assignedSet.add(finalRoll);
+        }
+
+        // Duplicate Student Check (Name + Class + Phone)
+        const dupTriple = `${rawName.toLowerCase()}__${rawClass.toLowerCase()}__${cleanPhone}`;
+        let isDupStudent = false;
+        let dupReason = '';
+
+        if (rawName && rawClass) {
+          const dupInDB = (state.students || []).some(s =>
+            s.status === 'Active' &&
+            (s.name || '').trim().toLowerCase() === rawName.toLowerCase() &&
+            (s.className || '').trim().toLowerCase() === rawClass.toLowerCase() &&
+            ((cleanPhone && sanitizePhoneForWhatsApp(s.whatsapp || s.parentPhone) === sanitizePhoneForWhatsApp(cleanPhone)) ||
+             (!cleanPhone && (s.fatherName || '').trim().toLowerCase() === rawFather.toLowerCase()))
+          );
+
+          if (dupInDB) {
+            isDupStudent = true;
+            dupReason = 'Duplicate: Student with same name, class, and contact already exists in database';
+          } else if (seenTriplesInFile.has(dupTriple)) {
+            isDupStudent = true;
+            dupReason = 'Duplicate: Identical student entry appears earlier in this file';
+          } else {
+            seenTriplesInFile.add(dupTriple);
+          }
+        }
+
+        // Monthly Fee parsing
+        let parsedFee = null;
+        if (rawFee !== '') {
+          const cleanedFeeStr = String(rawFee).trim().replace(/^rs\.?\s*/i, '').replace(/,/g, '');
+          const numFee = Number(cleanedFeeStr);
+          if (isNaN(numFee) || numFee < 0) {
+            errors.push(`Monthly Fee "${rawFee}" must be a valid positive number`);
+          } else if (numFee > 0) {
+            parsedFee = numFee;
+          }
+        }
+
+        // Status parsing
+        let finalStatus = 'Active';
+        if (rawStatus && rawStatus.toLowerCase() === 'inactive') {
+          finalStatus = 'Inactive';
+        }
+
+        let rowStatus = 'ready';
+        let mainReason = '';
+        if (errors.length > 0) {
+          rowStatus = 'error';
+          mainReason = errors.join('; ');
+        } else if (isDupStudent) {
+          rowStatus = 'skipped';
+          mainReason = dupReason;
+        } else if (autoRoll) {
+          mainReason = `Auto-assigned Roll #${finalRoll}`;
+        }
+
+        validated.push({
+          rowNum,
+          status: rowStatus,
+          name: rawName,
+          className: rawClass,
+          section,
+          rollNo: finalRoll,
+          fatherName: rawFather,
+          whatsapp: cleanPhone,
+          monthlyFee: parsedFee,
+          feeNote: rawNote,
+          studentStatus: finalStatus,
+          autoRoll,
+          errors,
+          warnings,
+          reason: mainReason
+        });
+      });
+    } else if (type === 'fees') {
+      const nameIdx = findColIdx(['student name', 'name', 'student']);
+      const classIdx = findColIdx(['class', 'classname', 'grade']);
+      const monthIdx = findColIdx(['month', 'fee month']);
+      const amountIdx = findColIdx(['amount', 'fee amount', 'paid amount', 'paid']);
+      const dateIdx = findColIdx(['date', 'payment date', 'paid date']);
+
+      const seenPaymentsInFile = new Set();
+
+      dataRows.forEach((row, idx) => {
+        const rowNum = idx + 2;
+        const rawName = String(row[nameIdx] || '').trim();
+        const rawClass = String(row[classIdx] || '').trim();
+        const rawMonth = parseCellMonth(row[monthIdx]);
+        const rawAmount = row[amountIdx];
+        const rawDate = parseCellDate(row[dateIdx]);
+
+        const errors = [];
+        if (!rawName) errors.push('Student Name is required');
+        if (!rawClass) errors.push('Class is required');
+
+        // Match existing student
+        const matched = (state.students || []).find(s =>
+          (s.name || '').trim().toLowerCase() === rawName.toLowerCase() &&
+          (s.className || '').trim().toLowerCase() === rawClass.toLowerCase()
+        );
+
+        if (!matched) {
+          errors.push(`Student not found: No student named "${rawName}" enrolled in ${rawClass}`);
+        }
+
+        // Month validation
+        if (!rawMonth) {
+          errors.push('Month is required');
+        } else if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(rawMonth)) {
+          errors.push(`Invalid Month "${rawMonth}" (must be YYYY-MM, e.g. 2026-11)`);
+        }
+
+        // Amount validation
+        const cleanedAmtStr = String(rawAmount != null ? rawAmount : '').trim().replace(/^rs\.?\s*/i, '').replace(/,/g, '');
+        const amtNum = Number(cleanedAmtStr);
+        if (cleanedAmtStr === '' || isNaN(amtNum) || amtNum <= 0) {
+          errors.push(`Invalid Amount "${rawAmount}" (must be a number greater than 0)`);
+        }
+
+        // Date validation
+        if (!rawDate) {
+          errors.push('Payment Date is required');
+        } else if (!/^\d{4}-\d{2}-\d{2}$/.test(rawDate) || isNaN(new Date(rawDate).getTime())) {
+          errors.push(`Invalid Date "${rawDate}" (must be YYYY-MM-DD)`);
+        }
+
+        // Duplicate check
+        let isDupPayment = false;
+        let dupReason = '';
+
+        if (matched && !isNaN(amtNum) && amtNum > 0 && rawMonth && rawDate && errors.length === 0) {
+          const dupKey = `${matched.id}__${rawMonth}__${amtNum}__${rawDate}`;
+          const dupInDB = (state.feePayments || []).some(p =>
+            p.studentId === matched.id &&
+            p.month === rawMonth &&
+            Number(p.amount) === amtNum &&
+            p.paidDate === rawDate
+          );
+
+          if (dupInDB) {
+            isDupPayment = true;
+            dupReason = `Duplicate: Payment of Rs ${amtNum.toLocaleString()} on ${rawDate} for ${rawMonth} already recorded in database`;
+          } else if (seenPaymentsInFile.has(dupKey)) {
+            isDupPayment = true;
+            dupReason = 'Duplicate: Identical payment appears earlier in this file';
+          } else {
+            seenPaymentsInFile.add(dupKey);
+          }
+        }
+
+        let rowStatus = 'ready';
+        let mainReason = '';
+        if (errors.length > 0) {
+          rowStatus = 'error';
+          mainReason = errors.join('; ');
+        } else if (isDupPayment) {
+          rowStatus = 'skipped';
+          mainReason = dupReason;
+        }
+
+        validated.push({
+          rowNum,
+          status: rowStatus,
+          name: rawName,
+          className: rawClass,
+          matchedStudent: matched,
+          month: rawMonth,
+          amount: amtNum,
+          date: rawDate,
+          errors,
+          reason: mainReason
+        });
+      });
+    } else if (type === 'syllabus') {
+      const classIdx = findColIdx(['class', 'classname', 'grade']);
+      const subjectIdx = findColIdx(['subject', 'subject name']);
+      const topicIdx = findColIdx(['topic', 'topic title', 'chapter']);
+
+      const seenTopicsInFile = new Set();
+
+      dataRows.forEach((row, idx) => {
+        const rowNum = idx + 2;
+        let rawClass = String(row[classIdx] || '').trim();
+        const rawSubject = String(row[subjectIdx] || '').trim();
+        const rawTopic = String(row[topicIdx] || '').trim();
+
+        // Class mapping check
+        if (rawClass && !knownClasses.some(k => k.toLowerCase() === rawClass.toLowerCase())) {
+          unseenClassesFound.add(rawClass);
+          const mapped = state.importClassMappings[rawClass];
+          if (mapped) {
+            if (mapped === '__SKIP__') {
+              validated.push({
+                rowNum,
+                status: 'skipped',
+                className: rawClass,
+                subject: rawSubject,
+                topic: rawTopic,
+                reason: `Skipped (Class "${rawClass}" skipped by mapping)`
+              });
+              return;
+            } else if (mapped !== '__CREATE__') {
+              rawClass = mapped;
+            }
+          }
+        }
+
+        const errors = [];
+        if (!rawClass) errors.push('Class is required');
+        if (!rawSubject) errors.push('Subject Name is required');
+        if (!rawTopic) errors.push('Topic Title is required');
+
+        // Duplicate Topic Check
+        let isDupTopic = false;
+        let dupReason = '';
+
+        if (rawClass && rawSubject && rawTopic && errors.length === 0) {
+          const topicKey = `${rawClass.toLowerCase()}__${rawSubject.toLowerCase()}__${rawTopic.toLowerCase()}`;
+          const existingSyl = (state.syllabi || []).find(s => s.className.toLowerCase() === rawClass.toLowerCase());
+          let dupInDB = false;
+          if (existingSyl && existingSyl.subjects) {
+            const sub = existingSyl.subjects.find(s => (s.name || '').trim().toLowerCase() === rawSubject.toLowerCase());
+            if (sub && sub.topics) {
+              dupInDB = sub.topics.some(t => (t.title || '').trim().toLowerCase() === rawTopic.toLowerCase());
+            }
+          }
+
+          if (dupInDB) {
+            isDupTopic = true;
+            dupReason = `Duplicate topic: "${rawTopic}" already exists under ${rawSubject} for ${rawClass}`;
+          } else if (seenTopicsInFile.has(topicKey)) {
+            isDupTopic = true;
+            dupReason = 'Duplicate: Identical topic appears earlier in this file';
+          } else {
+            seenTopicsInFile.add(topicKey);
+          }
+        }
+
+        let rowStatus = 'ready';
+        let mainReason = '';
+        if (errors.length > 0) {
+          rowStatus = 'error';
+          mainReason = errors.join('; ');
+        } else if (isDupTopic) {
+          rowStatus = 'skipped';
+          mainReason = dupReason;
+        }
+
+        validated.push({
+          rowNum,
+          status: rowStatus,
+          className: rawClass,
+          subject: rawSubject,
+          topic: rawTopic,
+          errors,
+          reason: mainReason
+        });
+      });
+    }
+
+    state.importParsedRows = validated;
+    renderImportPreview(Array.from(unseenClassesFound));
+  }
+
+  function handleClassMappingChange(e) {
+    const unseen = e.target.getAttribute('data-unseen');
+    if (!unseen) return;
+    state.importClassMappings[unseen] = e.target.value;
+    validateImportRows();
+  }
+
+  function renderImportPreview(unseenClasses = []) {
+    const stepUpload = document.getElementById('importStepUpload');
+    const stepPreview = document.getElementById('importStepPreview');
+    const typeTabs = document.getElementById('importTypeTabs');
+
+    if (stepUpload) stepUpload.classList.add('hidden');
+    if (stepPreview) stepPreview.classList.remove('hidden');
+    if (typeTabs) typeTabs.classList.add('hidden');
+
+    const rows = state.importParsedRows || [];
+    const totalCount = rows.length;
+    const readyCount = rows.filter(r => r.status === 'ready').length;
+    const skipCount = rows.filter(r => r.status === 'skipped').length;
+    const errCount = rows.filter(r => r.status === 'error').length;
+
+    // Render Stats
+    const statsContainer = document.getElementById('importPreviewStats');
+    if (statsContainer) {
+      statsContainer.innerHTML = `
+        <div class="import-stat-card">
+          <div class="import-stat-val" style="color: var(--primary, #0D9488);">${totalCount}</div>
+          <div class="import-stat-lbl">Total Rows</div>
+        </div>
+        <div class="import-stat-card">
+          <div class="import-stat-val" style="color: #059669;">${readyCount}</div>
+          <div class="import-stat-lbl">Ready to Import</div>
+        </div>
+        <div class="import-stat-card">
+          <div class="import-stat-val" style="color: #D97706;">${skipCount}</div>
+          <div class="import-stat-lbl">Skipped (Dups)</div>
+        </div>
+        <div class="import-stat-card">
+          <div class="import-stat-val" style="color: #DC2626;">${errCount}</div>
+          <div class="import-stat-lbl">Errors / Invalid</div>
+        </div>
+      `;
+    }
+
+    // Render Unseen Class Mapping Box if applicable
+    const mapBox = document.getElementById('importClassMappingBox');
+    if (mapBox) {
+      if (unseenClasses.length > 0) {
+        mapBox.classList.remove('hidden');
+        const knownClasses = getKnownClassNames();
+        const mappingRowsHtml = unseenClasses.map(cls => {
+          const currentChoice = state.importClassMappings[cls] || '__SKIP__';
+          let optionsHtml = `
+            <option value="__SKIP__" ${currentChoice === '__SKIP__' ? 'selected' : ''}>⚠️ Skip rows with "${escapeHtml(cls)}"</option>
+            <option value="__CREATE__" ${currentChoice === '__CREATE__' ? 'selected' : ''}>✨ Create new class: "${escapeHtml(cls)}"</option>
+          `;
+          knownClasses.forEach(kc => {
+            optionsHtml += `<option value="${escapeHtml(kc)}" ${currentChoice === kc ? 'selected' : ''}>Map to: ${escapeHtml(kc)}</option>`;
+          });
+
+          return `
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 6px; flex-wrap: wrap;">
+              <span style="font-size: 0.82rem; font-weight: 700; color: #92400E;">Unrecognized: "${escapeHtml(cls)}"</span>
+              <select class="form-select form-select-sm class-map-select" style="max-width: 250px; padding: 4px 8px; font-size: 0.8rem;" data-unseen="${escapeHtml(cls)}" onchange="handleClassMappingChange(event)">
+                ${optionsHtml}
+              </select>
+            </div>
+          `;
+        }).join('');
+
+        mapBox.innerHTML = `
+          <div style="font-weight: 700; font-size: 0.88rem; color: #92400E; margin-bottom: 4px;">
+            ⚠️ New Class Names Detected
+          </div>
+          <p style="font-size: 0.78rem; color: #B45309; margin: 0 0 8px;">
+            The file contains class names not currently in your school. Choose to map each to an existing class, create it as a new class, or skip those rows:
+          </p>
+          ${mappingRowsHtml}
+        `;
+      } else {
+        mapBox.classList.add('hidden');
+        mapBox.innerHTML = '';
+      }
+    }
+
+    // Render Preview Table
+    const tableEl = document.getElementById('importPreviewTable');
+    if (tableEl) {
+      const type = state.importActiveType;
+      let theadHtml = '';
+      if (type === 'students') {
+        theadHtml = `
+          <thead>
+            <tr>
+              <th style="width: 50px;">Row</th>
+              <th style="width: 80px;">Status</th>
+              <th>Student Details</th>
+              <th style="width: 100px;">Roll & Section</th>
+              <th style="width: 90px;">Monthly Fee</th>
+              <th>Reason / Notes</th>
+            </tr>
+          </thead>
+        `;
+      } else if (type === 'fees') {
+        theadHtml = `
+          <thead>
+            <tr>
+              <th style="width: 50px;">Row</th>
+              <th style="width: 80px;">Status</th>
+              <th>Student & Class</th>
+              <th style="width: 80px;">Month</th>
+              <th style="width: 90px;">Amount</th>
+              <th style="width: 100px;">Paid Date</th>
+              <th>Reason / Notes</th>
+            </tr>
+          </thead>
+        `;
+      } else if (type === 'syllabus') {
+        theadHtml = `
+          <thead>
+            <tr>
+              <th style="width: 50px;">Row</th>
+              <th style="width: 80px;">Status</th>
+              <th style="width: 110px;">Class</th>
+              <th style="width: 150px;">Subject</th>
+              <th>Topic Title</th>
+              <th>Reason / Notes</th>
+            </tr>
+          </thead>
+        `;
+      }
+
+      const tbodyRowsHtml = rows.map(r => {
+        let badgeHtml = '';
+        let rowClass = 'row-import-ready';
+        if (r.status === 'ready') {
+          badgeHtml = '<span class="badge-import-ready">✓ Ready</span>';
+          rowClass = 'row-import-ready';
+        } else if (r.status === 'skipped') {
+          badgeHtml = '<span class="badge-import-skip">⚠ Duplicate</span>';
+          rowClass = 'row-import-skip';
+        } else {
+          badgeHtml = '<span class="badge-import-error">✕ Error</span>';
+          rowClass = 'row-import-error';
+        }
+
+        if (type === 'students') {
+          const feeDisplay = r.monthlyFee != null ? `Rs ${r.monthlyFee.toLocaleString()}` : '<span style="color:var(--text-muted);">Default</span>';
+          return `
+            <tr class="${rowClass}">
+              <td style="font-weight: 600; text-align: center;">${r.rowNum}</td>
+              <td>${badgeHtml}</td>
+              <td><strong>${escapeHtml(r.name || '—')}</strong><div style="font-size: 0.72rem; color: var(--text-muted);">${escapeHtml(r.className)} ${escapeHtml(r.section)} · Parent: ${escapeHtml(r.fatherName || '—')}</div></td>
+              <td>Roll #${escapeHtml(r.rollNo || '—')}<div style="font-size: 0.72rem; color: var(--text-muted);">Sec: ${escapeHtml(r.section)}</div></td>
+              <td>${feeDisplay}</td>
+              <td style="font-size: 0.76rem; color: ${r.status === 'error' ? '#DC2626' : (r.status === 'skipped' ? '#B45309' : 'var(--text-muted)')}; font-weight: ${r.status === 'ready' ? 'normal' : '600'};">${escapeHtml(r.reason || '—')}</td>
+            </tr>
+          `;
+        } else if (type === 'fees') {
+          return `
+            <tr class="${rowClass}">
+              <td style="font-weight: 600; text-align: center;">${r.rowNum}</td>
+              <td>${badgeHtml}</td>
+              <td><strong>${escapeHtml(r.name || '—')}</strong><div style="font-size: 0.72rem; color: var(--text-muted);">${escapeHtml(r.className)}</div></td>
+              <td>${escapeHtml(r.month || '—')}</td>
+              <td style="font-weight: 700;">Rs ${(r.amount || 0).toLocaleString()}</td>
+              <td>${escapeHtml(r.date || '—')}</td>
+              <td style="font-size: 0.76rem; color: ${r.status === 'error' ? '#DC2626' : (r.status === 'skipped' ? '#B45309' : 'var(--text-muted)')}; font-weight: ${r.status === 'ready' ? 'normal' : '600'};">${escapeHtml(r.reason || '—')}</td>
+            </tr>
+          `;
+        } else if (type === 'syllabus') {
+          return `
+            <tr class="${rowClass}">
+              <td style="font-weight: 600; text-align: center;">${r.rowNum}</td>
+              <td>${badgeHtml}</td>
+              <td><strong>${escapeHtml(r.className || '—')}</strong></td>
+              <td>${escapeHtml(r.subject || '—')}</td>
+              <td>${escapeHtml(r.topic || '—')}</td>
+              <td style="font-size: 0.76rem; color: ${r.status === 'error' ? '#DC2626' : (r.status === 'skipped' ? '#B45309' : 'var(--text-muted)')}; font-weight: ${r.status === 'ready' ? 'normal' : '600'};">${escapeHtml(r.reason || '—')}</td>
+            </tr>
+          `;
+        }
+      }).join('');
+
+      tableEl.innerHTML = theadHtml + `<tbody>${tbodyRowsHtml}</tbody>`;
+    }
+
+    // Confirm button state
+    const confirmBtn = document.getElementById('btnConfirmImport');
+    const validCountText = document.getElementById('importPreviewValidCountText');
+
+    if (confirmBtn) {
+      confirmBtn.disabled = readyCount === 0;
+      confirmBtn.innerHTML = `<span>📥 Confirm & Import (${readyCount} Records)</span>`;
+    }
+    if (validCountText) {
+      validCountText.textContent = readyCount > 0 ? `${readyCount} valid records ready to write` : 'No valid records to import';
+    }
+  }
+
+  async function executeImport() {
+    const readyRows = (state.importParsedRows || []).filter(r => r.status === 'ready');
+    if (readyRows.length === 0) return;
+
+    const confirmBtn = document.getElementById('btnConfirmImport');
+    const progressOverlay = document.getElementById('importProgressOverlay');
+    const progressText = document.getElementById('importProgressText');
+
+    if (confirmBtn) confirmBtn.disabled = true;
+    if (progressOverlay) progressOverlay.classList.remove('hidden');
+
+    const type = state.importActiveType;
+    let successfullyImported = 0;
+    let writeErrors = [];
+    const autoAssignedRollsList = [];
+
+    try {
+      if (type === 'students') {
+        const newStudents = [];
+        const currentYear = new Date().getFullYear();
+
+        readyRows.forEach((r, idx) => {
+          const rand = Math.random().toString(36).substring(2, 7);
+          const studentId = `stud-${Date.now()}-${rand}_${idx}`;
+          const finalRoll = String(r.rollNo || (idx + 1));
+          const studentObj = {
+            id: studentId,
+            schoolId: state.currentSchoolId,
+            name: r.name,
+            class: r.className,
+            className: r.className,
+            section: r.section || 'A',
+            parentName: r.fatherName || '',
+            fatherName: r.fatherName || '',
+            motherName: '',
+            parentPhone: r.whatsapp || '',
+            whatsapp: r.whatsapp || '',
+            emergencyPhone: '',
+            admissionNo: `ADM-${currentYear}-${finalRoll}`,
+            rollNo: finalRoll,
+            gender: 'Male',
+            dob: '',
+            address: '',
+            status: r.studentStatus || 'Active',
+            monthlyFee: r.monthlyFee,
+            feeNote: r.feeNote || '',
+            admissionDate: getTodayISO()
+          };
+
+          if (r.autoRoll) {
+            autoAssignedRollsList.push({
+              rowNum: r.rowNum,
+              name: r.name,
+              className: r.className,
+              section: r.section,
+              rollNo: finalRoll
+            });
+          }
+
+          newStudents.push(studentObj);
+        });
+
+        // Batched Firestore writes in chunks of 400
+        const CHUNK_SIZE = 400;
+        for (let i = 0; i < newStudents.length; i += CHUNK_SIZE) {
+          const chunk = newStudents.slice(i, i + CHUNK_SIZE);
+          if (progressText) progressText.textContent = `Writing students batch ${Math.floor(i / CHUNK_SIZE) + 1} of ${Math.ceil(newStudents.length / CHUNK_SIZE)}...`;
+
+          if (FirestoreDB.isReady() && typeof db !== 'undefined' && db && db.batch) {
+            const batch = db.batch();
+            chunk.forEach(s => {
+              const docRef = db.collection('students').doc(`${state.currentSchoolId}_${s.id}`);
+              batch.set(docRef, s, { merge: true });
+            });
+            await batch.commit();
+          }
+
+          // Add to local state
+          state.students.push(...chunk);
+          successfullyImported += chunk.length;
+        }
+
+        saveStorage(STORAGE_KEYS.STUDENTS, state.students);
+        renderClassDropdowns();
+        renderStudentsList();
+        updateStudentLimitIndicator();
+        renderAttendanceRoster();
+        renderFeesModule();
+        updateDashboardFeesStat();
+
+      } else if (type === 'fees') {
+        const newPayments = [];
+        const authorEmail = (auth && auth.currentUser && auth.currentUser.email) ? auth.currentUser.email : (state.profile?.principal || 'Admin');
+
+        readyRows.forEach((r, idx) => {
+          const rand = Math.random().toString(36).substring(2, 7);
+          const docId = `${state.currentSchoolId}_fee_${Date.now()}_${rand}_${idx}`;
+          const paymentObj = {
+            id: docId,
+            schoolId: state.currentSchoolId,
+            studentId: r.matchedStudent.id,
+            studentName: r.matchedStudent.name,
+            className: r.matchedStudent.className,
+            section: r.matchedStudent.section || 'A',
+            month: r.month,
+            amount: r.amount,
+            method: 'Cash',
+            paidDate: r.date,
+            note: 'Imported via Excel/CSV',
+            receivedBy: authorEmail,
+            createdAt: new Date().toISOString()
+          };
+          newPayments.push(paymentObj);
+        });
+
+        // Batched Firestore writes in chunks of 400
+        const CHUNK_SIZE = 400;
+        for (let i = 0; i < newPayments.length; i += CHUNK_SIZE) {
+          const chunk = newPayments.slice(i, i + CHUNK_SIZE);
+          if (progressText) progressText.textContent = `Writing fee payments batch ${Math.floor(i / CHUNK_SIZE) + 1} of ${Math.ceil(newPayments.length / CHUNK_SIZE)}...`;
+
+          if (FirestoreDB.isReady() && typeof db !== 'undefined' && db && db.batch) {
+            const batch = db.batch();
+            chunk.forEach(p => {
+              const docRef = db.collection('feePayments').doc(p.id);
+              batch.set(docRef, p);
+            });
+            await batch.commit();
+          }
+
+          state.feePayments.push(...chunk);
+          successfullyImported += chunk.length;
+        }
+
+        saveStorage(STORAGE_KEYS.FEES, state.feePayments);
+        renderFeesModule();
+        updateDashboardFeesStat();
+
+      } else if (type === 'syllabus') {
+        const grouped = new Map();
+        readyRows.forEach(r => {
+          if (!grouped.has(r.className)) grouped.set(r.className, new Map());
+          const subMap = grouped.get(r.className);
+          if (!subMap.has(r.subject)) subMap.set(r.subject, []);
+          subMap.get(r.subject).push(r.topic);
+        });
+
+        const modifiedSyllabi = [];
+        if (!state.syllabi) state.syllabi = [];
+
+        grouped.forEach((subMap, className) => {
+          let syllabus = state.syllabi.find(s => s.className.toLowerCase() === className.toLowerCase() && (s.section === 'ALL' || !s.section));
+          if (!syllabus) {
+            const cleanClass = className.replace(/[^a-zA-Z0-9]/g, '_');
+            const docId = `${state.currentSchoolId}_syl_${cleanClass}_ALL`;
+            syllabus = {
+              id: docId,
+              schoolId: state.currentSchoolId,
+              className: className,
+              section: 'ALL',
+              subjects: [],
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString()
+            };
+            state.syllabi.push(syllabus);
+          }
+          if (!syllabus.subjects) syllabus.subjects = [];
+
+          subMap.forEach((topics, subjectName) => {
+            let subject = syllabus.subjects.find(s => (s.name || '').trim().toLowerCase() === subjectName.toLowerCase());
+            if (!subject) {
+              subject = {
+                id: 'subj_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+                name: subjectName,
+                bookName: '',
+                topics: []
+              };
+              syllabus.subjects.push(subject);
+            }
+            if (!subject.topics) subject.topics = [];
+
+            topics.forEach(topicTitle => {
+              subject.topics.push({
+                id: 'top_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+                title: topicTitle,
+                month: 'Term 1',
+                completed: false
+              });
+              successfullyImported++;
+            });
+          });
+
+          syllabus.updatedAt = new Date().toISOString();
+          modifiedSyllabi.push(syllabus);
+        });
+
+        if (FirestoreDB.isReady() && typeof db !== 'undefined' && db && db.batch) {
+          const batch = db.batch();
+          modifiedSyllabi.forEach(syl => {
+            const docRef = db.collection('syllabi').doc(syl.id);
+            batch.set(docRef, syl, { merge: true });
+          });
+          await batch.commit();
+        }
+
+        saveStorage(STORAGE_KEYS.SYLLABUS, state.syllabi);
+        renderSyllabusModule();
+      }
+
+    } catch (err) {
+      console.error('Batch write error during import:', err);
+      writeErrors.push(`Write interrupted due to connection error: ${err.message || 'Firestore write failed'}`);
+    } finally {
+      if (progressOverlay) progressOverlay.classList.add('hidden');
+    }
+
+    renderImportReport({
+      successfullyImported,
+      autoAssignedRollsList,
+      writeErrors
+    });
+  }
+
+  function renderImportReport(execResult) {
+    const stepPreview = document.getElementById('importStepPreview');
+    const stepReport = document.getElementById('importStepReport');
+
+    if (stepPreview) stepPreview.classList.add('hidden');
+    if (stepReport) stepReport.classList.remove('hidden');
+
+    const type = state.importActiveType;
+    const allRows = state.importParsedRows || [];
+    const totalRows = allRows.length;
+    const skippedRows = allRows.filter(r => r.status === 'skipped');
+    const errorRows = allRows.filter(r => r.status === 'error');
+    const importedCount = execResult.successfullyImported || 0;
+    const autoRolls = execResult.autoAssignedRollsList || [];
+    const writeErrors = execResult.writeErrors || [];
+
+    state.importReport = {
+      type,
+      totalRows,
+      importedCount,
+      skippedCount: skippedRows.length,
+      errorCount: errorRows.length + writeErrors.length,
+      skippedRows,
+      errorRows,
+      writeErrors,
+      autoRolls
+    };
+
+    // Plan cap info for students
+    let planCapHtml = '';
+    if (type === 'students') {
+      const activeCount = getActiveStudentsCount();
+      const isCapped = isSchoolStudentCapped();
+      const planName = (state.currentSchool && state.currentSchool.plan) ? state.currentSchool.plan : 'Basic';
+
+      if (isCapped && activeCount > STUDENT_LIMIT_NON_PRO) {
+        planCapHtml = `
+          <div style="margin-bottom: 14px; padding: 12px 14px; background: #FEF3C7; border: 1.5px solid #FCD34D; border-radius: 8px; font-size: 0.84rem; color: #92400E;">
+            <div style="font-weight: 700; margin-bottom: 2px;">⚠️ Student Cap Note (Cap-Exempt Import)</div>
+            <div>
+              Your school now has <strong>${activeCount} active students</strong> (plan limit: <strong>${STUDENT_LIMIT_NON_PRO} on ${planName}</strong>).
+              All imported students remain active and fully usable. Future manual "Add Student" entries will be locked until an upgrade to Pro (Unlimited).
+            </div>
+          </div>
+        `;
+      } else {
+        planCapHtml = `
+          <div style="margin-bottom: 14px; padding: 10px 14px; background: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 8px; font-size: 0.84rem; color: #166534;">
+            Active Students: <strong>${activeCount}</strong> ${isCapped ? `/ ${STUDENT_LIMIT_NON_PRO} (${planName} Plan)` : '· Unlimited (Pro)'}
+          </div>
+        `;
+      }
+    }
+
+    // Auto-assigned rolls section
+    let autoRollsHtml = '';
+    if (autoRolls.length > 0) {
+      const listItems = autoRolls.map(a => `<li>Row ${a.rowNum}: Assigned <strong>Roll #${escapeHtml(a.rollNo)}</strong> to <strong>${escapeHtml(a.name)}</strong> (${escapeHtml(a.className)} ${escapeHtml(a.section)})</li>`).join('');
+      autoRollsHtml = `
+        <div style="margin-bottom: 14px; padding: 10px 14px; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; font-size: 0.82rem; color: var(--text-heading);">
+          <strong style="color: var(--primary, #0D9488);">⚡ Auto-Assigned Roll Numbers (${autoRolls.length} students):</strong>
+          <ul style="margin: 6px 0 0; padding-left: 18px; max-height: 120px; overflow-y: auto;">
+            ${listItems}
+          </ul>
+        </div>
+      `;
+    }
+
+    // Skipped and Errors list
+    const issues = [...skippedRows, ...errorRows];
+    let issuesHtml = '';
+    if (issues.length > 0 || writeErrors.length > 0) {
+      const issueRows = issues.map(iss => `
+        <tr>
+          <td style="font-weight: 600; text-align: center;">${iss.rowNum}</td>
+          <td>${iss.status === 'skipped' ? '<span class="badge-import-skip">⚠ Skipped</span>' : '<span class="badge-import-error">✕ Error</span>'}</td>
+          <td><strong>${escapeHtml(iss.name || iss.subject || '—')}</strong> ${iss.className ? `(${escapeHtml(iss.className)})` : ''}</td>
+          <td style="color: ${iss.status === 'skipped' ? '#B45309' : '#DC2626'}; font-size: 0.76rem;">${escapeHtml(iss.reason || '—')}</td>
+        </tr>
+      `).join('');
+
+      issuesHtml = `
+        <div style="margin-top: 14px;">
+          <div style="font-weight: 700; font-size: 0.88rem; color: var(--text-heading); margin-bottom: 6px;">
+            Detailed Reasons for Skipped / Failed Rows (${issues.length}):
+          </div>
+          <div style="max-height: 220px; overflow-y: auto; border: 1px solid var(--border-color, #E2E8F0); border-radius: 6px;">
+            <table class="import-table" style="width: 100%; border-collapse: collapse; font-size: 0.78rem;">
+              <thead>
+                <tr>
+                  <th style="width: 50px;">Row</th>
+                  <th style="width: 80px;">Status</th>
+                  <th>Item / Record</th>
+                  <th>Reason</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${issueRows}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `;
+    }
+
+    const reportContainer = document.getElementById('importReportContent');
+    if (reportContainer) {
+      reportContainer.innerHTML = `
+        <div style="text-align: center; margin-bottom: 16px;">
+          <div style="font-size: 2.5rem; margin-bottom: 6px;">${importedCount > 0 ? '🎉' : '⚠️'}</div>
+          <h3 style="font-family: var(--font-heading); font-size: 1.25rem; font-weight: 700; color: var(--text-heading); margin: 0 0 4px;">
+            ${importedCount > 0 ? 'Import Process Completed' : 'Import Finished with No Changes'}
+          </h3>
+          <p style="font-size: 0.84rem; color: var(--text-muted); margin: 0;">
+            File: <strong>${escapeHtml(state.importFileName || 'Upload')}</strong>
+          </p>
+        </div>
+
+        <div class="import-stat-grid" style="margin-bottom: 14px;">
+          <div class="import-stat-card">
+            <div class="import-stat-val" style="color: var(--primary, #0D9488);">${totalRows}</div>
+            <div class="import-stat-lbl">Rows Read</div>
+          </div>
+          <div class="import-stat-card">
+            <div class="import-stat-val" style="color: #059669;">${importedCount}</div>
+            <div class="import-stat-lbl">Imported</div>
+          </div>
+          <div class="import-stat-card">
+            <div class="import-stat-val" style="color: #D97706;">${skippedRows.length}</div>
+            <div class="import-stat-lbl">Skipped</div>
+          </div>
+          <div class="import-stat-card">
+            <div class="import-stat-val" style="color: #DC2626;">${errorRows.length + writeErrors.length}</div>
+            <div class="import-stat-lbl">Failed</div>
+          </div>
+        </div>
+
+        ${planCapHtml}
+        ${autoRollsHtml}
+        ${issuesHtml}
+      `;
+    }
+
+    const btnDownload = document.getElementById('btnDownloadErrorReport');
+    if (btnDownload) {
+      btnDownload.classList.toggle('hidden', issues.length === 0 && writeErrors.length === 0);
+    }
+  }
+
+  function downloadImportErrorReport() {
+    const report = state.importReport;
+    if (!report) return;
+
+    const issues = [...(report.skippedRows || []), ...(report.errorRows || [])];
+    const rows = [
+      ['Row Number', 'Status', 'Record Name / Key', 'Class', 'Reason / Failure Cause']
+    ];
+
+    issues.forEach(i => {
+      rows.push([
+        i.rowNum,
+        i.status,
+        i.name || i.subject || '',
+        i.className || '',
+        i.reason || ''
+      ]);
+    });
+
+    const csvContent = rows.map(r => r.map(c => `"${String(c || '').replace(/"/g, '""')}"`).join(',')).join('\r\n');
+    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `SchoolSteps_Import_Report_${state.importActiveType}_${Date.now()}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
+
+  // Window exports for HTML onclick handlers
+  window.openImportModal = openImportModal;
+  window.closeImportModal = closeImportModal;
+  window.switchImportType = switchImportType;
+  window.downloadImportTemplate = downloadImportTemplate;
+  window.handleImportFileSelect = handleImportFileSelect;
+  window.resetImportToUpload = resetImportToUpload;
+  window.executeImport = executeImport;
+  window.handleClassMappingChange = handleClassMappingChange;
+  window.downloadImportErrorReport = downloadImportErrorReport;
+  window.updateImportButtonsVisibility = updateImportButtonsVisibility;
+  window.__openImportModal = openImportModal;
+  window.__executeImport = executeImport;
+  window.__processRawImportRows = processRawImportRows;
+  window.__validateImportRows = validateImportRows;
+  window.validateImportRows = validateImportRows;
+  window.processRawImportRows = processRawImportRows;
+
 
   function start() {
     bindAuthEvents();

@@ -514,66 +514,199 @@
       </section>
 
       <!-- ==============================================
-           MODULE 3: Test Marks Entry
+           MODULE 3: Test Marks Entry & Result Cards
            ============================================== -->
       <section id="tab-tests" class="tab-panel">
-        <!-- Test Selector & Creation Bar -->
-        <div class="card toolbar-card">
-          <div class="tests-controls">
-            <div class="control-item">
-              <label for="testSelect" class="control-label">📝 Select Test</label>
-              <select id="testSelect" class="form-select">
-                <!-- Dynamically populated -->
-              </select>
-            </div>
-            <div class="control-item">
-              <label for="testClassSelect" class="control-label">🏫 Class</label>
-              <select id="testClassSelect" class="form-select">
-                <!-- Dynamically populated -->
-              </select>
-            </div>
-            <div class="control-actions">
-              <button class="btn btn-secondary" id="btnOpenNewTestModal">
-                <span class="icon">➕</span>
-                <span>Create New Test</span>
-              </button>
-              <button class="btn btn-primary" id="btnSaveMarks">
-                <span class="icon">💾</span>
-                <span>Save All Marks</span>
-              </button>
+        <!-- Sub-View Navigation (Marks vs Result Cards) -->
+        <div class="card toolbar-card" style="margin-bottom: 16px;">
+          <div class="toolbar-row" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+            <div class="btn-group" role="group" id="marksSubNavGroup">
+              <button type="button" class="btn btn-sm btn-subtle active" id="btnMarksSubNavMarks" onclick="switchMarksSubView('marks')">📊 Marks</button>
+              <button type="button" class="btn btn-sm btn-subtle" id="btnMarksSubNavResultCards" onclick="switchMarksSubView('resultcards')">🎓 Result Cards</button>
             </div>
           </div>
         </div>
 
-        <!-- Active Test Banner Info -->
-        <div class="card active-test-info" id="activeTestInfoCard">
-          <div class="test-info-header">
-            <div>
-              <div class="test-tag" id="testSubjectTag">Mathematics</div>
-              <h3 class="test-heading" id="testTitleHeading">October Monthly Assessment</h3>
-              <p class="test-meta-text" id="testMetaText">Class 3-A • Max Marks: 50 • Passing: 20 • Date: Oct 10, 2026</p>
+        <!-- Marks Entry Sub-View -->
+        <div id="marksEntrySubView">
+          <!-- Test Selector & Creation Bar -->
+          <div class="card toolbar-card">
+            <div class="tests-controls">
+              <div class="control-item">
+                <label for="testSelect" class="control-label">📝 Select Test</label>
+                <select id="testSelect" class="form-select">
+                  <!-- Dynamically populated -->
+                </select>
+              </div>
+              <div class="control-item">
+                <label for="testClassSelect" class="control-label">🏫 Class</label>
+                <select id="testClassSelect" class="form-select">
+                  <!-- Dynamically populated -->
+                </select>
+              </div>
+              <div class="control-actions">
+                <button class="btn btn-secondary" id="btnOpenNewTestModal">
+                  <span class="icon">➕</span>
+                  <span>Create New Test</span>
+                </button>
+                <button class="btn btn-primary" id="btnSaveMarks">
+                  <span class="icon">💾</span>
+                  <span>Save All Marks</span>
+                </button>
+              </div>
             </div>
-            <div class="test-stats-chips">
-              <span class="chip-info" id="testEnteredChip">Marks Entered: 0/0</span>
-              <span class="chip-info chip-green" id="testPassedChip">Passed: 0</span>
-              <span class="chip-info chip-peach" id="testAvgChip">Class Avg: 0%</span>
+          </div>
+
+          <!-- Active Test Banner Info -->
+          <div class="card active-test-info" id="activeTestInfoCard">
+            <div class="test-info-header">
+              <div>
+                <div class="test-tag" id="testSubjectTag">Mathematics</div>
+                <h3 class="test-heading" id="testTitleHeading">October Monthly Assessment</h3>
+                <p class="test-meta-text" id="testMetaText">Class 3-A • Max Marks: 50 • Passing: 20 • Date: Oct 10, 2026</p>
+              </div>
+              <div class="test-stats-chips">
+                <span class="chip-info" id="testEnteredChip">Marks Entered: 0/0</span>
+                <span class="chip-info chip-green" id="testPassedChip">Passed: 0</span>
+                <span class="chip-info chip-peach" id="testAvgChip">Class Avg: 0%</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Marks Entry Roster -->
+          <div class="card marks-roster-card">
+            <div class="roster-header">
+              <h4>Student Marks Entry Sheet</h4>
+              <span class="roster-hint">Enter marks obtained (out of <span id="rosterMaxMarks">50</span>). Grade updates automatically.</span>
+            </div>
+            <div id="marksEntryList" class="marks-list">
+              <!-- Dynamically populated -->
+            </div>
+            <div id="noMarksStudentsState" class="empty-state hidden">
+              <div class="empty-icon">📊</div>
+              <h3>No Students for This Test</h3>
+              <p>Select another test or add students to this class in the Students tab.</p>
             </div>
           </div>
         </div>
 
-        <!-- Marks Entry Roster -->
-        <div class="card marks-roster-card">
-          <div class="roster-header">
-            <h4>Student Marks Entry Sheet</h4>
-            <span class="roster-hint">Enter marks obtained (out of <span id="rosterMaxMarks">50</span>). Grade updates automatically.</span>
+        <!-- Result Cards Sub-View -->
+        <div id="marksResultCardsSubView" class="hidden">
+          <!-- Setup Panel Card -->
+          <div class="card" style="margin-bottom: 18px; padding: 18px 20px;">
+            <div style="margin-bottom: 14px;">
+              <h3 style="font-size: 1.15rem; font-weight: 700; color: var(--text-heading); margin: 0 0 4px 0;">🎓 Result Card Generator</h3>
+              <p style="font-size: 0.825rem; color: var(--text-muted); margin: 0;">Generate printable result cards and WhatsApp summaries for any exam.</p>
+            </div>
+
+            <!-- Controls: Class, Section, Exam Name -->
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 16px;">
+              <div class="control-item">
+                <label for="rcClassSelect" class="control-label" style="font-size: 0.82rem; font-weight: 700;">🏫 Class</label>
+                <select id="rcClassSelect" class="form-select">
+                  <!-- Dynamically populated -->
+                </select>
+              </div>
+              <div class="control-item">
+                <label for="rcSectionSelect" class="control-label" style="font-size: 0.82rem; font-weight: 700;">🏷️ Section</label>
+                <input type="text" id="rcSectionSelect" list="sectionSuggestions" class="form-input" placeholder="e.g. A" value="A" autocomplete="off">
+              </div>
+              <div class="control-item" style="grid-column: 1 / -1;">
+                <label for="rcExamNameInput" class="control-label" style="font-size: 0.82rem; font-weight: 700;">📝 Exam Name <span style="color: var(--danger, #DC2626); font-weight: 700;">*</span></label>
+                <input type="text" id="rcExamNameInput" class="form-input" placeholder="e.g. Mid Term Exam 2026" required>
+              </div>
+            </div>
+
+            <!-- Test Picker -->
+            <div style="margin-bottom: 16px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 6px;">
+                <label style="font-size: 0.85rem; font-weight: 700; color: var(--text-heading);">Select Tests for this Exam:</label>
+                <div style="display: flex; gap: 8px;">
+                  <button type="button" class="btn btn-subtle btn-sm" id="btnRcSelectAllTests" style="padding: 3px 8px; min-height: 28px; font-size: 0.78rem;">Select All</button>
+                  <button type="button" class="btn btn-subtle btn-sm" id="btnRcClearTests" style="padding: 3px 8px; min-height: 28px; font-size: 0.78rem;">Clear</button>
+                </div>
+              </div>
+              <div id="rcTestsPickerList" style="max-height: 180px; overflow-y: auto; border: 1px solid var(--border-soft); border-radius: var(--radius-sm); padding: 8px 12px; background: var(--bg-surface); display: flex; flex-direction: column; gap: 6px;">
+                <!-- Dynamically populated -->
+              </div>
+              <div id="rcNoTestsState" class="hidden" style="padding: 12px; text-align: center; color: var(--text-muted); font-size: 0.85rem;">
+                No tests found for this class and section. Create tests in the Marks tab first.
+              </div>
+            </div>
+
+            <!-- Student Checklist -->
+            <div style="margin-bottom: 18px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 6px;">
+                <label style="font-size: 0.85rem; font-weight: 700; color: var(--text-heading);">Select Students to Generate (<span id="rcStudentsCountLabel">0</span>):</label>
+                <div style="display: flex; gap: 8px;">
+                  <button type="button" class="btn btn-subtle btn-sm" id="btnRcSelectAllStudents" style="padding: 3px 8px; min-height: 28px; font-size: 0.78rem;">Select All</button>
+                  <button type="button" class="btn btn-subtle btn-sm" id="btnRcClearStudents" style="padding: 3px 8px; min-height: 28px; font-size: 0.78rem;">Clear</button>
+                </div>
+              </div>
+              <div id="rcStudentsPickerList" style="max-height: 200px; overflow-y: auto; border: 1px solid var(--border-soft); border-radius: var(--radius-sm); padding: 8px 12px; background: var(--bg-surface); display: flex; flex-direction: column; gap: 6px;">
+                <!-- Dynamically populated -->
+              </div>
+              <div id="rcNoStudentsState" class="hidden" style="padding: 12px; text-align: center; color: var(--text-muted); font-size: 0.85rem;">
+                No active students enrolled in this class and section.
+              </div>
+            </div>
+
+            <!-- Action Button -->
+            <div style="display: flex; justify-content: flex-end;">
+              <button type="button" class="btn btn-primary" id="btnRcGenerate">
+                <span class="icon">🎓</span>
+                <span>Generate Result Cards</span>
+              </button>
+            </div>
           </div>
-          <div id="marksEntryList" class="marks-list">
-            <!-- Dynamically populated -->
-          </div>
-          <div id="noMarksStudentsState" class="empty-state hidden">
-            <div class="empty-icon">📊</div>
-            <h3>No Students for This Test</h3>
-            <p>Select another test or add students to this class in the Students tab.</p>
+
+          <!-- Generated Results Section (Hidden until generated) -->
+          <div id="rcResultsSection" class="hidden">
+            <!-- Summary Toolbar -->
+            <div class="card toolbar-card" style="margin-bottom: 16px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                <div>
+                  <h4 id="rcResultsHeading" style="font-size: 1.05rem; font-weight: 700; color: var(--text-heading); margin: 0 0 2px 0;">Generated Result Cards</h4>
+                  <p id="rcResultsSubheading" style="font-size: 0.82rem; color: var(--text-muted); margin: 0;">Mid Term Exam 2026</p>
+                </div>
+                <div>
+                  <button type="button" class="btn btn-primary" id="btnRcPrintAll">
+                    <span class="icon">🖨️</span>
+                    <span>Print All Cards</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Roster Table / Results List -->
+            <div class="card" style="margin-bottom: 24px; padding: 0; overflow: hidden;">
+              <div class="rc-table-wrapper" style="width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch;">
+                <table class="defaulters-table" style="width: 100%; border-collapse: collapse; min-width: 600px;">
+                  <thead>
+                    <tr>
+                      <th style="padding: 10px 12px; text-align: center; width: 60px;">Roll</th>
+                      <th style="padding: 10px 12px;">Student Name</th>
+                      <th style="padding: 10px 12px; text-align: center;">Obtained / Total</th>
+                      <th style="padding: 10px 12px; text-align: center; width: 80px;">%</th>
+                      <th style="padding: 10px 12px; text-align: center; width: 70px;">Grade</th>
+                      <th style="padding: 10px 12px; text-align: center; width: 80px;">Position</th>
+                      <th style="padding: 10px 12px; text-align: center; width: 220px;">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody id="rcResultsTableBody">
+                    <!-- Populated via JS -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- Stacked On-Screen Preview -->
+            <div style="margin-bottom: 16px;">
+              <h4 style="font-size: 1rem; font-weight: 700; color: var(--text-heading); margin-bottom: 10px;">📄 Print Preview</h4>
+              <div class="rc-preview-wrapper" id="rcCardsPreviewContainer" style="overflow-x: auto; -webkit-overflow-scrolling: touch; padding: 10px 0;">
+                <!-- Stacked preview cards rendered via JS -->
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -3138,6 +3271,11 @@
   <!-- Printable Fee Vouchers (Single & Class Bulk Print) -->
   <div id="printableFeeVoucher" class="printable-fee-voucher no-screen">
     <!-- Populated dynamically via JS: contains one or more .voucher-student-sheet elements -->
+  </div>
+
+  <!-- Printable Result Cards (Single & Class Bulk Print) -->
+  <div id="printableResultCards" class="printable-result-cards no-screen">
+    <!-- Populated dynamically via JS: contains one or more .rc-card-sheet elements -->
   </div>
 
 </body>

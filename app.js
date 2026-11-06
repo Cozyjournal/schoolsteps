@@ -2283,7 +2283,7 @@
     } else if (tabId === 'tab-attendance') {
       renderAttendanceRoster();
     } else if (tabId === 'tab-tests') {
-      renderMarksEntrySheet();
+      renderMarksModule();
     } else if (tabId === 'tab-reports') {
       renderReportCard();
     } else if (tabId === 'tab-dispatch') {
@@ -2411,6 +2411,23 @@
       });
       if (!testClassSelect.value && sortedClasses.length > 0) {
         testClassSelect.value = sortedClasses[0];
+      }
+    }
+
+    // Populate result cards class select
+    const rcClassSelect = document.getElementById('rcClassSelect');
+    if (rcClassSelect) {
+      const currentVal = rcClassSelect.value || 'Class 3';
+      rcClassSelect.innerHTML = '';
+      sortedClasses.forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c;
+        opt.textContent = c;
+        if (c === currentVal) opt.selected = true;
+        rcClassSelect.appendChild(opt);
+      });
+      if (!rcClassSelect.value && sortedClasses.length > 0) {
+        rcClassSelect.value = sortedClasses[0];
       }
     }
 
@@ -4807,6 +4824,7 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
     bindBulkWhatsAppEvents();
     bindPromotionEvents();
     bindExportDataEvents();
+    bindResultCardsEvents();
     bindSyllabusEvents();
 
     const subModal = document.getElementById('subscriptionModal');
@@ -11872,6 +11890,593 @@ Please review the syllabus and schedule to support your child's learning.
   window.__buildMarksExportSheet = buildMarksExportSheet;
   window.__buildSyllabusExportSheet = buildSyllabusExportSheet;
   window.__buildSchoolInfoExportSheet = buildSchoolInfoExportSheet;
+
+  // ========================================================
+  // ROADMAP ITEM #5: RESULT CARD GENERATOR (MARKS SUB-VIEW)
+  // ========================================================
+
+  function switchMarksSubView(subView) {
+    state.marksActiveSubView = subView === 'resultcards' ? 'resultcards' : 'marks';
+    const isResultCards = state.marksActiveSubView === 'resultcards';
+
+    document.getElementById('btnMarksSubNavMarks')?.classList.toggle('active', !isResultCards);
+    document.getElementById('btnMarksSubNavResultCards')?.classList.toggle('active', isResultCards);
+
+    document.getElementById('marksEntrySubView')?.classList.toggle('hidden', isResultCards);
+    document.getElementById('marksResultCardsSubView')?.classList.toggle('hidden', !isResultCards);
+
+    if (isResultCards) {
+      initResultCardsSetup();
+    } else {
+      renderMarksEntrySheet();
+    }
+  }
+
+  function renderMarksModule() {
+    switchMarksSubView(state.marksActiveSubView || 'marks');
+  }
+
+  function initResultCardsSetup() {
+    const rcClassSelect = document.getElementById('rcClassSelect');
+    if (rcClassSelect) {
+      const sortedClasses = sortClasses(getKnownClassNames());
+      const currentVal = rcClassSelect.value || document.getElementById('testClassSelect')?.value || 'Class 3';
+      rcClassSelect.innerHTML = '';
+      sortedClasses.forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c;
+        opt.textContent = c;
+        if (c === currentVal) opt.selected = true;
+        rcClassSelect.appendChild(opt);
+      });
+      if (!rcClassSelect.value && sortedClasses.length > 0) {
+        rcClassSelect.value = sortedClasses[0];
+      }
+    }
+
+    const rcSectionSelect = document.getElementById('rcSectionSelect');
+    if (rcSectionSelect && !rcSectionSelect.value) {
+      rcSectionSelect.value = 'A';
+    }
+
+    updateRcSetupPickers();
+  }
+
+  function updateRcSetupPickers() {
+    const classSelect = document.getElementById('rcClassSelect');
+    const selectedClass = classSelect?.value || 'Class 3';
+    const sectionInput = document.getElementById('rcSectionSelect');
+    const selectedSec = (sectionInput?.value || 'A').trim();
+
+    // 1. Tests picker
+    const testsList = document.getElementById('rcTestsPickerList');
+    const noTestsState = document.getElementById('rcNoTestsState');
+    const classTests = (state.tests || []).filter(t => t.className === selectedClass && (t.section || 'A').trim().toUpperCase() === selectedSec.toUpperCase());
+
+    if (testsList && noTestsState) {
+      if (classTests.length === 0) {
+        testsList.innerHTML = '';
+        testsList.classList.add('hidden');
+        noTestsState.classList.remove('hidden');
+      } else {
+        noTestsState.classList.add('hidden');
+        testsList.classList.remove('hidden');
+        testsList.innerHTML = classTests.map(t => {
+          const dateStr = formatDateHuman(t.date) || t.date || 'N/A';
+          return `
+            <label style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; cursor: pointer; padding: 4px 0;">
+              <input type="checkbox" class="rc-test-checkbox" value="${escapeHtml(t.id)}" checked style="accent-color: var(--teal-primary, #0D9488); width: 16px; height: 16px;">
+              <span><strong>${escapeHtml(t.subject)}</strong> — ${escapeHtml(t.title)} (Max: ${t.maxMarks}, ${escapeHtml(dateStr)})</span>
+            </label>
+          `;
+        }).join('');
+      }
+    }
+
+    // 2. Students checklist
+    const studentsList = document.getElementById('rcStudentsPickerList');
+    const noStudentsState = document.getElementById('rcNoStudentsState');
+    const countLabel = document.getElementById('rcStudentsCountLabel');
+
+    const activeStudents = (state.students || []).filter(s => s.status === 'Active' && s.className === selectedClass && (s.section || 'A').trim().toUpperCase() === selectedSec.toUpperCase());
+    activeStudents.sort((a, b) => parseInt(a.rollNo || '0', 10) - parseInt(b.rollNo || '0', 10));
+
+    if (countLabel) countLabel.textContent = String(activeStudents.length);
+
+    if (studentsList && noStudentsState) {
+      if (activeStudents.length === 0) {
+        studentsList.innerHTML = '';
+        studentsList.classList.add('hidden');
+        noStudentsState.classList.remove('hidden');
+      } else {
+        noStudentsState.classList.add('hidden');
+        studentsList.classList.remove('hidden');
+        studentsList.innerHTML = activeStudents.map(s => {
+          const fatherDisplay = s.fatherName ? ` (${escapeHtml(s.fatherName)})` : '';
+          return `
+            <label style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; cursor: pointer; padding: 4px 0;">
+              <input type="checkbox" class="rc-student-checkbox" value="${escapeHtml(s.id)}" checked style="accent-color: var(--teal-primary, #0D9488); width: 16px; height: 16px;">
+              <span>Roll ${escapeHtml(s.rollNo || '—')} — <strong>${escapeHtml(s.name)}</strong>${fatherDisplay}</span>
+            </label>
+          `;
+        }).join('');
+      }
+    }
+
+    // Reset results view if class or section changes
+    document.getElementById('rcResultsSection')?.classList.add('hidden');
+    state.rcGeneratedCards = [];
+  }
+
+  function computeGrade(percentage) {
+    const p = Number(percentage);
+    if (p >= 90) return 'A+';
+    if (p >= 80) return 'A';
+    if (p >= 70) return 'B';
+    if (p >= 60) return 'C';
+    if (p >= 50) return 'D';
+    return 'F';
+  }
+
+  function computeAutoRemarks(percentage) {
+    const p = Number(percentage);
+    if (p >= 90) return 'Outstanding';
+    if (p >= 80) return 'Excellent';
+    if (p >= 70) return 'Very Good';
+    if (p >= 60) return 'Good';
+    if (p >= 50) return 'Satisfactory';
+    return 'Needs Improvement';
+  }
+
+  function computeClassPositions(classStudents, selectedTests) {
+    const candidateScores = [];
+
+    classStudents.forEach(student => {
+      let nonAbsentCount = 0;
+      let totalObtained = 0;
+
+      selectedTests.forEach(test => {
+        const key = `${test.id}_${student.id}`;
+        const entry = state.marks && state.marks[key];
+        if (entry != null && entry.marks != null && entry.marks !== '' && !isNaN(entry.marks)) {
+          nonAbsentCount++;
+          totalObtained += Number(entry.marks);
+        }
+      });
+
+      if (nonAbsentCount > 0) {
+        candidateScores.push({
+          studentId: student.id,
+          totalObtained: totalObtained
+        });
+      }
+    });
+
+    // Sort descending by totalObtained
+    candidateScores.sort((a, b) => b.totalObtained - a.totalObtained);
+
+    // Standard competition ranking (1, 2, 2, 4...)
+    const positionMap = {};
+    let currentRank = 1;
+    for (let i = 0; i < candidateScores.length; i++) {
+      if (i > 0 && candidateScores[i].totalObtained < candidateScores[i - 1].totalObtained) {
+        currentRank = i + 1;
+      }
+      positionMap[candidateScores[i].studentId] = currentRank;
+    }
+
+    return positionMap;
+  }
+
+  function computeStudentResultCard(student, selectedTests, examName, positionMap) {
+    let totalMarks = 0;
+    let obtainedTotal = 0;
+    let nonAbsentCount = 0;
+
+    const subjects = selectedTests.map(test => {
+      const maxMarks = Number(test.maxMarks) || 0;
+      totalMarks += maxMarks;
+
+      const key = `${test.id}_${student.id}`;
+      const entry = state.marks && state.marks[key];
+      const hasEntry = entry != null && entry.marks != null && entry.marks !== '' && !isNaN(entry.marks);
+
+      if (hasEntry) {
+        nonAbsentCount++;
+        const obtained = Number(entry.marks);
+        obtainedTotal += obtained;
+        const pct = maxMarks > 0 ? ((obtained / maxMarks) * 100).toFixed(1) : '0.0';
+        return {
+          testId: test.id,
+          subject: test.subject || test.title || 'Subject',
+          maxMarks: maxMarks,
+          obtained: obtained,
+          percentage: pct,
+          isAbsent: false,
+          remarks: entry.remarks || ''
+        };
+      } else {
+        return {
+          testId: test.id,
+          subject: test.subject || test.title || 'Subject',
+          maxMarks: maxMarks,
+          obtained: 0,
+          percentage: '—',
+          isAbsent: true,
+          remarks: ''
+        };
+      }
+    });
+
+    const percentage = totalMarks > 0 ? ((obtainedTotal / totalMarks) * 100).toFixed(1) : '0.0';
+    const grade = computeGrade(percentage);
+    const remarks = computeAutoRemarks(percentage);
+    const position = (nonAbsentCount > 0 && positionMap[student.id]) ? positionMap[student.id] : null;
+
+    return {
+      student: student,
+      examName: examName,
+      subjects: subjects,
+      totalMarks: totalMarks,
+      obtainedTotal: obtainedTotal,
+      percentage: percentage,
+      grade: grade,
+      remarks: remarks,
+      position: position,
+      hasAnyNonAbsent: nonAbsentCount > 0
+    };
+  }
+
+  function handleGenerateResultCards() {
+    const examNameInput = document.getElementById('rcExamNameInput');
+    const examName = (examNameInput?.value || '').trim();
+    if (!examName) {
+      showToast('Please enter an exam name.', 'error');
+      examNameInput?.focus();
+      return;
+    }
+
+    const classSelect = document.getElementById('rcClassSelect');
+    const selectedClass = classSelect?.value || 'Class 3';
+    const sectionInput = document.getElementById('rcSectionSelect');
+    const selectedSec = (sectionInput?.value || 'A').trim();
+
+    const classTests = (state.tests || []).filter(t => t.className === selectedClass && (t.section || 'A').trim().toUpperCase() === selectedSec.toUpperCase());
+    if (classTests.length === 0) {
+      showToast('No tests found for this class and section.', 'error');
+      return;
+    }
+
+    const selectedTestCheckboxes = Array.from(document.querySelectorAll('.rc-test-checkbox:checked'));
+    const selectedTestIds = selectedTestCheckboxes.map(cb => cb.value);
+    if (selectedTestIds.length === 0) {
+      showToast('Please select at least one test.', 'error');
+      return;
+    }
+
+    const selectedStudentCheckboxes = Array.from(document.querySelectorAll('.rc-student-checkbox:checked'));
+    const selectedStudentIds = selectedStudentCheckboxes.map(cb => cb.value);
+    if (selectedStudentIds.length === 0) {
+      showToast('Please select at least one student.', 'error');
+      return;
+    }
+
+    const selectedTests = classTests.filter(t => selectedTestIds.includes(t.id));
+
+    const allClassStudents = (state.students || []).filter(s => s.status === 'Active' && s.className === selectedClass && (s.section || 'A').trim().toUpperCase() === selectedSec.toUpperCase());
+
+    const positionMap = computeClassPositions(allClassStudents, selectedTests);
+
+    const studentsToGenerate = allClassStudents.filter(s => selectedStudentIds.includes(s.id));
+    studentsToGenerate.sort((a, b) => parseInt(a.rollNo || '0', 10) - parseInt(b.rollNo || '0', 10));
+
+    const cards = studentsToGenerate.map(s => computeStudentResultCard(s, selectedTests, examName, positionMap));
+    state.rcGeneratedCards = cards;
+
+    renderResultCardsList(cards);
+
+    const previewContainer = document.getElementById('rcCardsPreviewContainer');
+    if (previewContainer) {
+      previewContainer.innerHTML = cards.map(c => renderResultCardHtml(c)).join('');
+    }
+
+    const heading = document.getElementById('rcResultsHeading');
+    if (heading) heading.textContent = `Generated Result Cards (${cards.length})`;
+    const subheading = document.getElementById('rcResultsSubheading');
+    if (subheading) subheading.textContent = `${selectedClass}-${selectedSec} • ${examName} • ${cards.length} Students`;
+
+    const resultsSection = document.getElementById('rcResultsSection');
+    if (resultsSection) {
+      resultsSection.classList.remove('hidden');
+    }
+
+    showToast(`Generated ${cards.length} result cards!`, 'success');
+  }
+
+  function renderResultCardsList(cards) {
+    const tbody = document.getElementById('rcResultsTableBody');
+    if (!tbody) return;
+
+    if (cards.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 16px; color: var(--text-muted);">No result cards generated.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = cards.map(card => {
+      const student = card.student;
+      const cleanPhone = sanitizePhoneForWhatsApp(student.whatsapp || student.parentPhone || '');
+      const hasValidPhone = !!cleanPhone && cleanPhone.length >= 10;
+
+      let waBtnHtml = '';
+      if (hasValidPhone) {
+        const waUrl = getResultCardWhatsAppUrl(student, card);
+        waBtnHtml = `
+          <button type="button" class="btn btn-sm btn-whatsapp" onclick="window.open('${escapeHtml(waUrl)}', '_blank')" title="Send result card summary via WhatsApp">
+            <span>📩 WhatsApp</span>
+          </button>
+        `;
+      } else {
+        waBtnHtml = `
+          <button type="button" class="btn btn-sm btn-whatsapp" disabled title="No valid WhatsApp number">
+            <span>📩 WhatsApp</span>
+          </button>
+        `;
+      }
+
+      const gradeClass = card.grade === 'F' ? 'badge-danger' : 'badge-pilot';
+
+      return `
+        <tr>
+          <td style="text-align: center; font-weight: 700;">${escapeHtml(student.rollNo || '—')}</td>
+          <td style="font-weight: 600;">${escapeHtml(student.name)}</td>
+          <td style="text-align: center;">${card.obtainedTotal} / ${card.totalMarks}</td>
+          <td style="text-align: center; font-weight: 700;">${card.percentage}%</td>
+          <td style="text-align: center;"><span class="badge ${gradeClass}">${card.grade}</span></td>
+          <td style="text-align: center; font-weight: 700;">${card.position != null ? card.position : '—'}</td>
+          <td style="text-align: center; white-space: nowrap;">
+            <div style="display: inline-flex; gap: 6px; align-items: center; justify-content: center;">
+              <button type="button" class="btn btn-sm btn-subtle" onclick="printSingleResultCard('${escapeHtml(student.id)}')" title="Print this student's result card">
+                <span>🖨️ Print Card</span>
+              </button>
+              ${waBtnHtml}
+            </div>
+          </td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+  function renderResultCardHtml(card) {
+    const student = card.student;
+    const schoolName = (state.currentSchool && (state.currentSchool.schoolName || state.currentSchool.name)) || state.profile?.name || 'SchoolSteps';
+    const tagline = (state.currentSchool && (state.currentSchool.tagline || state.currentSchool.motto)) || state.profile?.tagline || 'Excellence in Education';
+    const todayHuman = formatDateHuman(getTodayISO());
+
+    const subjectRows = card.subjects.map(s => {
+      const isAbsent = s.isAbsent;
+      const obtainedDisplay = isAbsent ? 'Absent' : s.obtained;
+      const pctDisplay = isAbsent ? '—' : `${s.percentage}%`;
+      const obtainedStyle = isAbsent ? 'color: #DC2626; font-weight: 700;' : 'font-weight: 700;';
+      return `
+        <tr>
+          <td style="text-align: left; font-weight: 600;">${escapeHtml(s.subject)}</td>
+          <td style="text-align: center;">${s.maxMarks}</td>
+          <td style="text-align: center; ${obtainedStyle}">${obtainedDisplay}</td>
+          <td style="text-align: center;">${pctDisplay}</td>
+        </tr>
+      `;
+    }).join('');
+
+    return `
+      <div class="rc-card-sheet">
+        <div class="rc-card-content">
+          <!-- Header -->
+          <div class="rc-header">
+            <h2 class="rc-school-name">${escapeHtml(schoolName)}</h2>
+            ${tagline ? `<div class="rc-school-tagline">${escapeHtml(tagline)}</div>` : ''}
+            <div class="rc-title-row">
+              <span class="rc-title-main">RESULT CARD</span>
+              <span class="rc-title-urdu" dir="rtl">نتیجہ کارڈ</span>
+            </div>
+            <div class="rc-exam-name">${escapeHtml(card.examName)}</div>
+          </div>
+
+          <!-- Student Info Bar -->
+          <div class="rc-student-bar">
+            <div class="rc-student-cell"><strong>Name:</strong> <span>${escapeHtml(student.name || '—')}</span></div>
+            <div class="rc-student-cell"><strong>Father Name:</strong> <span>${escapeHtml(student.fatherName || '—')}</span></div>
+            <div class="rc-student-cell"><strong>Class–Section:</strong> <span>${escapeHtml(student.className)} - ${escapeHtml(student.section || 'A')}</span></div>
+            <div class="rc-student-cell"><strong>Roll No:</strong> <span>${escapeHtml(student.rollNo || '—')}</span></div>
+            <div class="rc-student-cell"><strong>Date:</strong> <span>${escapeHtml(todayHuman)}</span></div>
+          </div>
+
+          <!-- Subject Marks Table -->
+          <table class="rc-marks-table">
+            <thead>
+              <tr>
+                <th style="text-align: left;">Subject</th>
+                <th style="text-align: center; width: 110px;">Total Marks</th>
+                <th style="text-align: center; width: 130px;">Obtained Marks</th>
+                <th style="text-align: center; width: 90px;">%</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${subjectRows}
+            </tbody>
+          </table>
+
+          <!-- Summary Block -->
+          <div class="rc-summary-grid">
+            <div class="rc-summary-item">
+              <span class="rc-summary-label">Grand Total</span>
+              <span class="rc-summary-value">${card.obtainedTotal} / ${card.totalMarks}</span>
+            </div>
+            <div class="rc-summary-item">
+              <span class="rc-summary-label">Percentage</span>
+              <span class="rc-summary-value">${card.percentage}%</span>
+            </div>
+            <div class="rc-summary-item">
+              <span class="rc-summary-label">Grade</span>
+              <span class="rc-summary-value rc-grade-badge">${card.grade}</span>
+            </div>
+            <div class="rc-summary-item">
+              <span class="rc-summary-label">Position in Class</span>
+              <span class="rc-summary-value">${card.position != null ? card.position : '—'}</span>
+            </div>
+          </div>
+
+          <!-- Remarks Line -->
+          <div class="rc-remarks-line">
+            <strong>Remarks:</strong> <span>${escapeHtml(card.remarks)}</span>
+          </div>
+
+          <!-- Footer Signatures -->
+          <div class="rc-signatures">
+            <div class="rc-signature-box">
+              <div class="rc-signature-line"></div>
+              <div class="rc-signature-title">Class Teacher</div>
+            </div>
+            <div class="rc-signature-box">
+              <div class="rc-signature-line"></div>
+              <div class="rc-signature-title">Principal</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  function printAllResultCards() {
+    const cards = state.rcGeneratedCards || [];
+    if (cards.length === 0) {
+      showToast('No result cards to print.', 'warn');
+      return;
+    }
+    const printable = document.getElementById('printableResultCards');
+    if (!printable) return;
+
+    printable.innerHTML = cards.map(c => renderResultCardHtml(c)).join('');
+
+    const cleanup = () => {
+      document.body.classList.remove('printing-result-cards');
+      window.removeEventListener('afterprint', cleanup);
+    };
+    window.addEventListener('afterprint', cleanup);
+    setTimeout(cleanup, 1500);
+
+    document.body.classList.add('printing-result-cards');
+    window.print();
+  }
+
+  function printSingleResultCard(studentId) {
+    const cards = state.rcGeneratedCards || [];
+    const card = cards.find(c => c.student.id === studentId);
+    if (!card) {
+      showToast('Result card not found.', 'error');
+      return;
+    }
+    const printable = document.getElementById('printableResultCards');
+    if (!printable) return;
+
+    printable.innerHTML = renderResultCardHtml(card);
+
+    const cleanup = () => {
+      document.body.classList.remove('printing-result-cards');
+      window.removeEventListener('afterprint', cleanup);
+    };
+    window.addEventListener('afterprint', cleanup);
+    setTimeout(cleanup, 1500);
+
+    document.body.classList.add('printing-result-cards');
+    window.print();
+  }
+
+  function getResultCardWhatsAppMessage(student, card) {
+    const schoolName = (state.currentSchool && (state.currentSchool.schoolName || state.currentSchool.name)) || state.profile?.name || 'SchoolSteps';
+    const parentName = (student.fatherName || student.parentName || '').trim() || 'محترم والدین';
+    const studentName = (student.name || '').trim() || 'Student';
+    const className = student.className || '';
+    const section = (student.section || 'A').trim();
+    const examName = card.examName;
+
+    const subjectLines = (card.subjects || []).map(s => {
+      if (s.isAbsent) {
+        return `${s.subject}: غیر حاضر`;
+      }
+      return `${s.subject}: ${s.obtained}/${s.maxMarks}`;
+    });
+
+    const positionText = card.position != null ? String(card.position) : '—';
+
+    const lines = [
+      `السلام علیکم ${parentName}،`,
+      `${schoolName} کی طرف سے ${studentName} (${className} ${section}) کا نتیجہ — ${examName}:`,
+      ...subjectLines,
+      `کل نمبر: ${card.obtainedTotal}/${card.totalMarks}`,
+      `فیصد: ${card.percentage}% — گریڈ: ${card.grade}`,
+      `کلاس میں پوزیشن: ${positionText}`,
+      `— ${schoolName}`
+    ];
+
+    return lines.join('\n');
+  }
+
+  function getResultCardWhatsAppUrl(student, card) {
+    const cleanPhone = sanitizePhoneForWhatsApp(student.whatsapp || student.parentPhone || '');
+    if (!cleanPhone || cleanPhone.length < 10) return '';
+    const msg = getResultCardWhatsAppMessage(student, card);
+    return `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`;
+  }
+
+  function bindResultCardsEvents() {
+    // Sub-view switcher buttons
+    document.getElementById('btnMarksSubNavMarks')?.addEventListener('click', () => switchMarksSubView('marks'));
+    document.getElementById('btnMarksSubNavResultCards')?.addEventListener('click', () => switchMarksSubView('resultcards'));
+
+    // Controls change
+    document.getElementById('rcClassSelect')?.addEventListener('change', updateRcSetupPickers);
+    document.getElementById('rcSectionSelect')?.addEventListener('input', updateRcSetupPickers);
+    document.getElementById('rcSectionSelect')?.addEventListener('change', updateRcSetupPickers);
+
+    // Tests selection buttons
+    document.getElementById('btnRcSelectAllTests')?.addEventListener('click', () => {
+      document.querySelectorAll('.rc-test-checkbox').forEach(cb => { cb.checked = true; });
+    });
+    document.getElementById('btnRcClearTests')?.addEventListener('click', () => {
+      document.querySelectorAll('.rc-test-checkbox').forEach(cb => { cb.checked = false; });
+    });
+
+    // Students selection buttons
+    document.getElementById('btnRcSelectAllStudents')?.addEventListener('click', () => {
+      document.querySelectorAll('.rc-student-checkbox').forEach(cb => { cb.checked = true; });
+    });
+    document.getElementById('btnRcClearStudents')?.addEventListener('click', () => {
+      document.querySelectorAll('.rc-student-checkbox').forEach(cb => { cb.checked = false; });
+    });
+
+    // Generate button
+    document.getElementById('btnRcGenerate')?.addEventListener('click', handleGenerateResultCards);
+
+    // Print all button
+    document.getElementById('btnRcPrintAll')?.addEventListener('click', printAllResultCards);
+  }
+
+  // Window exports for Result Cards module
+  window.switchMarksSubView = switchMarksSubView;
+  window.renderMarksModule = renderMarksModule;
+  window.initResultCardsSetup = initResultCardsSetup;
+  window.updateRcSetupPickers = updateRcSetupPickers;
+  window.handleGenerateResultCards = handleGenerateResultCards;
+  window.computeGrade = computeGrade;
+  window.computeAutoRemarks = computeAutoRemarks;
+  window.computeClassPositions = computeClassPositions;
+  window.computeStudentResultCard = computeStudentResultCard;
+  window.renderResultCardHtml = renderResultCardHtml;
+  window.renderResultCardsList = renderResultCardsList;
+  window.printAllResultCards = printAllResultCards;
+  window.printSingleResultCard = printSingleResultCard;
+  window.getResultCardWhatsAppMessage = getResultCardWhatsAppMessage;
+  window.getResultCardWhatsAppUrl = getResultCardWhatsAppUrl;
 
 
   function start() {

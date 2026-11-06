@@ -5458,3 +5458,19 @@ body.printing-defaulters #printableDefaulters {
   font-weight: 700;
   border: 1px solid rgba(13, 148, 136, 0.2);
 }
+
+/* Year-End Class Promotion Styles */
+.pill-status.pill-graduated {
+  background: #F1F5F9;
+  border: 1px solid #CBD5E1;
+  color: #475569;
+}
+
+.promo-table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.promo-table-wrap table {
+  min-width: 480px;
+}

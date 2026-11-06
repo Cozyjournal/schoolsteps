@@ -308,6 +308,10 @@
                 <!-- Populated dynamically -->
               </select>
               <input type="text" id="filterSectionSelect" list="filterSectionSuggestions" class="form-input" placeholder="Section (All or A, Blue...)" value="ALL" autocomplete="off" style="max-width: 140px;">
+              <button type="button" class="btn btn-subtle btn-promote-trigger hidden" id="btnPromoteClasses" onclick="handleOpenPromotionModal()" title="Move active students to next class at year end">
+                <span class="icon">🎓</span>
+                <span>Promote Classes</span>
+              </button>
               <button type="button" class="btn btn-subtle btn-import-trigger" id="btnImportStudents" onclick="openImportModal('students')" title="Import students from Excel or CSV">
                 <span class="icon">📥</span>
                 <span>Import</span>
@@ -2359,6 +2363,151 @@
           <button type="button" class="btn btn-primary" id="btnBulkWAClosedDone" style="min-width: 140px;">
             <span>Done</span>
           </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Year-End Class Promotion Modal -->
+  <div class="modal-overlay hidden" id="promotionModal">
+    <div class="modal-card" style="max-width: 720px; max-height: 90vh; display: flex; flex-direction: column;">
+      <div class="modal-header">
+        <div>
+          <h3 class="modal-title">🎓 Year-End Class Promotion</h3>
+          <p style="font-size: 0.8rem; color: var(--text-muted); margin: 2px 0 0 0;">Preview promotion mappings, resolve conflicts, and promote active students.</p>
+        </div>
+        <button class="btn-close" id="btnClosePromotionModal" type="button" aria-label="Close">✕</button>
+      </div>
+      <div class="modal-body" style="padding: 16px 20px; overflow-y: auto; flex: 1;">
+        <!-- Step 1 & 2: Preview, Mapping & Confirm -->
+        <div id="promoStepPreview">
+          <div style="margin-bottom: 14px;">
+            <div style="font-size: 0.88rem; font-weight: 700; color: var(--text-heading); margin-bottom: 6px;">
+              Class Promotion Mappings
+            </div>
+            <p style="font-size: 0.8rem; color: var(--text-muted); margin: 0 0 10px;">
+              Active students will be moved to the target class. Section is preserved.
+            </p>
+            <div class="promo-table-wrap" style="overflow-x: auto; border: 1px solid var(--border-soft); border-radius: var(--radius-md); background: #FFFFFF; margin-bottom: 12px;">
+              <table class="data-table" style="width: 100%; border-collapse: collapse; font-size: 0.86rem;">
+                <thead>
+                  <tr style="background: #F8FAFC; text-align: left; border-bottom: 1px solid var(--border-soft);">
+                    <th style="padding: 10px 14px; font-weight: 700; color: var(--text-muted);">From Class</th>
+                    <th style="padding: 10px 14px; font-weight: 700; color: var(--text-muted); text-align: center;">Active Students</th>
+                    <th style="padding: 10px 14px; font-weight: 700; color: var(--text-muted);">To Class (Target)</th>
+                  </tr>
+                </thead>
+                <tbody id="promoMappingTableBody">
+                  <!-- Rendered dynamically -->
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Roll changes container (expandable) -->
+            <div id="promoRollChangesWrap" class="hidden" style="margin-bottom: 16px;">
+              <!-- Rendered dynamically when conflicts exist -->
+            </div>
+          </div>
+
+          <!-- Step 2: Warning Alert Box & Confirmation Inputs -->
+          <div class="promo-warning-box" style="background: #FFFBEB; border: 1px solid #FDE68A; border-left: 4px solid #F59E0B; border-radius: var(--radius-md); padding: 12px 16px; margin-bottom: 16px;">
+            <div style="display: flex; gap: 10px; align-items: flex-start;">
+              <span style="font-size: 1.25rem; line-height: 1;">⚠️</span>
+              <div style="font-size: 0.84rem; color: #92400E; line-height: 1.5; font-weight: 600;" id="promoWarningText">
+                This will change the class of every Active student. Fee history, attendance and marks stay with each student and are NOT changed. Syllabus and fee structure stay with the classes. This cannot be undone from inside the app — a backup file (CSV) will download before anything changes.
+              </div>
+            </div>
+          </div>
+
+          <div style="background: #F8FAFC; border: 1px solid var(--border-soft); border-radius: var(--radius-md); padding: 14px 16px; margin-bottom: 16px;">
+            <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 0.88rem; font-weight: 600; color: var(--text-heading); margin-bottom: 10px;">
+              <input type="checkbox" id="promoConfirmUnderstand" style="width: 18px; height: 18px; accent-color: var(--teal-primary, #0D9488); cursor: pointer;">
+              <span>I understand</span>
+            </label>
+            <div>
+              <label for="promoConfirmWord" style="display: block; font-size: 0.8rem; font-weight: 600; color: var(--text-muted); margin-bottom: 4px;">
+                Type <strong>PROMOTE</strong> in capital letters to confirm:
+              </label>
+              <input type="text" id="promoConfirmWord" class="form-input" placeholder="Type PROMOTE to confirm" autocomplete="off" style="max-width: 260px; font-weight: 700; letter-spacing: 1px;">
+            </div>
+          </div>
+
+          <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; padding: 12px 0 0; border-top: 1px solid var(--border-soft);">
+            <button type="button" class="btn btn-subtle" id="btnCancelPromotion">Cancel</button>
+            <button type="button" class="btn btn-primary" id="btnApplyPromotion" disabled style="min-width: 160px;">
+              <span>🎓 Apply Promotion</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Step 3: Applying Progress State -->
+        <div id="promoStepApplying" class="hidden" style="text-align: center; padding: 24px 12px;">
+          <div style="font-size: 2.2rem; margin-bottom: 12px;">🎓</div>
+          <h4 style="font-size: 1.15rem; font-weight: 700; color: var(--text-heading); margin-bottom: 6px;">Applying Year-End Promotion...</h4>
+          <p id="promoApplyingSubtitle" style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 18px;">
+            Please do not close or refresh this page.
+          </p>
+          <div style="width: 100%; max-width: 420px; margin: 0 auto 12px; background: #E2E8F0; border-radius: var(--radius-pill); height: 12px; overflow: hidden;">
+            <div id="promoProgressBar" style="width: 0%; height: 100%; background: var(--teal-primary, #0D9488); transition: width 0.2s ease;"></div>
+          </div>
+          <div id="promoProgressCount" style="font-size: 0.88rem; font-weight: 700; color: var(--text-main);">
+            Applying 0 of 0...
+          </div>
+        </div>
+
+        <!-- Step 4: Final Report State -->
+        <div id="promoStepReport" class="hidden">
+          <div id="promoReportHeader" style="margin-bottom: 16px; text-align: center;">
+            <div style="font-size: 2.5rem; margin-bottom: 8px;">🎉</div>
+            <h3 style="font-size: 1.25rem; font-weight: 700; color: var(--text-heading); margin-bottom: 4px;">Promotion Completed</h3>
+            <p id="promoReportSubtitle" style="font-size: 0.85rem; color: var(--text-muted); margin: 0;">Summary of all student movements.</p>
+          </div>
+
+          <div class="promo-stats-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-bottom: 16px;">
+            <div style="background: #F8FAFC; border: 1px solid var(--border-soft); border-radius: var(--radius-md); padding: 12px; text-align: center;">
+              <div id="promoReportMovedCount" style="font-size: 1.4rem; font-weight: 800; color: var(--teal-primary, #0D9488);">0</div>
+              <div style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">Students Moved</div>
+            </div>
+            <div style="background: #F8FAFC; border: 1px solid var(--border-soft); border-radius: var(--radius-md); padding: 12px; text-align: center;">
+              <div id="promoReportGradCount" style="font-size: 1.4rem; font-weight: 800; color: #475569;">0</div>
+              <div style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">Graduated</div>
+            </div>
+            <div style="background: #F8FAFC; border: 1px solid var(--border-soft); border-radius: var(--radius-md); padding: 12px; text-align: center;">
+              <div id="promoReportRollChangesCount" style="font-size: 1.4rem; font-weight: 800; color: #D97706;">0</div>
+              <div style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">Roll Changes</div>
+            </div>
+            <div style="background: #F8FAFC; border: 1px solid var(--border-soft); border-radius: var(--radius-md); padding: 12px; text-align: center;">
+              <div id="promoReportSkippedCount" style="font-size: 1.4rem; font-weight: 800; color: var(--text-muted);">0</div>
+              <div style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">Left As-Is</div>
+            </div>
+          </div>
+
+          <!-- Per-class breakdown details -->
+          <div style="background: #FFFFFF; border: 1px solid var(--border-soft); border-radius: var(--radius-md); padding: 12px 14px; margin-bottom: 16px;">
+            <div style="font-size: 0.8rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin-bottom: 8px;">Class Breakdown</div>
+            <div id="promoReportBreakdown" style="font-size: 0.85rem; color: var(--text-main); display: flex; flex-direction: column; gap: 4px;">
+              <!-- Populated dynamically -->
+            </div>
+          </div>
+
+          <!-- Failures List (if any) -->
+          <div id="promoReportFailuresWrap" class="hidden" style="margin-bottom: 16px; background: #FEF2F2; border: 1px solid #FECACA; border-left: 4px solid #DC2626; border-radius: var(--radius-md); padding: 12px 16px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 8px;">
+              <strong style="color: #991B1B; font-size: 0.88rem;">❌ Failed Writes (<span id="promoFailuresCount">0</span>)</strong>
+              <button type="button" class="btn btn-sm btn-primary" id="btnRetryFailedPromotion" style="background: #DC2626; border-color: #DC2626;">
+                <span>Retry Failed Only</span>
+              </button>
+            </div>
+            <ul id="promoFailuresList" style="margin: 0; padding-left: 20px; font-size: 0.8rem; color: #7F1D1D; max-height: 140px; overflow-y: auto;">
+              <!-- Populated dynamically -->
+            </ul>
+          </div>
+
+          <div class="modal-footer" style="display: flex; justify-content: flex-end; padding: 12px 0 0; border-top: 1px solid var(--border-soft);">
+            <button type="button" class="btn btn-primary" id="btnDonePromotion" style="min-width: 120px;">
+              <span>✓ Done</span>
+            </button>
+          </div>
         </div>
       </div>
     </div>

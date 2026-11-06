@@ -2579,7 +2579,7 @@
               </div>
               <div class="student-meta-pills">
                 <span class="pill-class">${escapeHtml(student.className)} - ${escapeHtml(student.section || 'A')}</span>
-                <span class="pill-status">${escapeHtml(student.status || 'Active')}</span>
+                <span class="pill-status ${(student.status || 'Active').toLowerCase() === 'graduated' ? 'pill-graduated' : ''}">${escapeHtml(student.status || 'Active')}</span>
                 ${student.admissionNo ? `<span class="pill-roll">${escapeHtml(student.admissionNo)}</span>` : ''}
               </div>
             </div>
@@ -4764,6 +4764,7 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
     // Escape and backdrop click for Subscription Modal
     bindFeesEvents();
     bindBulkWhatsAppEvents();
+    bindPromotionEvents();
     bindSyllabusEvents();
 
     const subModal = document.getElementById('subscriptionModal');
@@ -6811,6 +6812,8 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
   window.__updateFeesTabVisibility = updateFeesTabVisibility;
   window.renderFeesModule = renderFeesModule;
   window.renderAttendanceRoster = renderAttendanceRoster;
+  window.renderClassDropdowns = renderClassDropdowns;
+  window.renderStudentsList = renderStudentsList;
   window.setStudentAttendanceStatus = setStudentAttendanceStatus;
   window.openRecordPaymentModal = openRecordPaymentModal;
   window.openPrintReceipt = openPrintReceipt;
@@ -8647,10 +8650,18 @@ Please review the syllabus and schedule to support your child's learning.
       btn.classList.toggle('hidden', !isAdmin);
     });
 
+    document.querySelectorAll('.btn-promote-trigger').forEach(btn => {
+      btn.classList.toggle('hidden', !isAdmin);
+    });
+
     if (!isAdmin) {
       const modal = document.getElementById('importModal');
       if (modal && !modal.classList.contains('hidden')) {
         closeImportModal();
+      }
+      const promoModal = document.getElementById('promotionModal');
+      if (promoModal && !promoModal.classList.contains('hidden')) {
+        closePromotionModal();
       }
     }
   }
@@ -10459,6 +10470,607 @@ Please review the syllabus and schedule to support your child's learning.
     });
   }
 
+
+  // ========================================================
+  // YEAR-END CLASS PROMOTION (ROADMAP ITEM #3)
+  // ========================================================
+
+  let activePromotionPlan = [];
+  let isPromotionApplying = false;
+
+  function handleOpenPromotionModal() {
+    const userRole = (state.currentUser && state.currentUser.role) || ((auth && auth.currentUser) ? getUserRole(auth.currentUser.email) : '');
+    const isAdmin = userRole === 'Admin' && !!state.currentSchoolId;
+    if (!isAdmin) {
+      showToast('Access restricted: School Admin only.', 'error');
+      return;
+    }
+
+    const activeStudents = (state.students || []).filter(s => (s.status || 'Active') === 'Active');
+    if (activeStudents.length === 0) {
+      showToast('No active students to promote.', 'info');
+      return;
+    }
+
+    openPromotionModal();
+  }
+
+  function openPromotionModal() {
+    const activeStudents = (state.students || []).filter(s => (s.status || 'Active') === 'Active');
+    if (activeStudents.length === 0) {
+      showToast('No active students to promote.', 'info');
+      return;
+    }
+
+    // Reset controls
+    const chk = document.getElementById('promoConfirmUnderstand');
+    if (chk) chk.checked = false;
+    const word = document.getElementById('promoConfirmWord');
+    if (word) word.value = '';
+
+    const stepPreview = document.getElementById('promoStepPreview');
+    const stepApplying = document.getElementById('promoStepApplying');
+    const stepReport = document.getElementById('promoStepReport');
+    if (stepPreview) stepPreview.classList.remove('hidden');
+    if (stepApplying) stepApplying.classList.add('hidden');
+    if (stepReport) stepReport.classList.add('hidden');
+
+    const closeBtn = document.getElementById('btnClosePromotionModal');
+    if (closeBtn) {
+      closeBtn.disabled = false;
+      closeBtn.classList.remove('hidden');
+    }
+    isPromotionApplying = false;
+
+    renderPromotionPreview();
+
+    const modal = document.getElementById('promotionModal');
+    if (modal) modal.classList.remove('hidden');
+  }
+
+  function closePromotionModal() {
+    if (isPromotionApplying) return; // Cannot close mid-apply
+
+    const modal = document.getElementById('promotionModal');
+    if (modal) modal.classList.add('hidden');
+    activePromotionPlan = [];
+    isPromotionApplying = false;
+  }
+
+  function renderPromotionPreview() {
+    const activeStudents = (state.students || []).filter(s => (s.status || 'Active') === 'Active');
+    const activeClasses = sortClasses(Array.from(new Set(activeStudents.map(s => s.className))).filter(Boolean));
+    const tbody = document.getElementById('promoMappingTableBody');
+    if (!tbody) return;
+
+    const knownClasses = sortClasses(getKnownClassNames());
+
+    tbody.innerHTML = activeClasses.map(fromClass => {
+      const count = activeStudents.filter(s => s.className === fromClass).length;
+      const m = fromClass.match(/^Class\s+(\d+)$/i);
+      let targetHtml = '';
+
+      if (m) {
+        const n = parseInt(m[1], 10);
+        if (n === 10) {
+          targetHtml = `
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <span class="badge" style="background: #F1F5F9; color: #475569; font-weight: 700; border: 1px solid #CBD5E1; padding: 4px 10px; border-radius: 6px; font-size: 0.85rem;">
+                🎓 Graduate (leaves school)
+              </span>
+            </div>
+          `;
+        } else if (n >= 1 && n <= 9) {
+          const nextClass = `Class ${n + 1}`;
+          targetHtml = `
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="font-weight: 700; color: var(--teal-primary, #0D9488); font-size: 0.95rem;">
+                ${escapeHtml(nextClass)}
+              </span>
+              <span style="font-size: 0.75rem; color: var(--text-muted); font-weight: 500;">(Auto)</span>
+            </div>
+          `;
+        } else {
+          targetHtml = buildCustomClassSelectHtml(fromClass, knownClasses);
+        }
+      } else {
+        targetHtml = buildCustomClassSelectHtml(fromClass, knownClasses);
+      }
+
+      return `
+        <tr style="border-bottom: 1px solid var(--border-soft);">
+          <td style="padding: 10px 14px; font-weight: 700; color: var(--text-heading); font-size: 0.9rem;">
+            ${escapeHtml(fromClass)}
+          </td>
+          <td style="padding: 10px 14px; text-align: center;">
+            <span class="badge" style="background: var(--teal-light, #F0FDFA); color: var(--teal-primary, #0D9488); font-weight: 700; padding: 3px 10px; border-radius: 9999px; font-size: 0.82rem;">
+              ${count}
+            </span>
+          </td>
+          <td style="padding: 10px 14px;">
+            ${targetHtml}
+          </td>
+        </tr>
+      `;
+    }).join('');
+
+    tbody.querySelectorAll('.custom-class-promo-select').forEach(sel => {
+      sel.addEventListener('change', () => {
+        refreshRollConflictsAndApplyState();
+      });
+    });
+
+    refreshRollConflictsAndApplyState();
+  }
+
+  function buildCustomClassSelectHtml(fromClass, knownClasses) {
+    const options = [
+      '<option value="">-- Select Target Class --</option>',
+      ...knownClasses.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`),
+      '<option value="__GRADUATE__">🎓 Graduate (leaves school)</option>',
+      '<option value="__LEAVE_AS_IS__">Leave as-is</option>'
+    ];
+    return `
+      <select class="form-select custom-class-promo-select" data-from-class="${escapeHtml(fromClass)}" style="font-size: 0.85rem; padding: 6px 10px; max-width: 260px; font-weight: 600;">
+        ${options.join('')}
+      </select>
+    `;
+  }
+
+  function getPromotionMappingsFromUI() {
+    const mappings = {};
+    const activeStudents = (state.students || []).filter(s => (s.status || 'Active') === 'Active');
+    const activeClasses = sortClasses(Array.from(new Set(activeStudents.map(s => s.className))).filter(Boolean));
+
+    activeClasses.forEach(c => {
+      const m = c.match(/^Class\s+(\d+)$/i);
+      if (m) {
+        const n = parseInt(m[1], 10);
+        if (n === 10) {
+          mappings[c] = { type: 'graduate', toClass: null, label: '🎓 Graduate', isAuto: true };
+        } else if (n >= 1 && n <= 9) {
+          mappings[c] = { type: 'promote', toClass: `Class ${n + 1}`, label: `Class ${n + 1}`, isAuto: true };
+        }
+      }
+    });
+
+    document.querySelectorAll('.custom-class-promo-select').forEach(sel => {
+      const fromClass = sel.getAttribute('data-from-class');
+      const val = sel.value;
+      if (val === '__GRADUATE__') {
+        mappings[fromClass] = { type: 'graduate', toClass: null, label: '🎓 Graduate', isAuto: false };
+      } else if (val === '__LEAVE_AS_IS__') {
+        mappings[fromClass] = { type: 'leave_as_is', toClass: fromClass, label: 'Leave as-is', isAuto: false };
+      } else if (val) {
+        mappings[fromClass] = { type: 'promote', toClass: val, label: val, isAuto: false };
+      } else {
+        mappings[fromClass] = { type: 'unmapped', toClass: '', label: '', isAuto: false };
+      }
+    });
+
+    return mappings;
+  }
+
+  function buildPromotionPlanAndConflicts(mappings) {
+    const activeStudents = (state.students || []).filter(s => (s.status || 'Active') === 'Active');
+    const rollChanges = [];
+    const plan = [];
+
+    const movingByTarget = new Map();
+    const stayingStudents = [];
+
+    activeStudents.forEach(s => {
+      const map = mappings[s.className];
+      if (!map || map.type === 'unmapped') {
+        return;
+      }
+
+      if (map.type === 'leave_as_is') {
+        plan.push({
+          studentId: s.id,
+          student: s,
+          fromClass: s.className,
+          fromSection: s.section || 'A',
+          fromRoll: s.rollNo || '',
+          toClass: s.className,
+          toRoll: s.rollNo || '',
+          graduate: false,
+          skipped: true,
+          rank: 0
+        });
+        stayingStudents.push(s);
+      } else if (map.type === 'graduate') {
+        plan.push({
+          studentId: s.id,
+          student: s,
+          fromClass: s.className,
+          fromSection: s.section || 'A',
+          fromRoll: s.rollNo || '',
+          toClass: s.className,
+          toRoll: s.rollNo || '',
+          graduate: true,
+          skipped: false,
+          rank: 1000
+        });
+      } else if (map.type === 'promote') {
+        const targetClass = map.toClass;
+        const section = (s.section || 'A').trim();
+        const targetKey = `${targetClass}__${section}`;
+        if (!movingByTarget.has(targetKey)) {
+          movingByTarget.set(targetKey, []);
+        }
+        movingByTarget.get(targetKey).push(s);
+      }
+    });
+
+    // Inactive students remain in their current class
+    const inactiveStudents = (state.students || []).filter(s => (s.status || 'Active') !== 'Active');
+    inactiveStudents.forEach(s => stayingStudents.push(s));
+
+    // Resolve roll numbers for moving students
+    movingByTarget.forEach((movers, targetKey) => {
+      const [targetClass, section] = targetKey.split('__');
+
+      const takenRolls = new Set();
+      stayingStudents.forEach(st => {
+        if (st.className === targetClass && (st.section || 'A').trim() === section && st.rollNo) {
+          takenRolls.add(String(st.rollNo).trim());
+        }
+      });
+
+      movers.sort((a, b) => {
+        const numA = parseInt(a.rollNo || '0', 10);
+        const numB = parseInt(b.rollNo || '0', 10);
+        if (!isNaN(numA) && !isNaN(numB) && numA !== numB) return numA - numB;
+        return String(a.rollNo || '').localeCompare(String(b.rollNo || ''));
+      });
+
+      movers.forEach(s => {
+        const desiredRoll = String(s.rollNo || '').trim();
+        let assignedRoll = desiredRoll;
+
+        if (desiredRoll && !takenRolls.has(desiredRoll)) {
+          takenRolls.add(desiredRoll);
+          assignedRoll = desiredRoll;
+        } else {
+          // Conflict! Allocate next free integer roll starting from 1
+          let candidate = 1;
+          while (takenRolls.has(String(candidate))) {
+            candidate++;
+          }
+          assignedRoll = String(candidate);
+          takenRolls.add(assignedRoll);
+
+          rollChanges.push({
+            studentId: s.id,
+            name: s.name,
+            fromClass: s.className,
+            toClass: targetClass,
+            section: section,
+            oldRoll: desiredRoll || '-',
+            newRoll: assignedRoll
+          });
+        }
+
+        const matchN = s.className.match(/^Class\s+(\d+)$/i);
+        const rank = matchN ? parseInt(matchN[1], 10) : 0;
+
+        plan.push({
+          studentId: s.id,
+          student: s,
+          fromClass: s.className,
+          fromSection: section,
+          fromRoll: s.rollNo || '',
+          toClass: targetClass,
+          toRoll: assignedRoll,
+          graduate: false,
+          skipped: false,
+          rank: rank
+        });
+      });
+    });
+
+    plan.sort((a, b) => b.rank - a.rank);
+
+    return { plan, rollChanges };
+  }
+
+  function refreshRollConflictsAndApplyState() {
+    const mappings = getPromotionMappingsFromUI();
+    const { plan, rollChanges } = buildPromotionPlanAndConflicts(mappings);
+    activePromotionPlan = plan;
+
+    const wrap = document.getElementById('promoRollChangesWrap');
+    if (wrap) {
+      if (rollChanges.length > 0) {
+        wrap.classList.remove('hidden');
+        wrap.innerHTML = `
+          <details style="background: #FFFBEB; border: 1px solid #FDE68A; border-radius: var(--radius-md); padding: 10px 14px;">
+            <summary style="cursor: pointer; font-weight: 700; color: #92400E; font-size: 0.85rem;">
+              ⚠️ Roll changes (${rollChanges.length})
+            </summary>
+            <ul style="margin: 8px 0 0 0; padding-left: 20px; font-size: 0.82rem; color: #78350F; max-height: 120px; overflow-y: auto;">
+              ${rollChanges.map(rc => `
+                <li>
+                  <strong>${escapeHtml(rc.name)}</strong> (${escapeHtml(rc.fromClass)} → ${escapeHtml(rc.toClass)} ${escapeHtml(rc.section)}): Roll #${escapeHtml(rc.oldRoll)} → <strong>Roll #${escapeHtml(rc.newRoll)}</strong>
+                </li>
+              `).join('')}
+            </ul>
+          </details>
+        `;
+      } else {
+        wrap.classList.add('hidden');
+        wrap.innerHTML = '';
+      }
+    }
+
+    updatePromoApplyButtonState();
+  }
+
+  function updatePromoApplyButtonState() {
+    const btn = document.getElementById('btnApplyPromotion');
+    if (!btn) return;
+
+    const isUnderstood = document.getElementById('promoConfirmUnderstand')?.checked === true;
+    const word = (document.getElementById('promoConfirmWord')?.value || '').trim();
+    const isWordCorrect = word === 'PROMOTE';
+
+    let allCustomMapped = true;
+    document.querySelectorAll('.custom-class-promo-select').forEach(sel => {
+      if (!sel.value) {
+        allCustomMapped = false;
+      }
+    });
+
+    const canApply = isUnderstood && isWordCorrect && allCustomMapped && activePromotionPlan.length > 0;
+    btn.disabled = !canApply;
+  }
+
+  function generatePromotionBackupCsv(plan) {
+    const rows = [
+      ['Student ID', 'Student Name', 'Class', 'Section', 'Roll No', 'Status']
+    ];
+    plan.forEach(item => {
+      const s = item.student;
+      rows.push([
+        s.id || '',
+        s.name || '',
+        item.fromClass || s.className || '',
+        item.fromSection || s.section || 'A',
+        item.fromRoll || s.rollNo || '',
+        s.status || 'Active'
+      ]);
+    });
+    return rows.map(r => r.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\r\n');
+  }
+
+  function downloadPromotionBackupCsv(plan) {
+    const schoolCode = (state.currentSchool && (state.currentSchool.code || state.currentSchool.schoolCode || state.currentSchool.schoolId || state.currentSchool.id)) || 'school';
+    const dateStr = getTodayISO();
+    const filename = `promotion-backup-${schoolCode}-${dateStr}.csv`;
+    const csvStr = generatePromotionBackupCsv(plan);
+    const blob = new Blob([csvStr], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  async function handleApplyPromotion() {
+    const mappings = getPromotionMappingsFromUI();
+    const { plan, rollChanges } = buildPromotionPlanAndConflicts(mappings);
+    activePromotionPlan = plan;
+
+    if (activePromotionPlan.length === 0) {
+      showToast('No students to promote in this plan.', 'info');
+      return;
+    }
+
+    const isUnderstood = document.getElementById('promoConfirmUnderstand')?.checked === true;
+    const word = (document.getElementById('promoConfirmWord')?.value || '').trim();
+    if (!isUnderstood || word !== 'PROMOTE') {
+      showToast('Please check "I understand" and type PROMOTE to confirm.', 'warn');
+      return;
+    }
+
+    // Trigger CSV backup download FIRST
+    downloadPromotionBackupCsv(activePromotionPlan);
+
+    // Switch to Step 3: Applying
+    isPromotionApplying = true;
+    const closeBtn = document.getElementById('btnClosePromotionModal');
+    if (closeBtn) closeBtn.disabled = true;
+
+    document.getElementById('promoStepPreview')?.classList.add('hidden');
+    document.getElementById('promoStepApplying')?.classList.remove('hidden');
+    document.getElementById('promoStepReport')?.classList.add('hidden');
+
+    await executePromotionPlan(activePromotionPlan);
+  }
+
+  async function executePromotionPlan(planEntries, isRetry = false) {
+    if (!isRetry) {
+      activePromotionPlan = planEntries;
+    }
+    const total = planEntries.length;
+    let done = 0;
+
+    const progressBar = document.getElementById('promoProgressBar');
+    const progressCount = document.getElementById('promoProgressCount');
+
+    for (const item of planEntries) {
+      if (item.skipped) {
+        done++;
+        item.succeeded = true;
+        item.failed = false;
+        continue;
+      }
+
+      done++;
+      if (progressBar) progressBar.style.width = `${Math.round((done / total) * 100)}%`;
+      if (progressCount) progressCount.textContent = `Applying ${done} of ${total} (${item.student.name})...`;
+
+      const originalStudent = state.students.find(s => s.id === item.studentId);
+      if (!originalStudent) {
+        item.failed = true;
+        item.error = 'Student not found in state';
+        continue;
+      }
+
+      const updatedStudent = {
+        ...originalStudent,
+        ...(item.graduate ? { status: 'Graduated' } : { className: item.toClass, class: item.toClass }),
+        ...(item.toRoll ? { rollNo: String(item.toRoll) } : {})
+      };
+
+      try {
+        if (FirestoreDB.isReady()) {
+          const res = await FirestoreDB.saveStudent(updatedStudent);
+          if (res === false) {
+            throw new Error('Firestore write returned false');
+          }
+        }
+        // Update in-memory state
+        Object.assign(originalStudent, updatedStudent);
+        item.succeeded = true;
+        item.failed = false;
+        item.error = null;
+      } catch (err) {
+        console.error('Promotion write error for', originalStudent.name, err);
+        item.failed = true;
+        item.succeeded = false;
+        item.error = err.message || 'Write failed';
+      }
+    }
+
+    // Save state to local storage
+    saveStorage(STORAGE_KEYS.STUDENTS, state.students);
+
+    // Re-render UI
+    renderClassDropdowns();
+    renderStudentsList();
+    renderAttendanceRoster();
+    renderFeesModule();
+    updateDashboardFeesStat();
+    updateStudentLimitIndicator();
+
+    // Done applying
+    isPromotionApplying = false;
+    const closeBtn = document.getElementById('btnClosePromotionModal');
+    if (closeBtn) closeBtn.disabled = false;
+
+    renderPromotionReport();
+  }
+
+  function renderPromotionReport() {
+    document.getElementById('promoStepPreview')?.classList.add('hidden');
+    document.getElementById('promoStepApplying')?.classList.add('hidden');
+    document.getElementById('promoStepReport')?.classList.remove('hidden');
+
+    const plan = activePromotionPlan;
+    const moved = plan.filter(p => !p.graduate && !p.skipped && p.succeeded).length;
+    const graduated = plan.filter(p => p.graduate && p.succeeded).length;
+    const skipped = plan.filter(p => p.skipped).length;
+    const failed = plan.filter(p => p.failed);
+    const rollChangesCount = plan.filter(p => p.succeeded && p.fromRoll !== p.toRoll && !p.graduate).length;
+
+    document.getElementById('promoReportMovedCount').textContent = moved;
+    document.getElementById('promoReportGradCount').textContent = graduated;
+    document.getElementById('promoReportRollChangesCount').textContent = rollChangesCount;
+    document.getElementById('promoReportSkippedCount').textContent = skipped;
+
+    // Per-class breakdown
+    const breakdownEl = document.getElementById('promoReportBreakdown');
+    if (breakdownEl) {
+      const classMap = new Map();
+      plan.filter(p => p.succeeded).forEach(p => {
+        let key = '';
+        if (p.graduate) {
+          key = `${p.fromClass} → 🎓 Graduated`;
+        } else if (p.skipped) {
+          key = `${p.fromClass} → Left as-is`;
+        } else {
+          key = `${p.fromClass} → ${p.toClass}`;
+        }
+        classMap.set(key, (classMap.get(key) || 0) + 1);
+      });
+
+      breakdownEl.innerHTML = Array.from(classMap.entries()).map(([k, v]) => `
+        <div style="display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px dashed var(--border-soft);">
+          <span style="font-weight: 600;">${escapeHtml(k)}</span>
+          <span style="font-weight: 700; color: var(--teal-primary, #0D9488);">${v} student${v === 1 ? '' : 's'}</span>
+        </div>
+      `).join('');
+    }
+
+    // Failures
+    const failuresWrap = document.getElementById('promoReportFailuresWrap');
+    const failuresList = document.getElementById('promoFailuresList');
+    const failuresCount = document.getElementById('promoFailuresCount');
+    if (failuresWrap && failuresList) {
+      if (failed.length > 0) {
+        failuresWrap.classList.remove('hidden');
+        if (failuresCount) failuresCount.textContent = failed.length;
+        failuresList.innerHTML = failed.map(f => `
+          <li>
+            <strong>${escapeHtml(f.student.name)}</strong> (${escapeHtml(f.fromClass)}): ${escapeHtml(f.error || 'Failed to save')}
+          </li>
+        `).join('');
+      } else {
+        failuresWrap.classList.add('hidden');
+        failuresList.innerHTML = '';
+      }
+    }
+  }
+
+  async function handleRetryFailedPromotion() {
+    const failedItems = activePromotionPlan.filter(p => p.failed);
+    if (failedItems.length === 0) return;
+
+    isPromotionApplying = true;
+    const closeBtn = document.getElementById('btnClosePromotionModal');
+    if (closeBtn) closeBtn.disabled = true;
+
+    document.getElementById('promoStepPreview')?.classList.add('hidden');
+    document.getElementById('promoStepApplying')?.classList.remove('hidden');
+    document.getElementById('promoStepReport')?.classList.add('hidden');
+
+    await executePromotionPlan(failedItems, true);
+  }
+
+  function bindPromotionEvents() {
+    document.getElementById('btnPromoteClasses')?.addEventListener('click', handleOpenPromotionModal);
+    document.getElementById('btnClosePromotionModal')?.addEventListener('click', closePromotionModal);
+    document.getElementById('btnCancelPromotion')?.addEventListener('click', closePromotionModal);
+    document.getElementById('btnDonePromotion')?.addEventListener('click', closePromotionModal);
+
+    document.getElementById('promoConfirmUnderstand')?.addEventListener('change', updatePromoApplyButtonState);
+    document.getElementById('promoConfirmWord')?.addEventListener('input', updatePromoApplyButtonState);
+    document.getElementById('btnApplyPromotion')?.addEventListener('click', handleApplyPromotion);
+    document.getElementById('btnRetryFailedPromotion')?.addEventListener('click', handleRetryFailedPromotion);
+
+    // Backdrop click
+    document.getElementById('promotionModal')?.addEventListener('click', (e) => {
+      if (e.target.id === 'promotionModal' && !isPromotionApplying) {
+        closePromotionModal();
+      }
+    });
+
+    // Escape key
+    document.addEventListener('keydown', (e) => {
+      if ((e.key === 'Escape' || e.key === 'Esc') && !isPromotionApplying) {
+        const modal = document.getElementById('promotionModal');
+        if (modal && !modal.classList.contains('hidden')) {
+          closePromotionModal();
+        }
+      }
+    });
+  }
+
   // Window exports for HTML onclick handlers
   window.openImportModal = openImportModal;
   window.closeImportModal = closeImportModal;
@@ -10485,11 +11097,21 @@ Please review the syllabus and schedule to support your child's learning.
   window.__openBulkWhatsAppModal = openBulkWhatsAppModal;
   window.__closeBulkWhatsAppModal = closeBulkWhatsAppModal;
   window.__getBulkWhatsAppSession = () => bulkWASession;
+  window.handleOpenPromotionModal = handleOpenPromotionModal;
+  window.openPromotionModal = openPromotionModal;
+  window.closePromotionModal = closePromotionModal;
+  window.__openPromotionModal = openPromotionModal;
+  window.__closePromotionModal = closePromotionModal;
+  window.__getPromotionPlan = () => activePromotionPlan;
+  window.__buildPromotionPlanAndConflicts = buildPromotionPlanAndConflicts;
+  window.__executePromotionPlan = executePromotionPlan;
+  window.__generatePromotionBackupCsv = generatePromotionBackupCsv;
   window.processImportFile = processImportFile;
   window.handleImportDragEnter = handleImportDragEnter;
   window.handleImportDragOver = handleImportDragOver;
   window.handleImportDragLeave = handleImportDragLeave;
   window.handleImportDrop = handleImportDrop;
+  window.FirestoreDB = FirestoreDB;
 
 
   function start() {

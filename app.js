@@ -8462,11 +8462,18 @@ Please review the syllabus and schedule to support your child's learning.
 
     resetImportToUpload();
     modal.classList.remove('hidden');
+
+    window.addEventListener('dragover', handleWindowImportDragOver);
+    window.addEventListener('drop', handleWindowImportDrop);
   }
 
   function closeImportModal() {
     const modal = document.getElementById('importModal');
     if (modal) modal.classList.add('hidden');
+    window.removeEventListener('dragover', handleWindowImportDragOver);
+    window.removeEventListener('drop', handleWindowImportDrop);
+    const dropzone = document.getElementById('importDropzone');
+    if (dropzone) dropzone.classList.remove('dragover');
     resetImportToUpload();
   }
 
@@ -8492,6 +8499,8 @@ Please review the syllabus and schedule to support your child's learning.
     if (typeTabs) typeTabs.classList.remove('hidden');
     if (uploadErr) uploadErr.classList.add('hidden');
     if (fileInput) fileInput.value = '';
+    const dropzone = document.getElementById('importDropzone');
+    if (dropzone) dropzone.classList.remove('dragover');
 
     // Update active tab button
     document.querySelectorAll('#importTypeTabs .sub-tab-btn').forEach(btn => {
@@ -8602,8 +8611,7 @@ Please review the syllabus and schedule to support your child's learning.
     URL.revokeObjectURL(url);
   }
 
-  function handleImportFileSelect(e) {
-    const file = e.target.files && e.target.files[0];
+  function processImportFile(file) {
     if (!file) return;
 
     const fileName = file.name || '';
@@ -8611,7 +8619,8 @@ Please review the syllabus and schedule to support your child's learning.
 
     if (ext !== '.xlsx' && ext !== '.xls' && ext !== '.csv') {
       showImportError(`Unsupported file type "${ext || 'unknown'}". Please upload an Excel (.xlsx, .xls) or CSV (.csv) file.`);
-      e.target.value = '';
+      const fileInput = document.getElementById('importFileInput');
+      if (fileInput) fileInput.value = '';
       return;
     }
 
@@ -8640,6 +8649,68 @@ Please review the syllabus and schedule to support your child's learning.
       showImportError('Error reading file from disk.');
     };
     reader.readAsArrayBuffer(file);
+  }
+
+  function handleImportFileSelect(e) {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    processImportFile(file);
+  }
+
+  function handleImportDragEnter(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    const dropzone = document.getElementById('importDropzone');
+    if (dropzone) dropzone.classList.add('dragover');
+  }
+
+  function handleImportDragOver(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.dataTransfer) {
+      e.dataTransfer.dropEffect = 'copy';
+    }
+    const dropzone = document.getElementById('importDropzone');
+    if (dropzone && !dropzone.classList.contains('dragover')) {
+      dropzone.classList.add('dragover');
+    }
+  }
+
+  function handleImportDragLeave(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    const dropzone = document.getElementById('importDropzone');
+    if (dropzone && (!e.relatedTarget || !dropzone.contains(e.relatedTarget))) {
+      dropzone.classList.remove('dragover');
+    }
+  }
+
+  function handleImportDrop(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    const dropzone = document.getElementById('importDropzone');
+    if (dropzone) dropzone.classList.remove('dragover');
+
+    const dt = e.dataTransfer;
+    const file = dt && dt.files && dt.files[0];
+    if (file) {
+      processImportFile(file);
+    }
+  }
+
+  function handleWindowImportDragOver(e) {
+    const modal = document.getElementById('importModal');
+    if (!modal || modal.classList.contains('hidden')) return;
+    e.preventDefault();
+    if (e.dataTransfer) {
+      e.dataTransfer.dropEffect = 'none';
+    }
+  }
+
+  function handleWindowImportDrop(e) {
+    const modal = document.getElementById('importModal');
+    if (!modal || modal.classList.contains('hidden')) return;
+    e.preventDefault();
   }
 
   function normalizeHeaderName(str) {
@@ -9799,6 +9870,11 @@ Please review the syllabus and schedule to support your child's learning.
   window.__validateImportRows = validateImportRows;
   window.validateImportRows = validateImportRows;
   window.processRawImportRows = processRawImportRows;
+  window.processImportFile = processImportFile;
+  window.handleImportDragEnter = handleImportDragEnter;
+  window.handleImportDragOver = handleImportDragOver;
+  window.handleImportDragLeave = handleImportDragLeave;
+  window.handleImportDrop = handleImportDrop;
 
 
   function start() {

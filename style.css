@@ -5273,10 +5273,14 @@ body.printing-defaulters #printableDefaulters {
   transition: all 0.2s ease;
 }
 
+.import-dropzone > * {
+  pointer-events: none;
+}
+
 .import-dropzone:hover,
 .import-dropzone.dragover {
-  background: #CCFBF1;
-  border-color: #0F766E;
+  background: #CCFBF1 !important;
+  border-color: #0F766E !important;
 }
 
 .import-stat-grid {

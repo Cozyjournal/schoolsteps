@@ -134,7 +134,10 @@
     PTM_EVENTS: 'schoolsteps_ptm_events_v1',
     CALL_LOGS: 'schoolsteps_call_logs_v1',
     FEES: 'schoolsteps_fees_v1',
-    SYLLABUS: 'schoolsteps_syllabus_v1'
+    SYLLABUS: 'schoolsteps_syllabus_v1',
+    TEACHERS: 'schoolsteps_teachers_v1',
+    TEACHER_ATTENDANCE: 'schoolsteps_teacher_attendance_v1',
+    SALARY_PAYMENTS: 'schoolsteps_salary_payments_v1'
   };
 
   function getUserRole(email) {
@@ -1399,12 +1402,16 @@
           localStorage.setItem(ROLE_STORAGE_PREFIX + emailLower, authoritativeRole);
           updateUserHeader(currentUser.email, authoritativeRole);
           updateFeesTabVisibility();
+          updateTeachersTabVisibility();
           updateImportButtonsVisibility();
         } else {
           const fallbackRole = 'Admin';
           state.currentUser = { email: currentUser.email, role: fallbackRole };
           localStorage.setItem(ROLE_STORAGE_PREFIX + emailLower, fallbackRole);
           updateUserHeader(currentUser.email, fallbackRole);
+          updateFeesTabVisibility();
+          updateTeachersTabVisibility();
+          updateImportButtonsVisibility();
         }
       } catch (err) {
         console.warn('User record lookup warning:', err);
@@ -1470,6 +1477,7 @@
             applySchoolBranding(state.profile);
             updateSubscriptionState(state.currentSchool);
             updateFeesTabVisibility();
+            updateTeachersTabVisibility();
             updateImportButtonsVisibility();
           }
         } catch (err) {
@@ -1505,6 +1513,9 @@
           callSnap,
           feePaymentsSnap,
           syllabiSnap,
+          teachersSnap,
+          teacherAttSnap,
+          salaryPaymentsSnap,
           schoolSnap
         ] = await Promise.all([
           db.collection('students').where('schoolId', '==', state.currentSchoolId).get(),
@@ -1527,6 +1538,27 @@
             .get()
             .catch(err => {
               console.warn('syllabi load warning:', err);
+              return { docs: [] };
+            }),
+          db.collection('users')
+            .where('schoolId', '==', state.currentSchoolId)
+            .get()
+            .catch(err => {
+              console.warn('teachers load warning:', err);
+              return { docs: [] };
+            }),
+          db.collection('teacherAttendance')
+            .where('schoolId', '==', state.currentSchoolId)
+            .get()
+            .catch(err => {
+              console.warn('teacherAttendance load warning:', err);
+              return { docs: [] };
+            }),
+          db.collection('salaryPayments')
+            .where('schoolId', '==', state.currentSchoolId)
+            .get()
+            .catch(err => {
+              console.warn('salaryPayments load warning:', err);
               return { docs: [] };
             }),
           db.collection('schools').doc(state.currentSchoolId).get()
@@ -1647,6 +1679,58 @@
             };
           });
           saveStorage(STORAGE_KEYS.SYLLABUS, state.syllabi);
+        }
+
+        // 7d. Teachers (Admin Only)
+        if (teachersSnap && teachersSnap.docs) {
+          state.teachers = teachersSnap.docs
+            .map(doc => {
+              const data = doc.data();
+              const email = (data.email || doc.id).toLowerCase();
+              return {
+                id: doc.id,
+                email: email,
+                name: data.name || data.displayName || email,
+                role: data.role || 'Teacher',
+                schoolId: data.schoolId,
+                designation: data.designation || '',
+                monthlySalary: (data.monthlySalary != null && Number(data.monthlySalary) >= 0) ? Number(data.monthlySalary) : null
+              };
+            })
+            .filter(u => u.role === 'Teacher');
+          state.teachers.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+          saveStorage(STORAGE_KEYS.TEACHERS, state.teachers);
+        }
+
+        // 7e. Teacher Attendance
+        if (teacherAttSnap && teacherAttSnap.docs) {
+          state.teacherAttendance = {};
+          teacherAttSnap.docs.forEach(doc => {
+            const d = doc.data();
+            if (d.date && d.teacherEmail) {
+              const dateKey = d.date;
+              const emailKey = d.teacherEmail.toLowerCase();
+              state.teacherAttendance[dateKey] = state.teacherAttendance[dateKey] || {};
+              state.teacherAttendance[dateKey][emailKey] = {
+                status: d.status || 'Present',
+                time: d.time || ''
+              };
+            }
+          });
+          saveStorage(STORAGE_KEYS.TEACHER_ATTENDANCE, state.teacherAttendance);
+        }
+
+        // 7f. Salary Payments
+        if (salaryPaymentsSnap && salaryPaymentsSnap.docs) {
+          state.salaryPayments = salaryPaymentsSnap.docs.map(doc => {
+            const data = doc.data();
+            return {
+              id: doc.id,
+              ...data,
+              amount: Number(data.amount) || 0
+            };
+          });
+          saveStorage(STORAGE_KEYS.SALARY_PAYMENTS, state.salaryPayments);
         }
 
         // 8. School Profile & Billing Sync
@@ -2083,6 +2167,72 @@
       });
     },
 
+    async saveTeacherProfile(email, { designation, monthlySalary }) {
+      if (!state.currentSchoolId || !db) return false;
+      const emailLower = email.toLowerCase();
+      return this.writeWithRetry(`Teacher profile for ${emailLower}`, async () => {
+        const updateData = {
+          designation: (designation || '').trim(),
+          monthlySalary: Number(monthlySalary) || 0
+        };
+        await db.collection('users').doc(emailLower).set(updateData, { merge: true });
+        return true;
+      });
+    },
+
+    async saveTeacherAttendanceRecord(dateStr, teacherEmail, teacherName, status, time = '', markedBy = '') {
+      if (!state.currentSchoolId || !db) return false;
+      const emailLower = teacherEmail.toLowerCase();
+      const docId = `${state.currentSchoolId}_${emailLower}_${dateStr}`;
+      return this.writeWithRetry(`Teacher attendance for ${emailLower}`, async () => {
+        const record = {
+          schoolId: state.currentSchoolId,
+          teacherEmail: emailLower,
+          teacherName: teacherName || emailLower,
+          date: dateStr,
+          status: status,
+          time: time || '',
+          markedBy: markedBy || (auth && auth.currentUser && auth.currentUser.email) || 'Admin',
+          updatedAt: new Date().toISOString()
+        };
+        await db.collection('teacherAttendance').doc(docId).set(record, { merge: true });
+        return record;
+      });
+    },
+
+    async deleteTeacherAttendanceRecord(dateStr, teacherEmail) {
+      if (!state.currentSchoolId || !db) return false;
+      const emailLower = teacherEmail.toLowerCase();
+      const docId = `${state.currentSchoolId}_${emailLower}_${dateStr}`;
+      return this.writeWithRetry(`Clear teacher attendance for ${emailLower}`, async () => {
+        await db.collection('teacherAttendance').doc(docId).delete().catch(() => {});
+        return true;
+      });
+    },
+
+    async saveSalaryPayment(payment) {
+      if (!state.currentSchoolId || !db) return false;
+      const docId = payment.id || `sp_${state.currentSchoolId}_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+      return this.writeWithRetry(`Salary payment for ${payment.teacherEmail}`, async () => {
+        const record = {
+          ...payment,
+          id: docId,
+          schoolId: state.currentSchoolId,
+          updatedAt: new Date().toISOString()
+        };
+        await db.collection('salaryPayments').doc(docId).set(record, { merge: true });
+        return record;
+      });
+    },
+
+    async deleteSalaryPayment(id) {
+      if (!state.currentSchoolId || !db) return false;
+      return this.writeWithRetry(`Delete Salary Payment ${id}`, async () => {
+        await db.collection('salaryPayments').doc(id).delete();
+        return true;
+      });
+    },
+
     async saveUser(email, role, schoolName, schoolId) {
       if (!email || !db) return;
       return this.writeWithRetry('Save User Role', async () => {
@@ -2121,6 +2271,12 @@
     state.syllabi = loadStorage(STORAGE_KEYS.SYLLABUS, []);
     state.syllabusSelectedClass = state.syllabusSelectedClass || 'Class 1';
     state.syllabusSelectedSection = state.syllabusSelectedSection || 'ALL';
+    state.teachers = loadStorage(STORAGE_KEYS.TEACHERS, []);
+    state.teacherAttendance = loadStorage(STORAGE_KEYS.TEACHER_ATTENDANCE, {});
+    state.salaryPayments = loadStorage(STORAGE_KEYS.SALARY_PAYMENTS, []);
+    state.teacherSelectedMonth = getCurrentMonthKey();
+    state.teacherAttendanceDate = getTodayISO();
+    state.teacherActiveSubView = 'attendance';
   }
 
   function getTodayISO() {
@@ -2215,6 +2371,26 @@
       });
     });
     updateFeesTabVisibility();
+    updateTeachersTabVisibility();
+  }
+
+  function updateTeachersTabVisibility() {
+    const userRole = (state.currentUser && state.currentUser.role) || ((auth && auth.currentUser) ? getUserRole(auth.currentUser.email) : '');
+    const isAdmin = userRole === 'Admin' && !!state.currentSchoolId;
+
+    const desktopBtn = document.getElementById('tabBtnTeachers') || document.querySelector('.tab-btn[data-tab="tab-teachers"]');
+    const mobileBtn = document.getElementById('mobileTabBtnTeachers') || document.querySelector('.mobile-tab-btn[data-tab="tab-teachers"]');
+
+    if (isAdmin) {
+      desktopBtn?.classList.remove('hidden');
+      mobileBtn?.classList.remove('hidden');
+    } else {
+      desktopBtn?.classList.add('hidden');
+      mobileBtn?.classList.add('hidden');
+      if (state.activeTab === 'tab-teachers') {
+        switchTab('tab-students');
+      }
+    }
   }
 
   function updateFeesTabVisibility() {
@@ -2249,6 +2425,16 @@
     }
 
     if (tabId === 'tab-fees') {
+      const userRole = (state.currentUser && state.currentUser.role) || ((auth && auth.currentUser) ? getUserRole(auth.currentUser.email) : '');
+      const isAdmin = userRole === 'Admin' && !!state.currentSchoolId;
+      if (!isAdmin) {
+        showToast('Access restricted: School Admin only.', 'error');
+        switchTab('tab-students');
+        return;
+      }
+    }
+
+    if (tabId === 'tab-teachers') {
       const userRole = (state.currentUser && state.currentUser.role) || ((auth && auth.currentUser) ? getUserRole(auth.currentUser.email) : '');
       const isAdmin = userRole === 'Admin' && !!state.currentSchoolId;
       if (!isAdmin) {
@@ -2296,6 +2482,8 @@
       renderFeesModule();
     } else if (tabId === 'tab-syllabus') {
       renderSyllabusModule();
+    } else if (tabId === 'tab-teachers') {
+      renderTeachersModule();
     }
     renderProFeatureLock();
   }
@@ -4826,6 +5014,7 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
     bindExportDataEvents();
     bindResultCardsEvents();
     bindSyllabusEvents();
+    bindTeachersEvents();
 
     const subModal = document.getElementById('subscriptionModal');
     subModal?.addEventListener('click', (e) => {
@@ -5622,6 +5811,7 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
         updateSubscriptionState(state.currentSchool);
       }
       updateFeesTabVisibility();
+      updateTeachersTabVisibility();
       updateImportButtonsVisibility();
       renderApp();
       console.log('Firestore background sync completed successfully.');
@@ -5767,6 +5957,7 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
         updateSubscriptionState(state.currentSchool);
       }
       updateFeesTabVisibility();
+      updateTeachersTabVisibility();
       updateImportButtonsVisibility();
 
       // Render the app with real data
@@ -8640,6 +8831,7 @@ Please review the syllabus and schedule to support your child's learning.
     }
     try {
       updateFeesTabVisibility();
+      updateTeachersTabVisibility();
       updateImportButtonsVisibility();
     } catch (e) {
       console.warn('updateFeesTabVisibility render warning:', e);
@@ -8660,6 +8852,7 @@ Please review the syllabus and schedule to support your child's learning.
     try { renderFeesModule(); } catch (e) { console.warn('renderFeesModule warning:', e); }
     try { updateDashboardFeesStat(); } catch (e) { console.warn('updateDashboardFeesStat warning:', e); }
     try { renderSyllabusModule(); } catch (e) { console.warn('renderSyllabusModule warning:', e); }
+    try { renderTeachersModule(); } catch (e) { console.warn('renderTeachersModule warning:', e); }
   }
 
   function initApp() {
@@ -12477,6 +12670,819 @@ Please review the syllabus and schedule to support your child's learning.
   window.printSingleResultCard = printSingleResultCard;
   window.getResultCardWhatsAppMessage = getResultCardWhatsAppMessage;
   window.getResultCardWhatsAppUrl = getResultCardWhatsAppUrl;
+
+  // ========================================================
+  // MODULE: Teacher Attendance & Salary (Admin Only)
+  // ========================================================
+  let currentTeacherSubView = 'attendance';
+
+  function switchTeacherSubView(subView) {
+    const userRole = (state.currentUser && state.currentUser.role) || ((auth && auth.currentUser) ? getUserRole(auth.currentUser.email) : '');
+    const isAdmin = userRole === 'Admin' && !!state.currentSchoolId;
+    if (!isAdmin) return;
+
+    currentTeacherSubView = subView || 'attendance';
+
+    const btnAtt = document.getElementById('btnTeacherSubNavAttendance');
+    const btnMon = document.getElementById('btnTeacherSubNavMonthly');
+    const btnProf = document.getElementById('btnTeacherSubNavProfiles');
+
+    btnAtt?.classList.toggle('active', currentTeacherSubView === 'attendance');
+    btnMon?.classList.toggle('active', currentTeacherSubView === 'monthly');
+    btnProf?.classList.toggle('active', currentTeacherSubView === 'profiles');
+
+    const panelAtt = document.getElementById('teacherAttendanceSubView');
+    const panelMon = document.getElementById('teacherMonthlySubView');
+    const panelProf = document.getElementById('teacherProfilesSubView');
+
+    panelAtt?.classList.toggle('hidden', currentTeacherSubView !== 'attendance');
+    panelMon?.classList.toggle('hidden', currentTeacherSubView !== 'monthly');
+    panelProf?.classList.toggle('hidden', currentTeacherSubView !== 'profiles');
+
+    if (currentTeacherSubView === 'attendance') {
+      renderTeacherAttendance();
+    } else if (currentTeacherSubView === 'monthly') {
+      renderTeacherMonthlySummary();
+    } else if (currentTeacherSubView === 'profiles') {
+      renderTeacherProfiles();
+    }
+  }
+
+  function renderTeachersModule() {
+    const userRole = (state.currentUser && state.currentUser.role) || ((auth && auth.currentUser) ? getUserRole(auth.currentUser.email) : '');
+    const isAdmin = userRole === 'Admin' && !!state.currentSchoolId;
+    if (!isAdmin) return;
+
+    const dp = document.getElementById('teacherAttDatePicker');
+    if (dp && !dp.value) dp.value = getTodayISO();
+
+    const mp = document.getElementById('teacherMonthPicker');
+    if (mp && !mp.value) mp.value = getCurrentMonthKey();
+
+    switchTeacherSubView(currentTeacherSubView || 'attendance');
+  }
+
+  function updateTeacherAttendanceCounters(p, a, l, lv, total) {
+    const elP = document.getElementById('countTeacherPresent');
+    const elA = document.getElementById('countTeacherAbsent');
+    const elL = document.getElementById('countTeacherLate');
+    const elLv = document.getElementById('countTeacherLeave');
+    const elTotal = document.getElementById('countTeacherTotal');
+    const elPercent = document.getElementById('teacherAttRatePercent');
+
+    if (elP) elP.textContent = p;
+    if (elA) elA.textContent = a;
+    if (elL) elL.textContent = l;
+    if (elLv) elLv.textContent = lv;
+    if (elTotal) elTotal.textContent = total;
+
+    const markedTotal = p + a + l + lv;
+    const rate = markedTotal > 0 ? Math.round(((p + l) / markedTotal) * 100) : 0;
+    if (elPercent) elPercent.textContent = `${rate}%`;
+  }
+
+  function renderTeacherAttendance() {
+    const dp = document.getElementById('teacherAttDatePicker');
+    if (!dp) return;
+    if (!dp.value) dp.value = getTodayISO();
+    const dateStr = dp.value;
+
+    const dateLabel = document.getElementById('teacherAttSummaryDateLabel');
+    if (dateLabel) dateLabel.textContent = formatDateHuman(dateStr);
+
+    const teachers = (state.teachers || []).slice().sort((a, b) => (a.name || a.email).localeCompare(b.name || b.email));
+    const rosterEl = document.getElementById('teacherAttendanceRosterList');
+    const emptyEl = document.getElementById('noTeachersAttState');
+
+    if (teachers.length === 0) {
+      if (rosterEl) rosterEl.innerHTML = '';
+      emptyEl?.classList.remove('hidden');
+      updateTeacherAttendanceCounters(0, 0, 0, 0, 0);
+      return;
+    }
+
+    emptyEl?.classList.add('hidden');
+
+    const dayRecords = (state.teacherAttendance && state.teacherAttendance[dateStr]) || {};
+    let countP = 0, countA = 0, countL = 0, countLv = 0;
+
+    const html = teachers.map(teacher => {
+      const emailLower = (teacher.email || '').toLowerCase();
+      const rec = dayRecords[emailLower];
+      const status = rec ? rec.status : '';
+
+      if (status === 'Present') countP++;
+      else if (status === 'Absent') countA++;
+      else if (status === 'Late') countL++;
+      else if (status === 'Leave') countLv++;
+
+      return `
+        <div class="roster-item" data-teacher-email="${escapeHtml(emailLower)}">
+          <div class="roster-student-info">
+            <div class="roster-roll" style="font-size: 1.25rem; display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 50%; background: #EEF2FF; color: #4F46E5;">👨‍🏫</div>
+            <div class="roster-name-block">
+              <div class="roster-student-name">${escapeHtml(teacher.name || teacher.email)}</div>
+              <div class="roster-parent-sub">${escapeHtml(teacher.designation || 'Teacher')} • ${escapeHtml(teacher.email)}</div>
+            </div>
+          </div>
+          <div class="roster-btn-group" style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
+            <button type="button" class="btn-att ${status === 'Present' ? 'active-present' : ''}" data-status="Present" data-teacher-email="${escapeHtml(emailLower)}" onclick="setTeacherAttendanceStatus('${escapeHtml(emailLower)}', 'Present')">Present</button>
+            <button type="button" class="btn-att ${status === 'Absent' ? 'active-absent' : ''}" data-status="Absent" data-teacher-email="${escapeHtml(emailLower)}" onclick="setTeacherAttendanceStatus('${escapeHtml(emailLower)}', 'Absent')">Absent</button>
+            <button type="button" class="btn-att ${status === 'Late' ? 'active-late' : ''}" data-status="Late" data-teacher-email="${escapeHtml(emailLower)}" onclick="setTeacherAttendanceStatus('${escapeHtml(emailLower)}', 'Late')">Late</button>
+            <button type="button" class="btn-att ${status === 'Leave' ? 'active-leave' : ''}" data-status="Leave" data-teacher-email="${escapeHtml(emailLower)}" onclick="setTeacherAttendanceStatus('${escapeHtml(emailLower)}', 'Leave')">Leave</button>
+            ${status ? `<button type="button" class="btn btn-sm btn-subtle" title="Clear mark" onclick="clearTeacherAttendanceStatus('${escapeHtml(emailLower)}')">✕ Clear</button>` : ''}
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    if (rosterEl) rosterEl.innerHTML = html;
+    updateTeacherAttendanceCounters(countP, countA, countL, countLv, teachers.length);
+  }
+
+  function setTeacherAttendanceStatus(teacherEmail, newStatus) {
+    const dp = document.getElementById('teacherAttDatePicker');
+    const dateStr = dp?.value || getTodayISO();
+    const emailLower = (teacherEmail || '').toLowerCase();
+
+    const currentRec = (state.teacherAttendance && state.teacherAttendance[dateStr] && state.teacherAttendance[dateStr][emailLower]);
+    if (currentRec && currentRec.status === newStatus) {
+      clearTeacherAttendanceStatus(emailLower);
+      return;
+    }
+
+    if (!state.teacherAttendance) state.teacherAttendance = {};
+    if (!state.teacherAttendance[dateStr]) state.teacherAttendance[dateStr] = {};
+
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    state.teacherAttendance[dateStr][emailLower] = {
+      status: newStatus,
+      time: timeStr
+    };
+    saveStorage(STORAGE_KEYS.TEACHER_ATTENDANCE, state.teacherAttendance);
+
+    if (FirestoreDB.isReady() && state.currentSchoolId) {
+      const teacher = (state.teachers || []).find(t => t.email.toLowerCase() === emailLower);
+      FirestoreDB.saveTeacherAttendanceRecord(dateStr, emailLower, teacher ? teacher.name : emailLower, newStatus, timeStr);
+    }
+
+    renderTeacherAttendance();
+  }
+
+  function clearTeacherAttendanceStatus(teacherEmail) {
+    const dp = document.getElementById('teacherAttDatePicker');
+    const dateStr = dp?.value || getTodayISO();
+    const emailLower = (teacherEmail || '').toLowerCase();
+
+    if (state.teacherAttendance && state.teacherAttendance[dateStr]) {
+      delete state.teacherAttendance[dateStr][emailLower];
+      saveStorage(STORAGE_KEYS.TEACHER_ATTENDANCE, state.teacherAttendance);
+    }
+
+    if (FirestoreDB.isReady() && state.currentSchoolId) {
+      FirestoreDB.deleteTeacherAttendanceRecord(dateStr, emailLower);
+    }
+
+    renderTeacherAttendance();
+  }
+
+  function handleMarkAllTeachersPresent() {
+    const dp = document.getElementById('teacherAttDatePicker');
+    const dateStr = dp?.value || getTodayISO();
+    const teachers = state.teachers || [];
+
+    if (teachers.length === 0) {
+      showToast('No teacher accounts found', 'info');
+      return;
+    }
+
+    if (!state.teacherAttendance) state.teacherAttendance = {};
+    if (!state.teacherAttendance[dateStr]) state.teacherAttendance[dateStr] = {};
+
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    teachers.forEach(t => {
+      const emailLower = t.email.toLowerCase();
+      state.teacherAttendance[dateStr][emailLower] = { status: 'Present', time: timeStr };
+      if (FirestoreDB.isReady() && state.currentSchoolId) {
+        FirestoreDB.saveTeacherAttendanceRecord(dateStr, emailLower, t.name || emailLower, 'Present', timeStr);
+      }
+    });
+
+    saveStorage(STORAGE_KEYS.TEACHER_ATTENDANCE, state.teacherAttendance);
+    renderTeacherAttendance();
+    showToast('Marked all teachers Present for selected date', 'success');
+  }
+
+  async function handleSaveTeacherAttendance() {
+    const dp = document.getElementById('teacherAttDatePicker');
+    const dateStr = dp?.value || getTodayISO();
+    const dayRecords = (state.teacherAttendance && state.teacherAttendance[dateStr]) || {};
+    const teachers = state.teachers || [];
+
+    if (FirestoreDB.isReady() && state.currentSchoolId) {
+      const promises = teachers.map(t => {
+        const emailLower = t.email.toLowerCase();
+        const rec = dayRecords[emailLower];
+        if (rec && rec.status) {
+          return FirestoreDB.saveTeacherAttendanceRecord(dateStr, emailLower, t.name || emailLower, rec.status, rec.time || '');
+        } else {
+          return FirestoreDB.deleteTeacherAttendanceRecord(dateStr, emailLower);
+        }
+      });
+      await Promise.all(promises);
+    }
+    showToast('Teacher attendance saved & synced!', 'success');
+  }
+
+  function renderTeacherProfiles() {
+    const container = document.getElementById('teacherProfilesCardsContainer');
+    const emptyEl = document.getElementById('noTeachersProfilesState');
+    if (!container) return;
+
+    const teachers = (state.teachers || []).slice().sort((a, b) => (a.name || a.email).localeCompare(b.name || b.email));
+
+    if (teachers.length === 0) {
+      container.innerHTML = '';
+      emptyEl?.classList.remove('hidden');
+      return;
+    }
+
+    emptyEl?.classList.add('hidden');
+
+    container.innerHTML = teachers.map(teacher => {
+      const emailLower = (teacher.email || '').toLowerCase();
+      const designation = teacher.designation || '';
+      const salary = (teacher.monthlySalary != null && teacher.monthlySalary >= 0) ? teacher.monthlySalary : '';
+
+      return `
+        <div class="card teacher-profile-card" style="border: 1px solid var(--border-soft); border-radius: var(--radius-md); padding: 18px; background: var(--bg-surface);">
+          <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 14px;">
+            <div style="width: 44px; height: 44px; border-radius: 50%; background: #EEF2FF; color: #4F46E5; display: flex; align-items: center; justify-content: center; font-size: 1.35rem; flex-shrink: 0;">
+              👨‍🏫
+            </div>
+            <div style="flex: 1; min-width: 0;">
+              <div style="font-size: 1.05rem; font-weight: 700; color: var(--text-heading); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                ${escapeHtml(teacher.name || teacher.email)}
+              </div>
+              <div style="font-size: 0.8rem; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                ${escapeHtml(teacher.email)}
+              </div>
+            </div>
+          </div>
+          <div class="form-group" style="margin-bottom: 12px;">
+            <label for="prof_des_${escapeHtml(emailLower)}" class="form-label" style="font-size: 0.78rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase;">Designation</label>
+            <input type="text" id="prof_des_${escapeHtml(emailLower)}" class="form-input" value="${escapeHtml(designation)}" placeholder="e.g. Senior Science Teacher, Class Incharge">
+          </div>
+          <div class="form-group" style="margin-bottom: 16px;">
+            <label for="prof_sal_${escapeHtml(emailLower)}" class="form-label" style="font-size: 0.78rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase;">Monthly Salary (Rs)</label>
+            <input type="number" id="prof_sal_${escapeHtml(emailLower)}" class="form-input" min="0" step="500" value="${salary}" placeholder="e.g. 40000">
+          </div>
+          <div style="display: flex; justify-content: flex-end;">
+            <button type="button" class="btn btn-primary btn-sm" onclick="handleSaveTeacherProfile('${escapeHtml(emailLower)}')">
+              <span>💾 Save Profile</span>
+            </button>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  async function handleSaveTeacherProfile(emailLower) {
+    emailLower = (emailLower || '').toLowerCase();
+    const teacher = (state.teachers || []).find(t => t.email.toLowerCase() === emailLower);
+    if (!teacher) return;
+
+    const desInput = document.getElementById('prof_des_' + emailLower);
+    const salInput = document.getElementById('prof_sal_' + emailLower);
+
+    const desVal = desInput ? desInput.value.trim() : '';
+    const salRaw = salInput ? salInput.value.trim() : '';
+
+    let salVal = null;
+    if (salRaw !== '') {
+      salVal = Number(salRaw);
+      if (isNaN(salVal) || salVal < 0) {
+        showToast('Please enter a valid salary amount (≥ 0)', 'error');
+        return;
+      }
+    }
+
+    teacher.designation = desVal;
+    teacher.monthlySalary = salVal;
+    saveStorage(STORAGE_KEYS.TEACHERS, state.teachers);
+
+    if (FirestoreDB.isReady() && state.currentSchoolId) {
+      await FirestoreDB.saveTeacherProfile(emailLower, { designation: desVal, monthlySalary: salVal });
+    }
+
+    showToast(`Profile updated for ${teacher.name || emailLower}`, 'success');
+    renderTeacherProfiles();
+    renderTeacherMonthlySummary();
+  }
+
+  function updateTeacherMonthlyStats(base, paid, balance, count) {
+    const elExp = document.getElementById('teacherStatExpectedSalary');
+    const elPaid = document.getElementById('teacherStatPaidSalary');
+    const elBal = document.getElementById('teacherStatBalanceSalary');
+    const elCnt = document.getElementById('teacherStatActiveCount');
+
+    if (elExp) elExp.textContent = `Rs ${base.toLocaleString()}`;
+    if (elPaid) elPaid.textContent = `Rs ${paid.toLocaleString()}`;
+    if (elBal) elBal.textContent = `Rs ${balance.toLocaleString()}`;
+    if (elCnt) elCnt.textContent = count;
+  }
+
+  function renderTeacherMonthlySummary() {
+    const mp = document.getElementById('teacherMonthPicker');
+    if (!mp) return;
+    if (!mp.value) mp.value = getCurrentMonthKey();
+    const monthKey = mp.value;
+
+    const humanLabel = document.getElementById('teacherMonthHumanDisplay');
+    if (humanLabel) humanLabel.textContent = formatMonthHuman(monthKey);
+
+    const teachers = (state.teachers || []).slice().sort((a, b) => (a.name || a.email).localeCompare(b.name || b.email));
+    const tbody = document.getElementById('teacherMonthlyTableBody');
+    const emptyEl = document.getElementById('noTeachersMonthlyState');
+
+    if (teachers.length === 0) {
+      if (tbody) tbody.innerHTML = '';
+      emptyEl?.classList.remove('hidden');
+      updateTeacherMonthlyStats(0, 0, 0, 0);
+      return;
+    }
+
+    emptyEl?.classList.add('hidden');
+
+    let totalBaseAll = 0;
+    let totalPaidAll = 0;
+
+    const monthPayments = (state.salaryPayments || []).filter(p => p.month === monthKey);
+    const monthPrefix = monthKey + '-';
+    const monthDates = Object.keys(state.teacherAttendance || {}).filter(d => d.startsWith(monthPrefix));
+
+    const rowsHtml = teachers.map(teacher => {
+      const emailLower = (teacher.email || '').toLowerCase();
+
+      let p = 0, a = 0, l = 0, lv = 0;
+      monthDates.forEach(d => {
+        const rec = state.teacherAttendance[d] && state.teacherAttendance[d][emailLower];
+        if (rec) {
+          if (rec.status === 'Present') p++;
+          else if (rec.status === 'Absent') a++;
+          else if (rec.status === 'Late') l++;
+          else if (rec.status === 'Leave') lv++;
+        }
+      });
+      const markedDays = p + a + l + lv;
+      const attPercent = markedDays > 0 ? Math.round(((p + l) / markedDays) * 100) : 0;
+
+      const baseSalary = (teacher.monthlySalary != null && teacher.monthlySalary >= 0) ? teacher.monthlySalary : 0;
+      totalBaseAll += baseSalary;
+
+      const teacherPayments = monthPayments.filter(pay => (pay.teacherEmail || '').toLowerCase() === emailLower);
+      const paid = teacherPayments.reduce((sum, pay) => sum + (Number(pay.amount) || 0), 0);
+      totalPaidAll += paid;
+
+      const balance = Math.max(0, baseSalary - paid);
+
+      let statusPill = '';
+      if (baseSalary <= 0) {
+        statusPill = `<span class="badge" style="background: #E2E8F0; color: #475569; font-size: 0.75rem; padding: 2px 8px; border-radius: 10px; font-weight: 700;">—</span>`;
+      } else if (paid >= baseSalary) {
+        statusPill = `<span class="badge" style="background: #DEF7EC; color: #03543F; font-size: 0.75rem; padding: 2px 8px; border-radius: 10px; font-weight: 700;">Paid</span>`;
+      } else if (paid > 0) {
+        statusPill = `<span class="badge" style="background: #FEF3C7; color: #92400E; font-size: 0.75rem; padding: 2px 8px; border-radius: 10px; font-weight: 700;">Partial</span>`;
+      } else {
+        statusPill = `<span class="badge" style="background: #FDE8E8; color: #9B1C1C; font-size: 0.75rem; padding: 2px 8px; border-radius: 10px; font-weight: 700;">Unpaid</span>`;
+      }
+
+      const canPay = baseSalary > 0 && balance > 0;
+      const canPrint = baseSalary > 0;
+      const hasHistory = teacherPayments.length > 0;
+      const emailEscaped = escapeHtml(emailLower).replace(/[^a-zA-Z0-9]/g, '_');
+
+      const historyRows = teacherPayments.map(tp => `
+        <tr style="border-bottom: 1px solid #E2E8F0;">
+          <td style="padding: 6px 10px; font-size: 0.8rem;">${escapeHtml(tp.paidDate || tp.createdAt || '')}</td>
+          <td style="padding: 6px 10px; font-size: 0.8rem; font-weight: 700; color: #059669;">Rs ${(Number(tp.amount) || 0).toLocaleString()}</td>
+          <td style="padding: 6px 10px; font-size: 0.8rem;">${escapeHtml(tp.method || 'Cash')}</td>
+          <td style="padding: 6px 10px; font-size: 0.8rem; color: var(--text-muted);">${escapeHtml(tp.note || '—')}</td>
+          <td style="padding: 6px 10px; font-size: 0.8rem; color: var(--text-muted);">${escapeHtml(tp.receivedBy || 'Admin')}</td>
+          <td style="padding: 6px 10px; font-size: 0.8rem; text-align: right;">
+            <button type="button" class="btn btn-sm btn-subtle" style="color: #DC2626; padding: 2px 8px; font-size: 0.75rem;" onclick="handleDeleteSalaryPayment('${escapeHtml(tp.id)}')">🗑️ Delete</button>
+          </td>
+        </tr>
+      `).join('');
+
+      return `
+        <tr style="border-bottom: 1px solid var(--border-soft);">
+          <td style="padding: 10px 12px;">
+            <div style="font-weight: 700; color: var(--text-heading);">${escapeHtml(teacher.name || teacher.email)}</div>
+            <div style="font-size: 0.78rem; color: var(--text-muted);">${escapeHtml(teacher.designation || 'Teacher')} • ${escapeHtml(teacher.email)}</div>
+          </td>
+          <td style="padding: 10px 12px; text-align: center;">
+            <span class="pill-present" style="display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; font-weight: 700;">P: ${p}</span>
+            <span class="pill-absent" style="display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; font-weight: 700;">A: ${a}</span>
+            <span class="pill-late" style="display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; font-weight: 700;">L: ${l}</span>
+            <span class="pill-leave" style="display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; font-weight: 700;">Lv: ${lv}</span>
+          </td>
+          <td style="padding: 10px 12px; text-align: center; font-weight: 700; font-size: 0.9rem;">
+            ${attPercent}%
+          </td>
+          <td style="padding: 10px 12px; text-align: right; font-weight: 700;">
+            ${baseSalary > 0 ? 'Rs ' + baseSalary.toLocaleString() : '<span style="color: var(--text-muted); font-size: 0.8rem;">Not Set</span>'}
+          </td>
+          <td style="padding: 10px 12px; text-align: right; font-weight: 700; color: #059669;">
+            Rs ${paid.toLocaleString()}
+          </td>
+          <td style="padding: 10px 12px; text-align: right; font-weight: 700; color: ${balance > 0 ? '#DC2626' : 'var(--text-muted)'};">
+            Rs ${balance.toLocaleString()}
+          </td>
+          <td style="padding: 10px 12px; text-align: center;">
+            ${statusPill}
+          </td>
+          <td style="padding: 10px 12px; text-align: center;">
+            <div style="display: inline-flex; gap: 4px; align-items: center; justify-content: center; flex-wrap: wrap;">
+              <button type="button" class="btn btn-sm ${canPay ? 'btn-primary' : 'btn-subtle'}" ${canPay ? '' : 'disabled'} style="font-size: 0.78rem; padding: 4px 8px;" onclick="openRecordSalaryPaymentModal('${escapeHtml(emailLower)}', '${escapeHtml(monthKey)}')">
+                💳 Pay
+              </button>
+              <button type="button" class="btn btn-sm btn-subtle" ${canPrint ? '' : 'disabled'} style="font-size: 0.78rem; padding: 4px 8px;" onclick="printTeacherSalarySlip('${escapeHtml(emailLower)}', '${escapeHtml(monthKey)}')">
+                🖨 Slip
+              </button>
+              ${hasHistory ? `
+                <button type="button" class="btn btn-sm btn-subtle" style="font-size: 0.78rem; padding: 4px 8px;" onclick="togglePaymentHistory('${emailEscaped}')">
+                  📜 History (${teacherPayments.length})
+                </button>
+              ` : ''}
+            </div>
+          </td>
+        </tr>
+        ${hasHistory ? `
+          <tr id="teacherHistory_${emailEscaped}" class="hidden" style="background: #F8FAFC;">
+            <td colspan="8" style="padding: 12px 16px; border-bottom: 2px solid #E2E8F0;">
+              <div style="font-size: 0.8rem; font-weight: 700; color: #475569; margin-bottom: 8px;">Payment History for ${escapeHtml(teacher.name || teacher.email)} (${formatMonthHuman(monthKey)}):</div>
+              <table style="width: 100%; border-collapse: collapse; background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 4px; overflow: hidden;">
+                <thead>
+                  <tr style="background: #F1F5F9; border-bottom: 1px solid #CBD5E1;">
+                    <th style="padding: 6px 10px; font-size: 0.75rem; text-align: left;">Date</th>
+                    <th style="padding: 6px 10px; font-size: 0.75rem; text-align: left;">Amount</th>
+                    <th style="padding: 6px 10px; font-size: 0.75rem; text-align: left;">Method</th>
+                    <th style="padding: 6px 10px; font-size: 0.75rem; text-align: left;">Note</th>
+                    <th style="padding: 6px 10px; font-size: 0.75rem; text-align: left;">Recorded By</th>
+                    <th style="padding: 6px 10px; font-size: 0.75rem; text-align: right;">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${historyRows}
+                </tbody>
+              </table>
+            </td>
+          </tr>
+        ` : ''}
+      `;
+    }).join('');
+
+    if (tbody) tbody.innerHTML = rowsHtml;
+    updateTeacherMonthlyStats(totalBaseAll, totalPaidAll, Math.max(0, totalBaseAll - totalPaidAll), teachers.length);
+  }
+
+  function togglePaymentHistory(emailEscaped) {
+    const row = document.getElementById('teacherHistory_' + emailEscaped);
+    if (row) row.classList.toggle('hidden');
+  }
+
+  function openRecordSalaryPaymentModal(teacherEmail, month) {
+    const emailLower = (teacherEmail || '').toLowerCase();
+    const teacher = (state.teachers || []).find(t => t.email.toLowerCase() === emailLower);
+    if (!teacher) return;
+
+    const baseSalary = (teacher.monthlySalary != null && teacher.monthlySalary >= 0) ? teacher.monthlySalary : 0;
+    const payments = (state.salaryPayments || []).filter(p => (p.teacherEmail || '').toLowerCase() === emailLower && p.month === month);
+    const paid = payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+    const balance = Math.max(0, baseSalary - paid);
+
+    const subEl = document.getElementById('salaryModalSubtitle');
+    const baseEl = document.getElementById('salaryModalBase');
+    const paidEl = document.getElementById('salaryModalPaid');
+    const balEl = document.getElementById('salaryModalBalance');
+
+    if (subEl) subEl.textContent = `${teacher.name || teacher.email} • ${formatMonthHuman(month)}`;
+    if (baseEl) baseEl.textContent = `Rs ${baseSalary.toLocaleString()}`;
+    if (paidEl) paidEl.textContent = `Rs ${paid.toLocaleString()}`;
+    if (balEl) balEl.textContent = `Rs ${balance.toLocaleString()}`;
+
+    const hiddenEmail = document.getElementById('salaryTeacherEmail');
+    const hiddenName = document.getElementById('salaryTeacherName');
+    const hiddenMonth = document.getElementById('salaryMonth');
+    const hiddenMax = document.getElementById('salaryMaxAllowed');
+
+    if (hiddenEmail) hiddenEmail.value = emailLower;
+    if (hiddenName) hiddenName.value = teacher.name || emailLower;
+    if (hiddenMonth) hiddenMonth.value = month;
+    if (hiddenMax) hiddenMax.value = balance;
+
+    const amountInput = document.getElementById('salaryPaymentAmount');
+    if (amountInput) {
+      amountInput.value = balance;
+      amountInput.max = balance;
+    }
+
+    const dateInput = document.getElementById('salaryPaymentDate');
+    if (dateInput) dateInput.value = getTodayISO();
+
+    const methodInput = document.getElementById('salaryPaymentMethod');
+    if (methodInput) methodInput.value = 'Cash';
+
+    const noteInput = document.getElementById('salaryPaymentNote');
+    if (noteInput) noteInput.value = '';
+
+    document.getElementById('recordSalaryPaymentModal')?.classList.remove('hidden');
+  }
+
+  function closeRecordSalaryPaymentModal() {
+    document.getElementById('recordSalaryPaymentModal')?.classList.add('hidden');
+  }
+
+  async function handleSaveSalaryPayment(e) {
+    if (e && e.preventDefault) e.preventDefault();
+
+    const emailLower = (document.getElementById('salaryTeacherEmail')?.value || '').toLowerCase();
+    const teacherName = document.getElementById('salaryTeacherName')?.value || emailLower;
+    const month = document.getElementById('salaryMonth')?.value || getCurrentMonthKey();
+    const maxAllowed = Number(document.getElementById('salaryMaxAllowed')?.value) || 0;
+
+    const amountInput = document.getElementById('salaryPaymentAmount');
+    const amount = Number(amountInput?.value);
+
+    const dateInput = document.getElementById('salaryPaymentDate');
+    const paidDate = dateInput?.value || getTodayISO();
+
+    const methodInput = document.getElementById('salaryPaymentMethod');
+    const method = methodInput?.value || 'Cash';
+
+    const noteInput = document.getElementById('salaryPaymentNote');
+    const note = noteInput ? noteInput.value.trim() : '';
+
+    if (!amount || isNaN(amount) || amount <= 0) {
+      showToast('Please enter a valid payment amount (> 0)', 'error');
+      return;
+    }
+
+    if (amount > maxAllowed) {
+      showToast(`Payment amount cannot exceed remaining balance of Rs ${maxAllowed.toLocaleString()}`, 'error');
+      return;
+    }
+
+    const newPayment = {
+      id: `sp_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      schoolId: state.currentSchoolId,
+      teacherEmail: emailLower,
+      teacherName: teacherName,
+      month: month,
+      amount: amount,
+      method: method,
+      paidDate: paidDate,
+      note: note,
+      receivedBy: (auth && auth.currentUser && auth.currentUser.email) || 'Admin',
+      createdAt: new Date().toISOString()
+    };
+
+    if (!state.salaryPayments) state.salaryPayments = [];
+    state.salaryPayments.push(newPayment);
+    saveStorage(STORAGE_KEYS.SALARY_PAYMENTS, state.salaryPayments);
+
+    if (FirestoreDB.isReady() && state.currentSchoolId) {
+      await FirestoreDB.saveSalaryPayment(newPayment);
+    }
+
+    closeRecordSalaryPaymentModal();
+    showToast('Salary payment recorded successfully!', 'success');
+    renderTeacherMonthlySummary();
+  }
+
+  async function handleDeleteSalaryPayment(paymentId) {
+    if (!window.confirm('Are you sure you want to delete this payment record?')) return;
+
+    state.salaryPayments = (state.salaryPayments || []).filter(p => p.id !== paymentId);
+    saveStorage(STORAGE_KEYS.SALARY_PAYMENTS, state.salaryPayments);
+
+    if (FirestoreDB.isReady() && state.currentSchoolId) {
+      await FirestoreDB.deleteSalaryPayment(paymentId);
+    }
+
+    showToast('Payment record deleted', 'info');
+    renderTeacherMonthlySummary();
+  }
+
+  function printTeacherSalarySlip(teacherEmail, monthKey) {
+    const emailLower = (teacherEmail || '').toLowerCase();
+    const teacher = (state.teachers || []).find(t => t.email.toLowerCase() === emailLower) || {
+      email: emailLower,
+      name: emailLower,
+      designation: 'Teacher',
+      monthlySalary: 0
+    };
+
+    const baseSalary = (teacher.monthlySalary != null && teacher.monthlySalary >= 0) ? teacher.monthlySalary : 0;
+    const payments = (state.salaryPayments || []).filter(p => (p.teacherEmail || '').toLowerCase() === emailLower && p.month === monthKey);
+    const totalPaid = payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+    const balance = Math.max(0, baseSalary - totalPaid);
+
+    const monthPrefix = monthKey + '-';
+    const monthDates = Object.keys(state.teacherAttendance || {}).filter(d => d.startsWith(monthPrefix));
+    let p = 0, a = 0, l = 0, lv = 0;
+    monthDates.forEach(d => {
+      const rec = state.teacherAttendance[d] && state.teacherAttendance[d][emailLower];
+      if (rec) {
+        if (rec.status === 'Present') p++;
+        else if (rec.status === 'Absent') a++;
+        else if (rec.status === 'Late') l++;
+        else if (rec.status === 'Leave') lv++;
+      }
+    });
+    const markedDays = p + a + l + lv;
+    const attPercent = markedDays > 0 ? Math.round(((p + l) / markedDays) * 100) : 0;
+
+    const schoolName = state.profile?.name || state.schoolName || 'SchoolSteps';
+    const tagline = state.profile?.tagline || '';
+    const address = state.profile?.address || '';
+    const phone = state.profile?.phone || '';
+    const logo = state.profile?.logoUrl || 'icon.svg';
+    const nowFormatted = new Date().toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' });
+
+    const paymentsTableRows = payments.length > 0 ? payments.map(pay => `
+      <tr>
+        <td style="padding: 6px 10px;">${escapeHtml(pay.paidDate || '')}</td>
+        <td style="padding: 6px 10px;">${escapeHtml(pay.method || 'Cash')}</td>
+        <td style="padding: 6px 10px;">${escapeHtml(pay.note || '—')}</td>
+        <td style="padding: 6px 10px; text-align: right; font-weight: 700;">Rs ${(Number(pay.amount) || 0).toLocaleString()}</td>
+      </tr>
+    `).join('') : `
+      <tr>
+        <td colspan="4" style="padding: 8px 10px; text-align: center; color: #64748B; font-style: italic;">No payments recorded for this month yet</td>
+      </tr>
+    `;
+
+    const slipContainer = document.getElementById('printableSalarySlip');
+    if (!slipContainer) return;
+
+    slipContainer.innerHTML = `
+      <div class="salary-slip-sheet">
+        <div class="salary-slip-card">
+          <div class="salary-slip-header">
+            <div style="display: flex; align-items: center; justify-content: center; gap: 14px; margin-bottom: 6px;">
+              ${logo ? `<img src="${escapeHtml(logo)}" alt="Logo" style="height: 48px; max-width: 80px; object-fit: contain;">` : ''}
+              <div>
+                <h2 class="salary-slip-school-name">${escapeHtml(schoolName)}</h2>
+                ${tagline ? `<div class="salary-slip-school-tagline">${escapeHtml(tagline)}</div>` : ''}
+                ${(address || phone) ? `<div style="font-size: 0.75rem; color: #64748B; margin-top: 2px;">${escapeHtml([address, phone].filter(Boolean).join(' • '))}</div>` : ''}
+              </div>
+            </div>
+            <div class="salary-slip-title">TEACHER SALARY SLIP</div>
+            <div class="salary-slip-month">Month: ${formatMonthHuman(monthKey)}</div>
+          </div>
+
+          <div class="salary-slip-teacher-info">
+            <div><strong>Teacher:</strong> ${escapeHtml(teacher.name || teacher.email)}</div>
+            <div><strong>Designation:</strong> ${escapeHtml(teacher.designation || 'Teacher')}</div>
+            <div><strong>Email:</strong> ${escapeHtml(teacher.email)}</div>
+            <div><strong>Base Salary:</strong> Rs ${baseSalary.toLocaleString()}</div>
+          </div>
+
+          <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 10px 14px; margin-bottom: 16px; font-size: 0.85rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+            <div><strong>Monthly Attendance:</strong> ${markedDays} days recorded</div>
+            <div>
+              <span style="font-weight: 700; color: #059669;">Present: ${p}</span> • 
+              <span style="font-weight: 700; color: #DC2626;">Absent: ${a}</span> • 
+              <span style="font-weight: 700; color: #D97706;">Late: ${l}</span> • 
+              <span style="font-weight: 700; color: #4B5563;">Leave: ${lv}</span> • 
+              <strong>Att. %: ${attPercent}%</strong>
+            </div>
+          </div>
+
+          <div style="margin-bottom: 8px; font-weight: 700; font-size: 0.88rem; color: #1E293B;">Payments Received in ${formatMonthHuman(monthKey)}:</div>
+          <table class="salary-slip-table">
+            <thead>
+              <tr>
+                <th style="text-align: left;">Date</th>
+                <th style="text-align: left;">Method</th>
+                <th style="text-align: left;">Reference / Note</th>
+                <th style="text-align: right;">Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${paymentsTableRows}
+            </tbody>
+          </table>
+
+          <div class="salary-slip-summary">
+            <div class="salary-slip-summary-row">
+              <span>Monthly Base Salary:</span>
+              <strong>Rs ${baseSalary.toLocaleString()}</strong>
+            </div>
+            <div class="salary-slip-summary-row" style="color: #059669;">
+              <span>Total Amount Paid:</span>
+              <strong>Rs ${totalPaid.toLocaleString()}</strong>
+            </div>
+            <div class="salary-slip-summary-row" style="color: ${balance > 0 ? '#DC2626' : '#1E293B'}; border-top: 1px dashed #CBD5E1; padding-top: 6px; margin-top: 4px;">
+              <span style="font-weight: 700;">Remaining Balance Due:</span>
+              <strong style="font-size: 1.15rem;">Rs ${balance.toLocaleString()}</strong>
+            </div>
+          </div>
+
+          <div class="salary-slip-signatures">
+            <div class="salary-slip-sig-box">
+              <div class="salary-slip-sig-line"></div>
+              <div class="salary-slip-sig-title">Teacher Signature</div>
+            </div>
+            <div class="salary-slip-sig-box">
+              <div class="salary-slip-sig-line"></div>
+              <div class="salary-slip-sig-title">Principal / Accountant</div>
+            </div>
+          </div>
+
+          <div style="margin-top: 28px; text-align: center; font-size: 0.72rem; color: #94A3B8; border-top: 1px solid #F1F5F9; padding-top: 8px;">
+            Generated by SchoolSteps on ${nowFormatted}
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.body.classList.add('printing-salary-slip');
+    const cleanup = () => {
+      document.body.classList.remove('printing-salary-slip');
+      window.removeEventListener('afterprint', cleanup);
+    };
+    window.addEventListener('afterprint', cleanup);
+    window.print();
+    setTimeout(cleanup, 2000);
+  }
+
+  function bindTeachersEvents() {
+    document.getElementById('btnTeacherSubNavAttendance')?.addEventListener('click', () => switchTeacherSubView('attendance'));
+    document.getElementById('btnTeacherSubNavMonthly')?.addEventListener('click', () => switchTeacherSubView('monthly'));
+    document.getElementById('btnTeacherSubNavProfiles')?.addEventListener('click', () => switchTeacherSubView('profiles'));
+
+    document.getElementById('teacherAttDatePicker')?.addEventListener('change', () => renderTeacherAttendance());
+    document.getElementById('btnMarkAllTeachersPresent')?.addEventListener('click', handleMarkAllTeachersPresent);
+    document.getElementById('btnSaveTeacherAttendance')?.addEventListener('click', handleSaveTeacherAttendance);
+
+    document.getElementById('teacherMonthPicker')?.addEventListener('change', () => renderTeacherMonthlySummary());
+    document.getElementById('btnTeacherPrevMonth')?.addEventListener('click', () => {
+      const mp = document.getElementById('teacherMonthPicker');
+      if (mp) {
+        mp.value = shiftMonthKey(mp.value || getCurrentMonthKey(), -1);
+        renderTeacherMonthlySummary();
+      }
+    });
+    document.getElementById('btnTeacherNextMonth')?.addEventListener('click', () => {
+      const mp = document.getElementById('teacherMonthPicker');
+      if (mp) {
+        mp.value = shiftMonthKey(mp.value || getCurrentMonthKey(), 1);
+        renderTeacherMonthlySummary();
+      }
+    });
+
+    document.getElementById('btnCloseSalaryPaymentModal')?.addEventListener('click', closeRecordSalaryPaymentModal);
+    document.getElementById('btnCancelSalaryPayment')?.addEventListener('click', closeRecordSalaryPaymentModal);
+    document.getElementById('recordSalaryPaymentForm')?.addEventListener('submit', handleSaveSalaryPayment);
+
+    const salaryModal = document.getElementById('recordSalaryPaymentModal');
+    salaryModal?.addEventListener('click', (e) => {
+      if (e.target === salaryModal) closeRecordSalaryPaymentModal();
+    });
+    document.addEventListener('keydown', (e) => {
+      if ((e.key === 'Escape' || e.key === 'Esc') && salaryModal && !salaryModal.classList.contains('hidden')) {
+        closeRecordSalaryPaymentModal();
+      }
+    });
+  }
+
+  // Window exports for Teachers module
+  window.updateTeachersTabVisibility = updateTeachersTabVisibility;
+  window.renderTeachersModule = renderTeachersModule;
+  window.switchTeacherSubView = switchTeacherSubView;
+  window.renderTeacherAttendance = renderTeacherAttendance;
+  window.setTeacherAttendanceStatus = setTeacherAttendanceStatus;
+  window.clearTeacherAttendanceStatus = clearTeacherAttendanceStatus;
+  window.updateTeacherAttendanceCounters = updateTeacherAttendanceCounters;
+  window.handleMarkAllTeachersPresent = handleMarkAllTeachersPresent;
+  window.handleSaveTeacherAttendance = handleSaveTeacherAttendance;
+  window.renderTeacherProfiles = renderTeacherProfiles;
+  window.handleSaveTeacherProfile = handleSaveTeacherProfile;
+  window.renderTeacherMonthlySummary = renderTeacherMonthlySummary;
+  window.togglePaymentHistory = togglePaymentHistory;
+  window.updateTeacherMonthlyStats = updateTeacherMonthlyStats;
+  window.openRecordSalaryPaymentModal = openRecordSalaryPaymentModal;
+  window.closeRecordSalaryPaymentModal = closeRecordSalaryPaymentModal;
+  window.handleSaveSalaryPayment = handleSaveSalaryPayment;
+  window.handleDeleteSalaryPayment = handleDeleteSalaryPayment;
+  window.printTeacherSalarySlip = printTeacherSalarySlip;
+  window.bindTeachersEvents = bindTeachersEvents;
 
 
   function start() {

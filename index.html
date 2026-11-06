@@ -203,6 +203,10 @@
           <span class="tab-icon">📚</span>
           <span class="tab-text">Syllabus</span>
         </button>
+        <button class="tab-btn hidden" id="tabBtnTeachers" data-tab="tab-teachers" role="tab" aria-selected="false">
+          <span class="tab-icon">👨‍🏫</span>
+          <span class="tab-text">Teachers</span>
+        </button>
         <button class="tab-btn hidden" id="tabBtnPlatform" data-tab="tab-platform" role="tab" aria-selected="false">
           <span class="tab-icon">🛠</span>
           <span class="tab-text">Platform</span>
@@ -1674,6 +1678,190 @@
       </section>
 
       <!-- ==============================================
+           MODULE: Teacher Attendance & Salary (Admin Only)
+           ============================================== -->
+      <section id="tab-teachers" class="tab-panel">
+        <!-- Sub-View Navigation Bar -->
+        <div class="card toolbar-card" style="margin-bottom: 16px;">
+          <div class="toolbar-row" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+            <div class="btn-group" role="group" id="teachersSubNavGroup">
+              <button type="button" class="btn btn-sm btn-subtle active" id="btnTeacherSubNavAttendance" onclick="switchTeacherSubView('attendance')">📋 Daily Attendance</button>
+              <button type="button" class="btn btn-sm btn-subtle" id="btnTeacherSubNavMonthly" onclick="switchTeacherSubView('monthly')">💰 Monthly & Salary</button>
+              <button type="button" class="btn btn-sm btn-subtle" id="btnTeacherSubNavProfiles" onclick="switchTeacherSubView('profiles')">⚙️ Teacher Profiles</button>
+            </div>
+            <div id="teachersAdminOnlyBadge" style="font-size: 0.85rem; font-weight: 700; color: var(--text-muted);">
+              🔒 School Admin Only
+            </div>
+          </div>
+        </div>
+
+        <!-- SUB-VIEW 1: Daily Teacher Attendance -->
+        <div id="teacherAttendanceSubView">
+          <!-- Attendance Toolbar -->
+          <div class="card toolbar-card" style="margin-bottom: 16px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+              <div class="control-item" style="display: flex; align-items: center; gap: 8px;">
+                <label for="teacherAttDatePicker" class="control-label" style="margin: 0; font-weight: 700;">📅 Date:</label>
+                <input type="date" id="teacherAttDatePicker" class="form-input" style="max-width: 170px;">
+              </div>
+              <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                <button type="button" class="btn btn-subtle btn-sm" id="btnMarkAllTeachersPresent" title="Mark all teachers as Present">
+                  <span>⚡ All Present</span>
+                </button>
+                <button type="button" class="btn btn-primary btn-sm" id="btnSaveTeacherAttendance">
+                  <span>💾 Save Attendance</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Attendance Summary Pills Card -->
+          <div class="attendance-summary-card card" style="margin-bottom: 16px;">
+            <div class="summary-header">
+              <div>
+                <h3 class="summary-title" id="teacherAttSummaryTitle">Teacher Attendance</h3>
+                <p class="summary-subtitle" id="teacherAttSummaryDateLabel">Today</p>
+              </div>
+              <div class="attendance-rate-badge" id="teacherAttRateBadge">
+                <span id="teacherAttRatePercent">0%</span>
+                <span class="rate-sub">Present</span>
+              </div>
+            </div>
+
+            <div class="summary-pill-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 10px;">
+              <div class="summary-pill pill-present">
+                <span class="pill-dot"></span>
+                <span class="pill-label">Present</span>
+                <span class="pill-count" id="countTeacherPresent">0</span>
+              </div>
+              <div class="summary-pill pill-absent">
+                <span class="pill-dot"></span>
+                <span class="pill-label">Absent</span>
+                <span class="pill-count" id="countTeacherAbsent">0</span>
+              </div>
+              <div class="summary-pill pill-late">
+                <span class="pill-dot"></span>
+                <span class="pill-label">Late</span>
+                <span class="pill-count" id="countTeacherLate">0</span>
+              </div>
+              <div class="summary-pill pill-leave">
+                <span class="pill-dot"></span>
+                <span class="pill-label">Leave</span>
+                <span class="pill-count" id="countTeacherLeave">0</span>
+              </div>
+              <div class="summary-pill pill-total">
+                <span class="pill-dot"></span>
+                <span class="pill-label">Total</span>
+                <span class="pill-count" id="countTeacherTotal">0</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Teacher Attendance Roster Card -->
+          <div class="card attendance-roster-card">
+            <div class="roster-header">
+              <h4>Teacher Daily Attendance Sheet</h4>
+              <span class="roster-hint">Click a status to mark. Re-clicking an active status clears the mark.</span>
+            </div>
+            <div id="teacherAttendanceRosterList" class="attendance-roster-list" style="display: flex; flex-direction: column; gap: 8px;">
+              <!-- Dynamically populated via JS -->
+            </div>
+            <div id="noTeachersAttState" class="empty-state hidden">
+              <div class="empty-icon">👨‍🏫</div>
+              <h3>No Teacher Accounts Yet</h3>
+              <p>Teachers appear here after they sign up with your school code.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- SUB-VIEW 2: Monthly Summary & Salary Payments -->
+        <div id="teacherMonthlySubView" class="hidden">
+          <!-- Month Selector Toolbar -->
+          <div class="card toolbar-card" style="margin-bottom: 16px;">
+            <div class="toolbar-row" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+              <div class="fee-month-selector" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                <button type="button" class="btn btn-subtle btn-sm" id="btnTeacherPrevMonth" title="Previous Month">◀</button>
+                <input type="month" id="teacherMonthPicker" class="form-input" style="max-width: 170px; padding: 6px 10px; font-weight: 600;" />
+                <button type="button" class="btn btn-subtle btn-sm" id="btnTeacherNextMonth" title="Next Month">▶</button>
+                <span id="teacherMonthHumanDisplay" style="font-family: var(--font-heading); font-size: 1.1rem; font-weight: 700; color: var(--text-heading); margin-left: 4px;"></span>
+              </div>
+              <div>
+                <span style="font-size: 0.85rem; color: var(--text-muted); font-weight: 600;">Monthly Attendance & Salary Overview</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Monthly Salary & Attendance Stats Cards -->
+          <div class="stats-grid" style="margin-bottom: 20px;">
+            <div class="stat-card">
+              <div class="stat-val stat-val-blue" id="teacherStatExpectedSalary">Rs 0</div>
+              <div class="stat-lbl">Total Base Salaries</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-val stat-val-green" id="teacherStatPaidSalary">Rs 0</div>
+              <div class="stat-lbl">Total Salaries Paid</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-val stat-val-peach" id="teacherStatBalanceSalary">Rs 0</div>
+              <div class="stat-lbl">Remaining Balance</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-val stat-val-purple" id="teacherStatActiveCount">0</div>
+              <div class="stat-lbl">Total Teachers</div>
+            </div>
+          </div>
+
+          <!-- Monthly Summary Table Card -->
+          <div class="card" style="margin-bottom: 24px; padding: 0; overflow: hidden;">
+            <div class="rc-table-wrapper" style="width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch;">
+              <table class="defaulters-table" style="width: 100%; border-collapse: collapse; min-width: 800px;">
+                <thead>
+                  <tr>
+                    <th style="padding: 10px 12px;">Teacher</th>
+                    <th style="padding: 10px 12px; text-align: center;">Attendance (P/A/L/Lv)</th>
+                    <th style="padding: 10px 12px; text-align: center; width: 80px;">Att. %</th>
+                    <th style="padding: 10px 12px; text-align: right;">Monthly Base</th>
+                    <th style="padding: 10px 12px; text-align: right;">Paid</th>
+                    <th style="padding: 10px 12px; text-align: right;">Balance</th>
+                    <th style="padding: 10px 12px; text-align: center; width: 90px;">Status</th>
+                    <th style="padding: 10px 12px; text-align: center; width: 230px;">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="teacherMonthlyTableBody">
+                  <!-- Populated via JS -->
+                </tbody>
+              </table>
+            </div>
+            <div id="noTeachersMonthlyState" class="empty-state hidden" style="padding: 24px;">
+              <div class="empty-icon">👨‍🏫</div>
+              <h3>No Teacher Accounts Yet</h3>
+              <p>Teachers appear here after they sign up with your school code.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- SUB-VIEW 3: Teacher Profiles & Salary Setup -->
+        <div id="teacherProfilesSubView" class="hidden">
+          <div class="card" style="margin-bottom: 16px; padding: 18px 20px;">
+            <div style="margin-bottom: 14px;">
+              <h3 style="font-size: 1.15rem; font-weight: 700; color: var(--text-heading); margin: 0 0 4px 0;">⚙️ Teacher Accounts & Salary Setup</h3>
+              <p style="font-size: 0.825rem; color: var(--text-muted); margin: 0;">Configure teacher designations and monthly salaries. Teachers are automatically added when they register with your School Code.</p>
+            </div>
+
+            <div id="teacherProfilesCardsContainer" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px;">
+              <!-- Populated via JS -->
+            </div>
+
+            <div id="noTeachersProfilesState" class="empty-state hidden" style="padding: 24px;">
+              <div class="empty-icon">👨‍🏫</div>
+              <h3>No Teacher Accounts Yet</h3>
+              <p>Teachers appear here after they sign up with your school code.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==============================================
            PLATFORM SUPER ADMIN MODULE
            ============================================== -->
       <section id="tab-platform" class="tab-panel">
@@ -1797,6 +1985,10 @@
       <button class="mobile-tab-btn" data-tab="tab-syllabus">
         <span class="icon">📚</span>
         <span class="label">Syllabus</span>
+      </button>
+      <button class="mobile-tab-btn hidden" id="mobileTabBtnTeachers" data-tab="tab-teachers">
+        <span class="icon">👨‍🏫</span>
+        <span class="label">Teachers</span>
       </button>
       <button class="mobile-tab-btn hidden" id="mobileTabBtnPlatform" data-tab="tab-platform">
         <span class="icon">🛠</span>
@@ -2727,7 +2919,78 @@
     </div>
   </div>
 
-    <!-- Subscription & Billing Modal -->
+    <!-- Record Salary Payment Modal (Teachers Module) -->
+  <div class="modal-overlay hidden" id="recordSalaryPaymentModal" role="dialog" aria-modal="true" aria-labelledby="salaryModalTitle">
+    <div class="modal-card" style="max-width: 500px; width: 95%;">
+      <div class="modal-header">
+        <div>
+          <h3 class="modal-title" id="salaryModalTitle">💳 Record Salary Payment</h3>
+          <p id="salaryModalSubtitle" style="font-size: 0.825rem; color: var(--text-muted); margin: 2px 0 0 0;">Teacher Name • Month</p>
+        </div>
+        <button class="btn-close" id="btnCloseSalaryPaymentModal" type="button" aria-label="Close">✕</button>
+      </div>
+
+      <form id="recordSalaryPaymentForm">
+        <div class="modal-body" style="padding: 18px 20px;">
+          <!-- Salary Summary Box -->
+          <div style="background: var(--bg-surface, #F8FAFC); border: 1px solid var(--border-soft); border-radius: var(--radius-sm); padding: 12px 14px; margin-bottom: 16px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; text-align: center;">
+            <div>
+              <span style="font-size: 0.72rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase;">Base Salary</span>
+              <strong id="salaryModalBase" style="display: block; font-size: 1.05rem; color: var(--text-heading); margin-top: 2px;">Rs 0</strong>
+            </div>
+            <div>
+              <span style="font-size: 0.72rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase;">Paid So Far</span>
+              <strong id="salaryModalPaid" style="display: block; font-size: 1.05rem; color: #059669; margin-top: 2px;">Rs 0</strong>
+            </div>
+            <div>
+              <span style="font-size: 0.72rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase;">Balance Due</span>
+              <strong id="salaryModalBalance" style="display: block; font-size: 1.05rem; color: #DC2626; margin-top: 2px;">Rs 0</strong>
+            </div>
+          </div>
+
+          <input type="hidden" id="salaryTeacherEmail">
+          <input type="hidden" id="salaryTeacherName">
+          <input type="hidden" id="salaryMonth">
+          <input type="hidden" id="salaryMaxAllowed">
+
+          <div class="form-group" style="margin-bottom: 14px;">
+            <label for="salaryPaymentAmount" class="form-label" style="font-weight: 700;">Payment Amount (Rs) <span style="color: #DC2626;">*</span></label>
+            <input type="number" id="salaryPaymentAmount" class="form-input" min="1" required placeholder="Enter amount in Rs">
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px;">
+            <div class="form-group">
+              <label for="salaryPaymentDate" class="form-label" style="font-weight: 700;">Payment Date <span style="color: #DC2626;">*</span></label>
+              <input type="date" id="salaryPaymentDate" class="form-input" required>
+            </div>
+            <div class="form-group">
+              <label for="salaryPaymentMethod" class="form-label" style="font-weight: 700;">Payment Method <span style="color: #DC2626;">*</span></label>
+              <select id="salaryPaymentMethod" class="form-select" required>
+                <option value="Cash" selected>Cash</option>
+                <option value="Bank Transfer">Bank Transfer</option>
+                <option value="JazzCash">JazzCash</option>
+                <option value="Easypaisa">Easypaisa</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-group" style="margin-bottom: 0;">
+            <label for="salaryPaymentNote" class="form-label">Note / Reference (Optional)</label>
+            <input type="text" id="salaryPaymentNote" class="form-input" placeholder="e.g. Cheque #1234 or receipt note">
+          </div>
+        </div>
+
+        <div class="modal-footer" style="padding: 14px 20px; border-top: 1px solid var(--border-soft); display: flex; justify-content: flex-end; gap: 10px;">
+          <button type="button" class="btn btn-subtle" id="btnCancelSalaryPayment">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="btnSaveSalaryPayment">
+            <span>💾 Save Payment</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Subscription & Billing Modal -->
   <div class="modal-overlay hidden" id="subscriptionModal">
     <div class="modal-card" style="max-width: 650px;">
       <div class="modal-header">
@@ -3276,6 +3539,11 @@
   <!-- Printable Result Cards (Single & Class Bulk Print) -->
   <div id="printableResultCards" class="printable-result-cards no-screen">
     <!-- Populated dynamically via JS: contains one or more .rc-card-sheet elements -->
+  </div>
+
+  <!-- Printable Teacher Salary Slip -->
+  <div id="printableSalarySlip" class="printable-salary-slip no-screen">
+    <!-- Populated dynamically via JS: contains .salary-slip-sheet -->
   </div>
 
 </body>

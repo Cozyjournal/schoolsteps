@@ -5746,3 +5746,272 @@ body.printing-result-cards #printableResultCards {
   font-weight: 700;
   color: #334155;
 }
+
+/* ========================================================
+   Teachers Module Styles: Attendance, Profiles, & Salary
+   ======================================================== */
+
+.btn-att.active-leave {
+  background: #64748B;
+  color: #FFFFFF;
+  border-color: #475569;
+  box-shadow: 0 2px 8px rgba(100, 116, 139, 0.3);
+}
+
+.summary-pill.pill-leave .pill-dot {
+  background: #64748B;
+}
+
+.pill-leave {
+  background: #F1F5F9;
+  border: 1px solid #CBD5E1;
+  color: #475569;
+}
+
+/* Teacher Profiles Cards */
+.teacher-profile-card {
+  background: var(--bg-card, #FFFFFF);
+  border: 1px solid var(--border-soft, #E2E8F0);
+  border-top: 4px solid var(--teal-primary, #0D9488);
+  border-radius: var(--radius-sm, 8px);
+  padding: 16px 18px;
+  box-shadow: var(--shadow-sm, 0 1px 3px rgba(0,0,0,0.05));
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.teacher-profile-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.teacher-profile-name {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text-heading, #0F172A);
+  margin: 0;
+}
+
+.teacher-profile-email {
+  font-size: 0.82rem;
+  color: var(--text-muted, #64748B);
+  word-break: break-all;
+  margin: 2px 0 0 0;
+}
+
+/* Printable Teacher Salary Slip Styles */
+body:not(.printing-salary-slip) #printableSalarySlip {
+  display: none !important;
+}
+
+body.printing-salary-slip .app-container,
+body.printing-salary-slip .modal-overlay,
+body.printing-salary-slip .mobile-bottom-bar,
+body.printing-salary-slip #tab-reports,
+body.printing-salary-slip #printableFeeReceipt,
+body.printing-salary-slip #printableDefaulters,
+body.printing-salary-slip #printableSyllabus,
+body.printing-salary-slip #printableAttendanceSheet,
+body.printing-salary-slip #printableFeeVoucher,
+body.printing-salary-slip #printableResultCards {
+  display: none !important;
+}
+
+body.printing-salary-slip #printableSalarySlip {
+  display: block !important;
+}
+
+@media print {
+  body.printing-salary-slip {
+    background: #FFFFFF !important;
+    padding: 0 !important;
+    color: #0F172A !important;
+  }
+
+  body.printing-salary-slip .app-container,
+  body.printing-salary-slip .modal-overlay,
+  body.printing-salary-slip .mobile-bottom-bar,
+  body.printing-salary-slip #tab-reports,
+  body.printing-salary-slip #printableFeeReceipt,
+  body.printing-salary-slip #printableDefaulters,
+  body.printing-salary-slip #printableSyllabus,
+  body.printing-salary-slip #printableAttendanceSheet,
+  body.printing-salary-slip #printableFeeVoucher,
+  body.printing-salary-slip #printableResultCards {
+    display: none !important;
+  }
+
+  body.printing-salary-slip .printable-salary-slip,
+  body.printing-salary-slip #printableSalarySlip {
+    display: block !important;
+    width: 100% !important;
+    margin: 0 auto !important;
+    padding: 0 !important;
+    background: #FFFFFF !important;
+  }
+
+  .salary-slip-sheet {
+    width: 100% !important;
+    max-width: 720px !important;
+    margin: 0 auto !important;
+    padding: 12mm 15mm !important;
+    box-sizing: border-box !important;
+    page-break-after: avoid !important;
+    background: #FFFFFF !important;
+  }
+}
+
+.salary-slip-card {
+  border: 1.5px solid #CBD5E1;
+  border-top: 6px solid #0D9488;
+  border-radius: 8px;
+  padding: 24px 28px;
+  background: #FFFFFF;
+  box-sizing: border-box;
+}
+
+.salary-slip-header {
+  text-align: center;
+  border-bottom: 2px solid #0D9488;
+  padding-bottom: 12px;
+  margin-bottom: 16px;
+}
+
+.salary-slip-school-name {
+  font-family: var(--font-heading, inherit);
+  font-size: 1.55rem;
+  font-weight: 800;
+  color: #0D9488;
+  line-height: 1.2;
+  margin: 0;
+}
+
+.salary-slip-school-tagline {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #64748B;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-top: 3px;
+}
+
+.salary-slip-title {
+  font-family: var(--font-heading, inherit);
+  font-size: 1.15rem;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+  color: #1E293B;
+  margin-top: 8px;
+}
+
+.salary-slip-month {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #0D9488;
+  margin-top: 2px;
+}
+
+.salary-slip-teacher-info {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px 16px;
+  background: #F8FAFC;
+  border: 1px solid #E2E8F0;
+  border-radius: 6px;
+  padding: 10px 14px;
+  margin-bottom: 16px;
+  font-size: 0.88rem;
+  color: #1E293B;
+}
+
+.salary-slip-teacher-info strong {
+  color: #475569;
+}
+
+.salary-slip-base-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #F0FDFA;
+  border: 1px solid #CCFBF1;
+  border-radius: 6px;
+  padding: 10px 14px;
+  margin-bottom: 16px;
+  font-size: 0.95rem;
+  color: #0F766E;
+}
+
+.salary-slip-base-row strong {
+  font-size: 1.15rem;
+}
+
+.salary-slip-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 16px;
+  font-size: 0.88rem;
+}
+
+.salary-slip-table th {
+  background: #F1F5F9;
+  border: 1px solid #CBD5E1;
+  padding: 8px 12px;
+  font-weight: 700;
+  color: #334155;
+}
+
+.salary-slip-table td {
+  border: 1px solid #E2E8F0;
+  padding: 8px 12px;
+  color: #1E293B;
+}
+
+.salary-slip-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: #F8FAFC;
+  border: 1px solid #CBD5E1;
+  border-radius: 6px;
+  padding: 12px 16px;
+  margin-bottom: 30px;
+}
+
+.salary-slip-summary-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.9rem;
+  color: #334155;
+}
+
+.salary-slip-summary-row strong {
+  font-size: 1.05rem;
+}
+
+.salary-slip-signatures {
+  display: flex;
+  justify-content: space-between;
+  padding: 0 30px;
+  margin-top: 36px;
+}
+
+.salary-slip-sig-box {
+  text-align: center;
+  min-width: 150px;
+}
+
+.salary-slip-sig-line {
+  border-top: 1.5px solid #475569;
+  margin-bottom: 6px;
+}
+
+.salary-slip-sig-title {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #334155;
+}

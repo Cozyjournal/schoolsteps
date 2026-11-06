@@ -3012,6 +3012,21 @@
 
     const rate = total > 0 ? Math.round(((present + late) / total) * 100) : 0;
     document.getElementById('attRatePercent').textContent = `${rate}%`;
+
+    // Bulk WhatsApp Absent Parents button
+    const wrapEl = document.getElementById('attBulkWhatsAppWrap');
+    const btnEl = document.getElementById('btnBulkAbsentWhatsApp');
+    if (btnEl) {
+      const span = btnEl.querySelector('span') || btnEl;
+      span.textContent = `📩 WhatsApp Absent Parents (${absent || 0})`;
+      if (absent > 0) {
+        btnEl.classList.remove('hidden');
+        if (wrapEl) wrapEl.classList.remove('hidden');
+      } else {
+        btnEl.classList.add('hidden');
+        if (wrapEl) wrapEl.classList.add('hidden');
+      }
+    }
   }
 
   function handleMarkAllPresent() {
@@ -4748,6 +4763,7 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
 
     // Escape and backdrop click for Subscription Modal
     bindFeesEvents();
+    bindBulkWhatsAppEvents();
     bindSyllabusEvents();
 
     const subModal = document.getElementById('subscriptionModal');
@@ -5889,6 +5905,39 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
     return `https://wa.me/${cleanPhone}?text=${encodeURIComponent(text)}`;
   }
 
+  function formatHumanFullDate(isoStr) {
+    if (!isoStr) return '';
+    try {
+      const parts = isoStr.split('-');
+      if (parts.length === 3) {
+        const d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+        return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+      }
+      return isoStr;
+    } catch {
+      return isoStr;
+    }
+  }
+
+  function getAbsentWhatsAppUrl(student, dateStr) {
+    if (!student) return '#';
+    const cleanPhone = sanitizePhoneForWhatsApp(student.whatsapp || student.parentPhone);
+    if (!cleanPhone) return '#';
+    const schoolName = (state.currentSchool && (state.currentSchool.schoolName || state.currentSchool.name)) || state.profile?.name || 'SchoolSteps';
+    const parentName = student.fatherName || student.parentName || 'محترم والدین';
+    const studentName = student.name || 'Student';
+    const classSec = [student.className || '', student.section || ''].filter(Boolean).join(' ');
+    const classPart = classSec ? ` (${classSec})` : '';
+    const dateHuman = formatHumanFullDate(dateStr) || dateStr;
+
+    const text = `السلام علیکم ${parentName}،
+یہ ${schoolName} کی طرف سے اطلاع ہے کہ ${studentName}${classPart} آج ${dateHuman} کو اسکول سے غیر حاضر ہے۔
+برائے مہربانی غیر حاضری کی وجہ سے آگاہ کر دیں۔ شکریہ!
+— ${schoolName}`;
+
+    return `https://wa.me/${cleanPhone}?text=${encodeURIComponent(text)}`;
+  }
+
   function generateFeeReceiptMessage(payment, student) {
     if (!payment) return '';
     if (!student) {
@@ -6761,6 +6810,8 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
   window.updateFeesTabVisibility = updateFeesTabVisibility;
   window.__updateFeesTabVisibility = updateFeesTabVisibility;
   window.renderFeesModule = renderFeesModule;
+  window.renderAttendanceRoster = renderAttendanceRoster;
+  window.setStudentAttendanceStatus = setStudentAttendanceStatus;
   window.openRecordPaymentModal = openRecordPaymentModal;
   window.openPrintReceipt = openPrintReceipt;
   window.openDeleteFeePaymentModal = openDeleteFeePaymentModal;
@@ -7438,6 +7489,18 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
     const defaulters = data.defaulters;
     const totalCount = data.totalCount;
     const totalPending = data.totalPending;
+
+    // Update Bulk Fee Reminders Button
+    const bulkFeeBtn = document.getElementById('btnBulkFeeWhatsApp');
+    if (bulkFeeBtn) {
+      const span = bulkFeeBtn.querySelector('span') || bulkFeeBtn;
+      span.textContent = `📩 Remind All on WhatsApp (${totalCount})`;
+      if (totalCount > 0) {
+        bulkFeeBtn.classList.remove('hidden');
+      } else {
+        bulkFeeBtn.classList.add('hidden');
+      }
+    }
 
     // Update Summary Header
     const countDisplay = document.getElementById('defaultersCountDisplay');
@@ -10003,6 +10066,399 @@ Please review the syllabus and schedule to support your child's learning.
     URL.revokeObjectURL(url);
   }
 
+
+  // ========================================================
+  // BULK WHATSAPP SENDER (FEE REMINDERS & ABSENT ALERTS)
+  // ========================================================
+
+  let bulkWASession = {
+    type: '',
+    title: '',
+    subtitle: '',
+    items: [],
+    queue: [],
+    currentIndex: 0,
+    sentCount: 0,
+    skipCount: 0,
+    invalidCount: 0
+  };
+
+  function openBulkWhatsAppModal(config) {
+    bulkWASession = {
+      type: config.type || 'fee',
+      title: config.title || '📩 Send WhatsApp Messages',
+      subtitle: config.subtitle || 'Progress is only kept for this session — nothing is saved.',
+      items: config.items || [],
+      queue: [],
+      currentIndex: 0,
+      sentCount: 0,
+      skipCount: 0,
+      invalidCount: (config.items || []).filter(i => !i.isValidPhone).length
+    };
+
+    const modal = document.getElementById('bulkWhatsAppModal');
+    if (!modal) return;
+
+    const titleEl = document.getElementById('bulkWAModalTitle');
+    const subTitleEl = document.getElementById('bulkWAModalSubtitle');
+    if (titleEl) titleEl.textContent = bulkWASession.title;
+    if (subTitleEl) subTitleEl.textContent = bulkWASession.subtitle;
+
+    const stepA = document.getElementById('bulkWAStepA');
+    const stepB = document.getElementById('bulkWAStepB');
+    const stepC = document.getElementById('bulkWAStepC');
+    if (stepA) stepA.classList.remove('hidden');
+    if (stepB) stepB.classList.add('hidden');
+    if (stepC) stepC.classList.add('hidden');
+
+    renderBulkWhatsAppStepA();
+    modal.classList.remove('hidden');
+  }
+
+  function closeBulkWhatsAppModal() {
+    const modal = document.getElementById('bulkWhatsAppModal');
+    if (modal) modal.classList.add('hidden');
+    bulkWASession = {
+      type: '',
+      title: '',
+      subtitle: '',
+      items: [],
+      queue: [],
+      currentIndex: 0,
+      sentCount: 0,
+      skipCount: 0,
+      invalidCount: 0
+    };
+  }
+
+  function renderBulkWhatsAppStepA() {
+    const listEl = document.getElementById('bulkWARecipientsList');
+    const totalCountLabel = document.getElementById('bulkWATotalCountLabel');
+    if (!listEl) return;
+
+    const items = bulkWASession.items || [];
+    const total = items.length;
+    const validCount = items.filter(i => i.isValidPhone).length;
+    const invalidCount = total - validCount;
+
+    if (totalCountLabel) {
+      totalCountLabel.textContent = `${total} recipient${total === 1 ? '' : 's'}${invalidCount > 0 ? ` (${invalidCount} invalid)` : ''}`;
+    }
+
+    if (items.length === 0) {
+      listEl.innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 20px;">No recipients found.</div>';
+      updateBulkWAStartButton();
+      return;
+    }
+
+    listEl.innerHTML = items.map((item, idx) => {
+      const isChecked = item.selected && item.isValidPhone;
+      const disabledAttr = !item.isValidPhone ? 'disabled' : '';
+      const invalidClass = !item.isValidPhone ? 'invalid-phone' : '';
+      const phoneDisplay = item.rawPhone ? escapeHtml(item.rawPhone) : 'No number';
+      const warningBadge = !item.isValidPhone ?
+        `<span style="display: inline-block; font-size: 0.72rem; font-weight: 600; color: #B45309; background: #FEF3C7; padding: 2px 6px; border-radius: 4px; margin-left: 6px;">⚠️ No valid WhatsApp number</span>` :
+        '';
+
+      return `
+        <div class="bulk-wa-row ${invalidClass}" style="display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 6px; border-bottom: 1px solid var(--border-soft);">
+          <div style="display: flex; align-items: flex-start; gap: 10px; flex: 1; min-width: 0;">
+            <input type="checkbox" class="bulk-wa-checkbox" data-index="${idx}" ${isChecked ? 'checked' : ''} ${disabledAttr} style="margin-top: 3px; cursor: ${item.isValidPhone ? 'pointer' : 'not-allowed'}; accent-color: var(--teal-primary, #0D9488);">
+            <div style="min-width: 0;">
+              <div style="font-size: 0.88rem; font-weight: 600; color: var(--text-heading); display: flex; align-items: center; flex-wrap: wrap; gap: 4px;">
+                <span>${escapeHtml(item.name)}</span>
+                <span style="font-size: 0.76rem; color: var(--text-muted); font-weight: 400;">(${escapeHtml(item.className || '')} ${escapeHtml(item.section || '')} • Roll #${escapeHtml(item.rollNo)})</span>
+                ${warningBadge}
+              </div>
+              <div style="font-size: 0.78rem; color: var(--text-muted); margin-top: 2px;">
+                <span>Parent: <strong>${escapeHtml(item.parentName)}</strong></span>
+                <span style="margin: 0 4px;">•</span>
+                <span>Phone: ${phoneDisplay}</span>
+              </div>
+              <div style="font-size: 0.75rem; color: var(--teal-dark, #0F766E); font-weight: 500; margin-top: 1px;">
+                ${escapeHtml(item.detailLine)}
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    listEl.querySelectorAll('.bulk-wa-checkbox').forEach(cb => {
+      cb.addEventListener('change', (e) => {
+        const idx = parseInt(e.target.getAttribute('data-index'), 10);
+        if (bulkWASession.items[idx]) {
+          bulkWASession.items[idx].selected = e.target.checked;
+          updateBulkWAStartButton();
+        }
+      });
+    });
+
+    updateBulkWAStartButton();
+  }
+
+  function updateBulkWAStartButton() {
+    const btn = document.getElementById('btnStartBulkWASend');
+    if (!btn) return;
+    const selectedValid = (bulkWASession.items || []).filter(i => i.selected && i.isValidPhone);
+    const count = selectedValid.length;
+    const span = btn.querySelector('span') || btn;
+    span.textContent = `Start Sending (${count}) →`;
+    btn.disabled = count === 0;
+  }
+
+  function handleBulkWASelectAll() {
+    (bulkWASession.items || []).forEach(i => {
+      if (i.isValidPhone) i.selected = true;
+    });
+    renderBulkWhatsAppStepA();
+  }
+
+  function handleBulkWASelectNone() {
+    (bulkWASession.items || []).forEach(i => {
+      i.selected = false;
+    });
+    renderBulkWhatsAppStepA();
+  }
+
+  function handleStartBulkWASending() {
+    bulkWASession.queue = (bulkWASession.items || []).filter(i => i.selected && i.isValidPhone);
+    if (bulkWASession.queue.length === 0) return;
+
+    bulkWASession.currentIndex = 0;
+    bulkWASession.sentCount = 0;
+    bulkWASession.skipCount = 0;
+
+    const stepA = document.getElementById('bulkWAStepA');
+    const stepB = document.getElementById('bulkWAStepB');
+    const stepC = document.getElementById('bulkWAStepC');
+    if (stepA) stepA.classList.add('hidden');
+    if (stepB) stepB.classList.remove('hidden');
+    if (stepC) stepC.classList.add('hidden');
+
+    renderBulkWhatsAppStepB();
+  }
+
+  function renderBulkWhatsAppStepB() {
+    const queue = bulkWASession.queue || [];
+    const idx = bulkWASession.currentIndex;
+
+    if (idx >= queue.length) {
+      renderBulkWhatsAppStepC();
+      return;
+    }
+
+    const current = queue[idx];
+
+    const badge = document.getElementById('bulkWAProgressBadge');
+    if (badge) {
+      badge.textContent = `Parent ${idx + 1} of ${queue.length}`;
+    }
+
+    const card = document.getElementById('bulkWACurrentCard');
+    if (card) {
+      card.innerHTML = `
+        <div style="margin-bottom: 12px;">
+          <div style="font-size: 0.75rem; text-transform: uppercase; font-weight: 700; color: var(--text-muted); letter-spacing: 0.5px;">Recipient</div>
+          <div style="font-size: 1.15rem; font-weight: 700; color: var(--text-heading); margin-top: 2px;">
+            ${escapeHtml(current.parentName)}
+          </div>
+          <div style="font-size: 0.9rem; color: var(--text-muted); font-weight: 600; margin-top: 2px;">
+            📱 ${escapeHtml(current.rawPhone || current.cleanPhone)}
+          </div>
+        </div>
+        <div style="background: #FFFFFF; border: 1px solid var(--border-soft); border-radius: var(--radius-md); padding: 10px 14px; margin-bottom: 6px;">
+          <div style="font-size: 0.85rem; font-weight: 600; color: var(--text-main);">
+            Student: <strong>${escapeHtml(current.name)}</strong>
+          </div>
+          <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 2px;">
+            Class: ${escapeHtml(current.className || '')} ${escapeHtml(current.section || '')} • Roll #${escapeHtml(current.rollNo)}
+          </div>
+          <div style="font-size: 0.82rem; color: var(--teal-primary, #0D9488); font-weight: 600; margin-top: 4px;">
+            ${escapeHtml(current.detailLine)}
+          </div>
+        </div>
+      `;
+    }
+
+    const openLink = document.getElementById('btnBulkWAOpenLink');
+    if (openLink) {
+      openLink.setAttribute('href', current.waUrl || '#');
+    }
+  }
+
+  function handleBulkWhatsAppSentNext() {
+    bulkWASession.sentCount++;
+    bulkWASession.currentIndex++;
+    renderBulkWhatsAppStepB();
+  }
+
+  function handleBulkWhatsAppSkip() {
+    bulkWASession.skipCount++;
+    bulkWASession.currentIndex++;
+    renderBulkWhatsAppStepB();
+  }
+
+  function handleBulkWhatsAppBackToList() {
+    const stepA = document.getElementById('bulkWAStepA');
+    const stepB = document.getElementById('bulkWAStepB');
+    if (stepB) stepB.classList.add('hidden');
+    if (stepA) stepA.classList.remove('hidden');
+    renderBulkWhatsAppStepA();
+  }
+
+  function renderBulkWhatsAppStepC() {
+    const stepA = document.getElementById('bulkWAStepA');
+    const stepB = document.getElementById('bulkWAStepB');
+    const stepC = document.getElementById('bulkWAStepC');
+    if (stepA) stepA.classList.add('hidden');
+    if (stepB) stepB.classList.add('hidden');
+    if (stepC) stepC.classList.remove('hidden');
+
+    const summaryText = document.getElementById('bulkWASummaryText');
+    if (summaryText) {
+      const sent = bulkWASession.sentCount;
+      const skipped = bulkWASession.skipCount;
+      const invalid = bulkWASession.invalidCount;
+      summaryText.textContent = `Finished — ${sent} sent, ${skipped} skipped, ${invalid} without a valid number.`;
+    }
+  }
+
+  function handleOpenBulkFeeWhatsApp() {
+    const month = state.feeSelectedMonth || getCurrentMonthKey();
+    const filterClass = state.defaultersFilterClass || 'ALL';
+    const data = computeDefaulters(month, filterClass);
+    const defaulters = data.defaulters || [];
+
+    if (defaulters.length === 0) {
+      showToast('No defaulters to message.', 'info');
+      return;
+    }
+
+    const items = defaulters.map(d => {
+      const s = d.student;
+      const rawPhone = s.whatsapp || s.parentPhone || '';
+      const cleanPhone = sanitizePhoneForWhatsApp(rawPhone);
+      const isValid = Boolean(cleanPhone && cleanPhone.length >= 10);
+      const waUrl = cleanPhone ? getFeeWhatsAppReminderUrl(s, month, d.effFee, d.pending) : '#';
+      const parentName = s.fatherName || s.parentName || 'محترم والدین';
+      const detailLine = `Pending Fee: Rs ${(d.pending || 0).toLocaleString()} (Month: ${formatMonthHuman(month)})`;
+
+      return {
+        id: s.id,
+        student: s,
+        name: s.name,
+        rollNo: s.rollNo || '-',
+        className: s.className || '',
+        section: s.section || '',
+        parentName: parentName,
+        rawPhone: rawPhone,
+        cleanPhone: cleanPhone,
+        isValidPhone: isValid,
+        detailLine: detailLine,
+        waUrl: waUrl,
+        selected: isValid
+      };
+    });
+
+    openBulkWhatsAppModal({
+      type: 'fee',
+      title: '📩 Send Fee Reminders',
+      subtitle: 'Progress is only kept for this session — nothing is saved.',
+      items: items
+    });
+  }
+
+  function handleOpenBulkAbsentWhatsApp() {
+    const dateInput = document.getElementById('attDatePicker');
+    const classSelect = document.getElementById('attClassSelect');
+    const sectionSelect = document.getElementById('attSectionSelect');
+
+    const selectedDate = (dateInput && dateInput.value) || getTodayISO();
+    const selectedClass = (classSelect && classSelect.value) || 'Class 3';
+    const selectedSection = (sectionSelect && sectionSelect.value ? sectionSelect.value : 'A').trim();
+
+    const enrolled = (state.students || []).filter(s =>
+      s.className === selectedClass &&
+      (s.section || 'A').toLowerCase() === selectedSection.toLowerCase() &&
+      s.status === 'Active'
+    );
+    enrolled.sort((a, b) => parseInt(a.rollNo || '0', 10) - parseInt(b.rollNo || '0', 10));
+
+    const attRecord = getAttendanceForDateAndClass(selectedDate, selectedClass, selectedSection);
+    const absentStudents = enrolled.filter(s => {
+      const rec = attRecord[s.id];
+      return rec && rec.status === 'Absent';
+    });
+
+    if (absentStudents.length === 0) {
+      showToast('No absent students found for this class and date.', 'info');
+      return;
+    }
+
+    const dateHuman = formatHumanFullDate(selectedDate);
+    const items = absentStudents.map(s => {
+      const rawPhone = s.whatsapp || s.parentPhone || '';
+      const cleanPhone = sanitizePhoneForWhatsApp(rawPhone);
+      const isValid = Boolean(cleanPhone && cleanPhone.length >= 10);
+      const waUrl = isValid ? getAbsentWhatsAppUrl(s, selectedDate) : '#';
+      const parentName = s.fatherName || s.parentName || 'محترم والدین';
+      const detailLine = `Absent on: ${dateHuman}`;
+
+      return {
+        id: s.id,
+        student: s,
+        name: s.name,
+        rollNo: s.rollNo || '-',
+        className: s.className || '',
+        section: s.section || '',
+        parentName: parentName,
+        rawPhone: rawPhone,
+        cleanPhone: cleanPhone,
+        isValidPhone: isValid,
+        detailLine: detailLine,
+        waUrl: waUrl,
+        selected: isValid
+      };
+    });
+
+    openBulkWhatsAppModal({
+      type: 'absent',
+      title: '📩 Send Absent Alerts',
+      subtitle: 'Progress is only kept for this session — nothing is saved.',
+      items: items
+    });
+  }
+
+  function bindBulkWhatsAppEvents() {
+    document.getElementById('btnBulkFeeWhatsApp')?.addEventListener('click', handleOpenBulkFeeWhatsApp);
+    document.getElementById('btnBulkAbsentWhatsApp')?.addEventListener('click', handleOpenBulkAbsentWhatsApp);
+    document.getElementById('btnCloseBulkWhatsAppModal')?.addEventListener('click', closeBulkWhatsAppModal);
+    document.getElementById('btnCancelBulkWA')?.addEventListener('click', closeBulkWhatsAppModal);
+    document.getElementById('btnBulkWASelectAll')?.addEventListener('click', handleBulkWASelectAll);
+    document.getElementById('btnBulkWASelectNone')?.addEventListener('click', handleBulkWASelectNone);
+    document.getElementById('btnStartBulkWASend')?.addEventListener('click', handleStartBulkWASending);
+    document.getElementById('btnBulkWASentNext')?.addEventListener('click', handleBulkWhatsAppSentNext);
+    document.getElementById('btnBulkWASkip')?.addEventListener('click', handleBulkWhatsAppSkip);
+    document.getElementById('btnBulkWAProgressBack')?.addEventListener('click', handleBulkWhatsAppBackToList);
+    document.getElementById('btnBulkWAClosedDone')?.addEventListener('click', closeBulkWhatsAppModal);
+
+    // Backdrop click
+    document.getElementById('bulkWhatsAppModal')?.addEventListener('click', (e) => {
+      if (e.target.id === 'bulkWhatsAppModal') closeBulkWhatsAppModal();
+    });
+
+    // Escape key
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' || e.key === 'Esc') {
+        const modal = document.getElementById('bulkWhatsAppModal');
+        if (modal && !modal.classList.contains('hidden')) {
+          closeBulkWhatsAppModal();
+        }
+      }
+    });
+  }
+
   // Window exports for HTML onclick handlers
   window.openImportModal = openImportModal;
   window.closeImportModal = closeImportModal;
@@ -10020,6 +10476,15 @@ Please review the syllabus and schedule to support your child's learning.
   window.__validateImportRows = validateImportRows;
   window.validateImportRows = validateImportRows;
   window.processRawImportRows = processRawImportRows;
+  window.handleOpenBulkFeeWhatsApp = handleOpenBulkFeeWhatsApp;
+  window.handleOpenBulkAbsentWhatsApp = handleOpenBulkAbsentWhatsApp;
+  window.openBulkWhatsAppModal = openBulkWhatsAppModal;
+  window.closeBulkWhatsAppModal = closeBulkWhatsAppModal;
+  window.getAbsentWhatsAppUrl = getAbsentWhatsAppUrl;
+  window.__getAbsentWhatsAppUrl = getAbsentWhatsAppUrl;
+  window.__openBulkWhatsAppModal = openBulkWhatsAppModal;
+  window.__closeBulkWhatsAppModal = closeBulkWhatsAppModal;
+  window.__getBulkWhatsAppSession = () => bulkWASession;
   window.processImportFile = processImportFile;
   window.handleImportDragEnter = handleImportDragEnter;
   window.handleImportDragOver = handleImportDragOver;

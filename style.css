@@ -5401,3 +5401,60 @@ body.printing-defaulters #printableDefaulters {
     font-size: 1.1rem;
   }
 }
+
+/* Bulk WhatsApp Quick-Send Styles */
+.btn-whatsapp {
+  background-color: var(--whatsapp-green, #25D366);
+  color: #FFFFFF;
+  border: 1px solid var(--whatsapp-green, #25D366);
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  cursor: pointer;
+  transition: background-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.btn-whatsapp:hover {
+  background-color: var(--whatsapp-hover, #1EBE5D);
+  color: #FFFFFF;
+  border-color: var(--whatsapp-hover, #1EBE5D);
+  box-shadow: 0 4px 12px rgba(37, 211, 102, 0.28);
+}
+
+.btn-whatsapp:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.bulk-wa-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm, 6px);
+  transition: background 0.15s ease;
+}
+
+.bulk-wa-row:hover {
+  background: rgba(0, 0, 0, 0.02);
+}
+
+.bulk-wa-row.invalid-phone {
+  background: #FFFBEB;
+  opacity: 0.8;
+}
+
+.bulk-wa-progress-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  background: var(--teal-light, #F0FDFA);
+  color: var(--teal-primary, #0D9488);
+  border-radius: var(--radius-pill, 9999px);
+  font-size: 0.8rem;
+  font-weight: 700;
+  border: 1px solid rgba(13, 148, 136, 0.2);
+}

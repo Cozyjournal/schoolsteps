@@ -403,6 +403,11 @@
               <span class="pill-count" id="countTotal">0</span>
             </div>
           </div>
+          <div id="attBulkWhatsAppWrap" class="hidden" style="margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border-soft); display: flex; justify-content: flex-end;">
+            <button type="button" class="btn btn-sm btn-whatsapp" id="btnBulkAbsentWhatsApp">
+              <span>📩 WhatsApp Absent Parents (0)</span>
+            </button>
+          </div>
         </div>
 
         <!-- Attendance Roster -->
@@ -1371,6 +1376,9 @@
                   </select>
                 </div>
                 <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                  <button type="button" class="btn btn-sm btn-whatsapp hidden" id="btnBulkFeeWhatsApp">
+                    <span>📩 Remind All on WhatsApp (0)</span>
+                  </button>
                   <button type="button" class="btn btn-sm btn-primary" id="btnPrintDefaulters">
                     <span>🖨️ Print List</span>
                   </button>
@@ -2278,6 +2286,79 @@
               <span>✓ Done</span>
             </button>
           </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bulk WhatsApp Sender Modal -->
+  <div class="modal-overlay hidden" id="bulkWhatsAppModal">
+    <div class="modal-card" style="max-width: 620px;">
+      <div class="modal-header">
+        <div>
+          <h3 class="modal-title" id="bulkWAModalTitle">📩 Send Fee Reminders</h3>
+          <p id="bulkWAModalSubtitle" style="font-size: 0.8rem; color: var(--text-muted); margin: 2px 0 0 0;">Progress is only kept for this session — nothing is saved.</p>
+        </div>
+        <button class="btn-close" id="btnCloseBulkWhatsAppModal" type="button" aria-label="Close">✕</button>
+      </div>
+      <div class="modal-body" style="padding: 16px 20px;">
+        <!-- Step A: Review List -->
+        <div id="bulkWAStepA">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+            <div style="font-size: 0.85rem; font-weight: 600; color: var(--text-main);">
+              <span id="bulkWATotalCountLabel">0 recipients</span>
+            </div>
+            <div style="display: flex; gap: 10px; font-size: 0.8rem;">
+              <button type="button" id="btnBulkWASelectAll" style="background: none; border: none; color: var(--teal-primary, #0D9488); cursor: pointer; padding: 0; font-weight: 600; font-size: 0.8rem; text-decoration: underline;">Select All</button>
+              <span style="color: var(--border-medium, #E2E8F0);">|</span>
+              <button type="button" id="btnBulkWASelectNone" style="background: none; border: none; color: var(--text-muted, #64748B); cursor: pointer; padding: 0; font-weight: 600; font-size: 0.8rem; text-decoration: underline;">Deselect All</button>
+            </div>
+          </div>
+          <div class="bulk-wa-list-wrap" id="bulkWARecipientsList" style="max-height: 340px; overflow-y: auto; border: 1px solid var(--border-soft); border-radius: var(--radius-md); padding: 8px 12px; background: #FAFAFA;">
+            <!-- Rendered dynamically -->
+          </div>
+          <div class="modal-footer" style="padding: 16px 0 0 0; margin-top: 16px; border-top: 1px solid var(--border-soft); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+            <button type="button" class="btn btn-subtle" id="btnCancelBulkWA">Cancel</button>
+            <button type="button" class="btn btn-whatsapp" id="btnStartBulkWASend">
+              <span>Start Sending (0) →</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Step B: Guided Sending (One parent at a time) -->
+        <div id="bulkWAStepB" class="hidden">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+            <span class="bulk-wa-progress-badge" id="bulkWAProgressBadge">Parent 1 of 10</span>
+            <button type="button" id="btnBulkWAProgressBack" style="background: none; border: none; color: var(--teal-primary, #0D9488); cursor: pointer; font-size: 0.85rem; font-weight: 600; text-decoration: underline;">← Back to list</button>
+          </div>
+          <div class="bulk-wa-card" id="bulkWACurrentCard" style="background: #F8FAFC; border: 1px solid var(--border-soft); border-radius: var(--radius-lg); padding: 18px; margin-bottom: 16px;">
+            <!-- Student / Parent details dynamically rendered -->
+          </div>
+          <div class="bulk-wa-actions-row" style="display: flex; flex-direction: column; gap: 10px;">
+            <a href="#" target="_blank" rel="noopener noreferrer" class="btn btn-whatsapp" id="btnBulkWAOpenLink" style="display: flex; justify-content: center; align-items: center; gap: 8px; font-size: 1rem; font-weight: 700; padding: 12px 18px; text-decoration: none;">
+              <span>💬 Open WhatsApp</span>
+            </a>
+            <div style="display: flex; gap: 10px; margin-top: 4px;">
+              <button type="button" class="btn btn-primary" id="btnBulkWASentNext" style="flex: 2;">
+                <span>Sent — Next ✓</span>
+              </button>
+              <button type="button" class="btn btn-subtle" id="btnBulkWASkip" style="flex: 1;">
+                <span>Skip</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Step C: Done State -->
+        <div id="bulkWAStepC" class="hidden" style="text-align: center; padding: 24px 12px;">
+          <div style="font-size: 2.8rem; margin-bottom: 12px;">🎉</div>
+          <h3 style="font-size: 1.25rem; font-weight: 700; color: var(--text-heading); margin-bottom: 8px;">All Done!</h3>
+          <p id="bulkWASummaryText" style="font-size: 0.95rem; color: var(--text-main); line-height: 1.5; margin-bottom: 20px;">
+            Finished — 0 sent, 0 skipped, 0 without a valid number.
+          </p>
+          <button type="button" class="btn btn-primary" id="btnBulkWAClosedDone" style="min-width: 140px;">
+            <span>Done</span>
+          </button>
         </div>
       </div>
     </div>

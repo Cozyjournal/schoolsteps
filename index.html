@@ -1293,6 +1293,10 @@
                     <button type="button" class="btn btn-sm btn-subtle active" id="btnFeeSubNavOverview">💳 Overview</button>
                     <button type="button" class="btn btn-sm btn-subtle" id="btnFeeSubNavDefaulters">⚠️ Defaulters</button>
                   </div>
+                  <button type="button" class="btn btn-subtle btn-sm btn-export-trigger hidden" id="btnExportDataFees" onclick="handleOpenExportDataModal()" title="Download all school data as Excel">
+                    <span class="icon">📤</span>
+                    <span>Export Data</span>
+                  </button>
                   <button type="button" class="btn btn-subtle btn-sm btn-import-trigger" id="btnImportPayments" onclick="openImportModal('fees')" title="Import fee payment history from Excel or CSV">
                     <span>📥 Import Payments</span>
                   </button>
@@ -1457,6 +1461,10 @@
             <p class="panel-subtitle">Manage subject curriculum, monthly topics, and track teaching progress</p>
           </div>
           <div class="panel-actions">
+            <button type="button" class="btn btn-subtle btn-export-trigger hidden" id="btnExportDataSyllabus" onclick="handleOpenExportDataModal()" title="Download all school data as Excel">
+              <span class="icon">📤</span>
+              <span class="btn-label">Export Data</span>
+            </button>
             <button type="button" class="btn btn-subtle btn-import-trigger" id="btnImportSyllabus" onclick="openImportModal('syllabus')" title="Import Syllabus from Excel or CSV">
               <span class="icon">📥</span>
               <span class="btn-label">Import</span>

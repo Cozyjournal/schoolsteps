@@ -11788,6 +11788,8 @@ Please review the syllabus and schedule to support your child's learning.
 
   function bindExportDataEvents() {
     document.getElementById('btnExportData')?.addEventListener('click', handleOpenExportDataModal);
+    document.getElementById('btnExportDataFees')?.addEventListener('click', handleOpenExportDataModal);
+    document.getElementById('btnExportDataSyllabus')?.addEventListener('click', handleOpenExportDataModal);
     document.getElementById('btnCloseExportDataModal')?.addEventListener('click', closeExportDataModal);
     document.getElementById('btnCancelExportData')?.addEventListener('click', closeExportDataModal);
     document.getElementById('btnDownloadExportData')?.addEventListener('click', executeExportData);

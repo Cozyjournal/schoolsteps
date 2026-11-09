@@ -404,7 +404,8 @@ h1, h2, h3, h4, h5, h6 {
     align-items: center;
     text-align: center;
     white-space: normal;
-    word-break: break-word;
+    word-break: normal;
+    overflow-wrap: normal;
     border-radius: var(--radius-sm);
   }
 
@@ -423,6 +424,20 @@ h1, h2, h3, h4, h5, h6 {
     grid-column: span 4;
   }
 
+  /* Row 3: 3 tabs = 4 cols each (Fees, Syllabus, Teachers).
+     These had NO span rule, so each collapsed to 1 column (~28px)
+     and its label stacked letter by letter. */
+  .nav-tabs .tab-btn:nth-child(8),
+  .nav-tabs .tab-btn:nth-child(9),
+  .nav-tabs .tab-btn:nth-child(10) {
+    grid-column: span 4;
+  }
+
+  /* Row 4: Platform (platform admin only) */
+  .nav-tabs .tab-btn:nth-child(11) {
+    grid-column: span 4;
+  }
+
   .nav-tabs .tab-btn .tab-icon {
     font-size: 0.92rem;
     line-height: 1;
@@ -432,10 +447,19 @@ h1, h2, h3, h4, h5, h6 {
     line-height: 1.1;
     font-size: 0.7rem;
     font-weight: 700;
+    white-space: nowrap;
+    word-break: normal;
+    overflow-wrap: normal;
   }
 
   .tab-count {
     display: none;
+  }
+}
+
+@media (max-width: 360px) {
+  .nav-tabs .tab-btn .tab-text {
+    font-size: 0.64rem;
   }
 }
 

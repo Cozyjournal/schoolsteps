@@ -306,9 +306,9 @@
   // Subscription & Manual Pakistan Billing Config
   // ========================================================
   const PLATFORM_PAYMENT = {
-    jazzcashNumber: '[ADD NUMBER]',
-    easypaisaNumber: '[ADD NUMBER]',
-    accountTitle: '[ADD NAME]'
+    jazzcashNumber: '03226817030',
+    easypaisaNumber: '',
+    accountTitle: 'Saleha Bibi'
   };
 
   // ========================================================
@@ -788,6 +788,11 @@
     if (jcTitle) jcTitle.textContent = PLATFORM_PAYMENT.accountTitle;
     if (epNum) epNum.textContent = PLATFORM_PAYMENT.easypaisaNumber;
     if (epTitle) epTitle.textContent = PLATFORM_PAYMENT.accountTitle;
+
+    // Hide the Easypaisa row when no Easypaisa number is configured,
+    // so schools never see an empty/placeholder payment option.
+    const epRow = document.getElementById('payInstrEasypaisaRow');
+    if (epRow) epRow.style.display = PLATFORM_PAYMENT.easypaisaNumber ? 'flex' : 'none';
 
     // Update current status overview
     const sub = state.subscription;

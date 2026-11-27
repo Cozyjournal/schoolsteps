@@ -5452,6 +5452,9 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
       if (switchLink) switchLink.textContent = 'Create an account';
     }
 
+      const forgotRow = document.getElementById('forgotPasswordRow');
+      if (forgotRow) forgotRow.style.display = mode === 'login' ? 'block' : 'none';
+    
     updateSignupSchoolFieldsVisibility();
   }
 
@@ -5724,12 +5727,39 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
     }
   }
 
+  async function handleForgotPassword() {
+      hideAuthError();
+      const email = document.getElementById('authEmail')?.value.trim() || '';
+      if (!email) {
+            showAuthError('Please enter your email address above first, then tap "Forgot password?" again.');
+            document.getElementById('authEmail')?.focus();
+            return;
+      }
+      if (!auth) {
+            showAuthError('Firebase Authentication is not available. Please check network connection.');
+            return;
+      }
+      try {
+            await auth.sendPasswordResetEmail(email);
+      } catch (error) {
+            // Do not reveal whether an account exists for this email;
+            // only surface genuine input errors.
+            if (error && error.code === 'auth/invalid-email') {
+                    showAuthError('Please enter a valid email address.');
+                    return;
+            }
+            console.error('Password reset error:', error);
+      }
+      showToast('If an account exists for this email, a password reset link has been sent. Please check your inbox (and spam folder).', 'success');
+  }
+  
   function bindAuthEvents() {
     document.getElementById('btnToggleLogin')?.addEventListener('click', () => setAuthMode('login'));
     document.getElementById('btnToggleSignup')?.addEventListener('click', () => setAuthMode('signup'));
     document.getElementById('authSwitchLink')?.addEventListener('click', () => {
       setAuthMode(currentAuthMode === 'login' ? 'signup' : 'login');
     });
+      document.getElementById('btnForgotPassword')?.addEventListener('click', handleForgotPassword);
 
     // Role selection cards
     const roleCards = document.querySelectorAll('.role-option-card');

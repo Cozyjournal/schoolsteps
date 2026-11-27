@@ -310,6 +310,16 @@
     easypaisaNumber: '',
     accountTitle: 'Saleha Bibi'
   };
+    
+  // ========================================================
+    // Billing master switch (owner decision, 2026-11-27):
+    // SchoolSteps is currently used by the owner and family onl,
+    // so billing is OFF — every school gets full Pro access with
+    // no trial countdown, no expiry and no read-only lock.
+    // The payment code is kept intact below; set this to true
+    // to turn billing back on for outside schools.
+    // ========================================================
+    const BILLING_ENABLED = false;
 
   // ========================================================
   // Application State
@@ -575,6 +585,19 @@
   }
 
   function computeSubscriptionStatus(school) {
+      if (!BILLING_ENABLED) {
+            // Billing off: permanent full Pro access for every school.
+            return {
+                    plan: 'pro',
+                    status: 'active',
+                    subStatus: 'active',
+                    daysLeft: 0,
+                    keyDateMs: null,
+                    keyDateStr: '',
+                    keyDateLabel: ''
+            };
+      }
+    
     if (!school) {
       return {
         plan: 'pro',

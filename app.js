@@ -2741,6 +2741,26 @@
       }
     }
 
+      // Populate the student add/edit form class select from the same
+      // central sorted list as every other class dropdown, so the form
+      // always offers NURSERY / PREP - I / PREP - II first and includes
+      // the school's own classes.
+      const studClassSelect = document.getElementById('studClass');
+      if (studClassSelect) {
+            const currentVal = studClassSelect.value || 'Class 3';
+            studClassSelect.innerHTML = '';
+            sortedClasses.forEach(c => {
+                    const opt = document.createElement('option');
+                    opt.value = c;
+                    opt.textContent = c;
+                    if (c === currentVal) opt.selected = true;
+                    studClassSelect.appendChild(opt);
+            });
+            if (!studClassSelect.value && sortedClasses.length > 0) {
+                    studClassSelect.value = sortedClasses.includes(currentVal) ? currentVal : 'Class 3';
+            }
+      }
+    
     const attMonthPicker = document.getElementById('attSheetMonthPicker');
     if (attMonthPicker && !attMonthPicker.value) {
       attMonthPicker.value = getCurrentMonthKey();

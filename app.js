@@ -2520,14 +2520,14 @@
   // MODULE 1: Student & Parent Database
   // ========================================================
   const ALL_DEFAULT_CLASSES = [   
-    'NURSERY', 'PREP - I', 'PREP - II',
+    'FOUNDATION', 'NURSERY', 'PREP - I', 'PREP - II',
     'Class 1', 'Class 2', 'Class 3', 'Class 4', 'Class 5',
     'Class 6', 'Class 7', 'Class 8', 'Class 9', 'Class 10'
   ];
 
   // Early-years classes always sort to the top, in this order,
   // ahead of the numbered classes.
-  const CLASS_ORDER_PRIORITY = { 'NURSERY': 0, 'PREP - I': 1, 'PREP - II': 2 };
+  const CLASS_ORDER_PRIORITY = { 'FOUNDATION': 0, 'NURSERY': 1, 'PREP - I': 2, 'PREP - II': 3 };
   
   function sortClasses(classList) {
     return Array.from(classList).sort((a, b) => {

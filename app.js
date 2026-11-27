@@ -1824,6 +1824,7 @@
           class: student.className || student.class || '',
           className: student.className || student.class || '',
           section: student.section || 'A',
+          classTeacher: student.classTeacher || '',
           parentName: student.fatherName || student.parentName || student.motherName || '',
           fatherName: student.fatherName || student.parentName || '',
           motherName: student.motherName || '',
@@ -2864,6 +2865,12 @@
                 }
               </span>
             </div>
+            ${student.classTeacher ? `
+              <div class="info-line">
+                <span class="info-label">Class Teacher:</span>
+                <span class="info-val">${escapeHtml(student.classTeacher)}</span>
+            </div>
+        ` : ''}
             ${student.emergencyPhone ? `
               <div class="info-line">
                 <span class="info-label">Emergency Phone:</span>
@@ -2908,6 +2915,34 @@
     });
   }
 
+  function populateClassTeacherDropdown(selectedName) {
+      const sel = document.getElementById('studClassTeacher');
+      if (!sel) return;
+      const wanted = (selectedName || '').trim();
+      sel.innerHTML = '<option value="">— Select Class Teacher —</option>';
+      const names = (state.teachers || [])
+        .map(t => (t.name || '').trim())
+        .filter(Boolean)
+        .sort((a, b) => a.localeCompare(b));
+      names.forEach(n => {
+            const opt = document.createElement('option');
+            opt.value = n;
+            opt.textContent = n;
+            if (n === wanted) opt.selected = true;
+            sel.appendChild(opt);
+      });
+      if (wanted && !names.includes(wanted)) {
+            // Keep a previously saved teacher visible even if the teacher
+            // record was later removed from the teachers list.
+            const opt = document.createElement('option');
+            opt.value = wanted;
+            opt.textContent = wanted;
+            opt.selected = true;
+            sel.appendChild(opt);
+      }
+      sel.value = wanted;
+  }
+  
   function openAddStudentModal() {
     if (!checkSubscriptionWritable('Add Student')) return;
     if (isSchoolStudentCapped() && getActiveStudentsCount() >= STUDENT_LIMIT_NON_PRO) {
@@ -2922,6 +2957,7 @@
     document.getElementById('studStatus').value = 'Active';
     document.getElementById('studClass').value = 'Class 3';
     document.getElementById('studSection').value = 'A';
+      populateClassTeacherDropdown('');
     if (document.getElementById('studMonthlyFee')) document.getElementById('studMonthlyFee').value = '';
     if (document.getElementById('studFeeNote')) document.getElementById('studFeeNote').value = '';
     document.getElementById('studentModal').classList.remove('hidden');
@@ -2938,6 +2974,7 @@
     document.getElementById('studRollNo').value = student.rollNo || '';
     document.getElementById('studClass').value = student.className || 'Class 3';
     document.getElementById('studSection').value = student.section || 'A';
+      populateClassTeacherDropdown(student.classTeacher || '');
     document.getElementById('studGender').value = student.gender || 'Female';
     document.getElementById('studDob').value = student.dob || '';
     document.getElementById('studAdmissionNo').value = student.admissionNo || '';
@@ -2981,7 +3018,8 @@
       name,
       rollNo,
       className,
-      section,
+          section,
+        classTeacher: document.getElementById('studClassTeacher') ? document.getElementById('studClassTeacher').value : '',
       gender: document.getElementById('studGender').value,
       dob: document.getElementById('studDob').value,
       admissionNo: document.getElementById('studAdmissionNo').value.trim() || `ADM-${new Date().getFullYear()}-${rollNo}`,

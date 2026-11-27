@@ -2519,14 +2519,26 @@
   // ========================================================
   // MODULE 1: Student & Parent Database
   // ========================================================
-  const ALL_DEFAULT_CLASSES = [
+  const ALL_DEFAULT_CLASSES = [   
+    'NURSERY', 'PREP - I', 'PREP - II',
     'Class 1', 'Class 2', 'Class 3', 'Class 4', 'Class 5',
     'Class 6', 'Class 7', 'Class 8', 'Class 9', 'Class 10'
   ];
 
+  // Early-years classes always sort to the top, in this order,
+  // ahead of the numbered classes.
+  const CLASS_ORDER_PRIORITY = { 'NURSERY': 0, 'PREP - I': 1, 'PREP - II': 2 };
+  
   function sortClasses(classList) {
     return Array.from(classList).sort((a, b) => {
-      const numA = parseInt((a.match(/\d+/) || [999])[0], 10);
+          const pA = CLASS_ORDER_PRIORITY[a];
+          const pB = CLASS_ORDER_PRIORITY[b];
+      if (pA !== undefined || pB !== undefined) {
+              if (pA === undefined) return 1;
+              if (pB === undefined) return -1;
+              return pA - pB;
+      }
+            const numA = parseInt((a.match(/\d+/) || [999])[0], 10);
       const numB = parseInt((b.match(/\d+/) || [999])[0], 10);
       if (!isNaN(numA) && !isNaN(numB) && numA !== numB) {
         return numA - numB;

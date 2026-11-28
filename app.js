@@ -2330,6 +2330,17 @@
     }
   }
 
+  // Student phone numbers are private: only Admin accounts may see them.
+  function canSeeStudentPhone() {
+    const userRole = (state.currentUser && state.currentUser.role) || ((auth && auth.currentUser) ? getUserRole(auth.currentUser.email) : '');
+    return userRole === 'Admin';
+  }
+
+  function studentPhoneForDisplay(phone, fallback) {
+    if (!canSeeStudentPhone()) return 'Hidden';
+    return phone || fallback || '-';
+  }
+
   function sanitizePhoneForWhatsApp(phone) {
     if (!phone) return '';
     // Strip non-digits except initial +
@@ -2859,9 +2870,11 @@
             <div class="info-line">
               <span class="info-label">WhatsApp Contact:</span>
               <span class="info-val">
-                ${sanitizedPhone
-                  ? `<a href="${waLink}" target="_blank" rel="noopener" class="whatsapp-link" title="Chat on WhatsApp">💬 ${escapeHtml(student.whatsapp)}</a>`
-                  : `<span class="text-muted">No number</span>`
+                ${!canSeeStudentPhone()
+                  ? `<span class="text-muted">Hidden</span>`
+                  : sanitizedPhone
+                    ? `<a href="${waLink}" target="_blank" rel="noopener" class="whatsapp-link" title="Chat on WhatsApp">💬 ${escapeHtml(student.whatsapp)}</a>`
+                    : `<span class="text-muted">No number</span>`
                 }
               </span>
             </div>
@@ -2871,7 +2884,7 @@
                 <span class="info-val">${escapeHtml(student.classTeacher)}</span>
             </div>
         ` : ''}
-            ${student.emergencyPhone ? `
+            ${(student.emergencyPhone && canSeeStudentPhone()) ? `
               <div class="info-line">
                 <span class="info-label">Emergency Phone:</span>
                 <span class="info-val">${escapeHtml(student.emergencyPhone)}</span>
@@ -2953,6 +2966,8 @@
     state.editingStudentId = null;
     document.getElementById('studentModalTitle').textContent = 'Add New Student';
     document.getElementById('studentForm').reset();
+    document.getElementById('parentWhatsApp').disabled = false;
+    document.getElementById('parentEmergency').disabled = false;
     document.getElementById('studentIdField').value = '';
     document.getElementById('studStatus').value = 'Active';
     document.getElementById('studClass').value = 'Class 3';
@@ -2981,8 +2996,10 @@
     document.getElementById('studStatus').value = student.status || 'Active';
     document.getElementById('parentFather').value = student.fatherName || '';
     document.getElementById('parentMother').value = student.motherName || '';
-    document.getElementById('parentWhatsApp').value = student.whatsapp || '';
-    document.getElementById('parentEmergency').value = student.emergencyPhone || '';
+    document.getElementById('parentWhatsApp').value = canSeeStudentPhone() ? (student.whatsapp || '') : '';
+    document.getElementById('parentEmergency').value = canSeeStudentPhone() ? (student.emergencyPhone || '') : '';
+    document.getElementById('parentWhatsApp').disabled = !canSeeStudentPhone();
+    document.getElementById('parentEmergency').disabled = !canSeeStudentPhone();
     document.getElementById('parentAddress').value = student.address || '';
     if (document.getElementById('studMonthlyFee')) {
       document.getElementById('studMonthlyFee').value = (student.monthlyFee != null && Number(student.monthlyFee) > 0) ? student.monthlyFee : '';
@@ -3001,7 +3018,9 @@
     const className = document.getElementById('studClass').value;
     const section = document.getElementById('studSection').value;
     const fatherName = document.getElementById('parentFather').value.trim();
-    const whatsapp = document.getElementById('parentWhatsApp').value.trim();
+    const whatsappInputVal = document.getElementById('parentWhatsApp').value.trim();
+    const editingExisting = state.editingStudentId ? state.students.find(s => s.id === state.editingStudentId) : null;
+    const whatsapp = (!canSeeStudentPhone() && editingExisting) ? (editingExisting.whatsapp || '') : whatsappInputVal;
 
     if (!name || !rollNo || !className || !section || !fatherName || !whatsapp) {
       showToast('Please fill all required fields (Name, Roll, Class, Section, Father, WhatsApp)', 'warn');
@@ -3027,7 +3046,7 @@
       fatherName,
       motherName: document.getElementById('parentMother').value.trim(),
       whatsapp,
-      emergencyPhone: document.getElementById('parentEmergency').value.trim(),
+      emergencyPhone: (!canSeeStudentPhone() && editingExisting) ? (editingExisting.emergencyPhone || '') : document.getElementById('parentEmergency').value.trim(),
       address,
       monthlyFee,
       feeNote
@@ -3266,7 +3285,7 @@
             <div class="roster-roll">${escapeHtml(student.rollNo || '-')}</div>
             <div class="roster-name-block">
               <div class="roster-student-name">${escapeHtml(student.name)}</div>
-              <div class="roster-parent-sub">${escapeHtml(student.fatherName || 'Parent')} • ${escapeHtml(student.whatsapp || 'No WhatsApp')}</div>
+              <div class="roster-parent-sub">${escapeHtml(student.fatherName || 'Parent')}${canSeeStudentPhone() ? ` • ${escapeHtml(student.whatsapp || 'No WhatsApp')}` : ''}</div>
             </div>
           </div>
 
@@ -3536,7 +3555,7 @@ ${student.name} (${classLabel}) is marked PRESENT today (${formattedDate}).
           <div class="wa-bubble">${escapeHtml(item.text)}</div>
 
           <div class="wa-meta-row">
-            <span>WhatsApp: <strong class="wa-phone-tag">${escapeHtml(s.whatsapp || 'No phone')}</strong></span>
+            <span>WhatsApp: <strong class="wa-phone-tag">${escapeHtml(studentPhoneForDisplay(s.whatsapp, 'No phone'))}</strong></span>
             <span>Class ${escapeHtml(s.className)}-${escapeHtml(s.section)}</span>
           </div>
 
@@ -4382,7 +4401,7 @@ Status: ${res.anyFailed ? 'PROMOTED ON TRIAL' : 'PASSED'}
             <div class="stud-sub-cell">Father: ${escapeHtml(student.fatherName || 'Not recorded')}</div>
           </td>
           <td>
-            <div class="contact-num">${escapeHtml(student.whatsapp || '-')}</div>
+            <div class="contact-num">${escapeHtml(studentPhoneForDisplay(student.whatsapp, '-'))}</div>
           </td>
           <td class="text-center highlight-score">
             ${res.totalObtained} / ${res.totalMax}
@@ -4651,7 +4670,7 @@ Please confirm your attendance (Yes / No).
           <td><span class="badge badge-class">${escapeHtml(student.className)}</span></td>
           <td>
             <div class="stud-name-cell">${escapeHtml(parentName)}</div>
-            <div class="contact-num">${escapeHtml(student.whatsapp || '-')}</div>
+            <div class="contact-num">${escapeHtml(studentPhoneForDisplay(student.whatsapp, '-'))}</div>
           </td>
           <td style="font-weight: 700; color: var(--secondary); font-size: 0.82rem;">${slot}</td>
           <td class="text-center">
@@ -4911,7 +4930,7 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
           <td><span class="badge badge-class">${escapeHtml(student.className)}-${escapeHtml(student.section || 'A')}</span></td>
           <td>
             <div class="stud-name-cell">${escapeHtml(parentName)}</div>
-            <div class="contact-num">${escapeHtml(student.whatsapp || '-')}</div>
+            <div class="contact-num">${escapeHtml(studentPhoneForDisplay(student.whatsapp, '-'))}</div>
           </td>
           <td>
             <div style="font-size: 0.8rem; color: #E2E8F0; line-height: 1.4; max-width: 320px; white-space: pre-wrap; word-break: break-word;">
@@ -4986,7 +5005,7 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
             <div>
               <span class="call-log-student">${escapeHtml(log.studentName)}</span>
               <span class="badge badge-class" style="margin-left: 6px;">${escapeHtml(log.className || 'Class 3')}</span>
-              <div class="call-log-parent">Parent: ${escapeHtml(log.parentName)} • Tel: ${escapeHtml(log.phone || '-')}</div>
+              <div class="call-log-parent">Parent: ${escapeHtml(log.parentName)} • Tel: ${escapeHtml(studentPhoneForDisplay(log.phone, '-'))}</div>
             </div>
             <div class="call-log-badges">
               <span class="badge badge-pilot">${escapeHtml(log.reason)}</span>
@@ -7946,7 +7965,7 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
     const tableRowsHtml = defaulters.map((d, index) => {
       const s = d.student;
       const cleanPhone = sanitizePhoneForWhatsApp(s.whatsapp || s.parentPhone);
-      const phoneDisplay = s.whatsapp || s.parentPhone || '—';
+      const phoneDisplay = studentPhoneForDisplay(s.whatsapp || s.parentPhone, '—');
       const waUrl = cleanPhone ? getFeeWhatsAppReminderUrl(s, month, d.effFee, d.pending) : '#';
 
       const partialBadge = d.isPartial ? ` <span class="badge badge-fee-partial" style="font-size: 0.72rem; padding: 2px 6px;">◐ Partial</span>` : '';
@@ -8001,7 +8020,7 @@ Please ensure timely arrival according to your scheduled slot. We look forward t
         ${defaulters.map(d => {
           const s = d.student;
           const cleanPhone = sanitizePhoneForWhatsApp(s.whatsapp || s.parentPhone);
-          const phoneDisplay = s.whatsapp || s.parentPhone || 'No number';
+          const phoneDisplay = studentPhoneForDisplay(s.whatsapp || s.parentPhone, 'No number');
           const waUrl = cleanPhone ? getFeeWhatsAppReminderUrl(s, month, d.effFee, d.pending) : '#';
 
           const partialBadge = d.isPartial ? ` <span class="badge badge-fee-partial" style="font-size: 0.72rem; padding: 2px 6px;">◐ Partial</span>` : '';

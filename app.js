@@ -3028,8 +3028,10 @@
     const editingExisting = state.editingStudentId ? state.students.find(s => s.id === state.editingStudentId) : null;
     const whatsapp = (!canSeeStudentPhone() && editingExisting) ? (editingExisting.whatsapp || '') : whatsappInputVal;
 
-    if (!name || !rollNo || !className || !section || !fatherName || !whatsapp) {
-      showToast('Please fill all required fields (Name, Roll, Class, Section, Father, WhatsApp)', 'warn');
+    // Only the student name is required. Every other detail is optional:
+    // a record can be saved with partial information and completed later.
+    if (!name) {
+      showToast('Please enter the student name. All other details can be added later.', 'warn');
       return;
     }
 
@@ -3047,7 +3049,7 @@
         classTeacher: document.getElementById('studClassTeacher') ? document.getElementById('studClassTeacher').value : '',
       gender: document.getElementById('studGender').value,
       dob: document.getElementById('studDob').value,
-      admissionNo: document.getElementById('studAdmissionNo').value.trim() || `ADM-${new Date().getFullYear()}-${rollNo}`,
+      admissionNo: document.getElementById('studAdmissionNo').value.trim() || `ADM-${new Date().getFullYear()}-${rollNo || Date.now().toString().slice(-6)}`,
       status: document.getElementById('studStatus').value,
       fatherName,
       motherName: document.getElementById('parentMother').value.trim(),

@@ -2336,6 +2336,12 @@
     return userRole === 'Admin';
   }
 
+  // Bulk WhatsApp messages may only be sent from the Admin account,
+  // so they always go out from the admin's own number, never a teacher's.
+  function canUseBulkWhatsApp() {
+    return canSeeStudentPhone();
+  }
+
   function studentPhoneForDisplay(phone, fallback) {
     if (!canSeeStudentPhone()) return 'Hidden';
     return phone || fallback || '-';
@@ -3383,7 +3389,7 @@
       span.textContent = `📩 WhatsApp ${label} (${count})`;
     }
 
-    if (count > 0) {
+    if (count > 0 && canUseBulkWhatsApp()) {
       if (btnEl) btnEl.classList.remove('hidden');
       if (wrapEl) wrapEl.classList.remove('hidden');
     } else {
@@ -10529,6 +10535,10 @@ Please review the syllabus and schedule to support your child's learning.
   };
 
   function openBulkWhatsAppModal(config) {
+    if (!canUseBulkWhatsApp()) {
+      showToast('Bulk WhatsApp messages can only be sent by the Admin.', 'warn');
+      return;
+    }
     bulkWASession = {
       type: config.type || 'fee',
       title: config.title || '📩 Send WhatsApp Messages',
